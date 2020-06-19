@@ -1,0 +1,7 @@
+/vendor/
+.env
+/tmp/
+composer.lock
+/.idea/
+/.scannerwork/
+sonar-project.properties

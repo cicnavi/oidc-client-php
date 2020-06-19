@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<ruleset name="Cicnavi PHP PSR12">
+    <description>
+        Default Cicnavi PHP PSR12 ruleset
+    </description>
+
+    <!-- Reference: https://raw.githubusercontent.com/squizlabs/PHP_CodeSniffer/master/phpcs.xml.dist -->
+
+    <file>src</file>
+    <file>tests</file>
+
+    <rule ref="PSR12"/>
+
+    <!-- Show progress -->
+    <arg value="p"/>
+</ruleset>
+
