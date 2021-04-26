@@ -81,7 +81,7 @@ $config = [
     Config::CONFIG_KEY_OIDC_CONFIGURATION_URL => 'https://example.org/oidc/.well-known/openid-configuration',
     Config::CONFIG_KEY_OIDC_CLIENT_ID => 'some-client-id',
     Config::CONFIG_KEY_OIDC_CLIENT_SECRET => 'some-client-secret',
-    Config::CONFIG_KEY_OIDC_REDIRECT_URI => 'https:://your-example.org/callback',
+    Config::CONFIG_KEY_OIDC_REDIRECT_URI => 'https://your-example.org/callback',
     Config::CONFIG_KEY_OIDC_SCOPE => 'openid profile',
     // Optional config items with default values
     //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ALGS => ['RS256', 'RS512'],
