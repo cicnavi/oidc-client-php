@@ -74,7 +74,7 @@ First, prepare an array with the following OIDC configuration values,
 for example:
 ```
 use Cicnavi\Oidc\Config;
-use Cicnavi\Oidc\FileCache;
+use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\Client;
 
 $config = [
