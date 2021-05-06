@@ -6,6 +6,7 @@ namespace Cicnavi\Oidc\DataStore;
 
 use Cicnavi\Oidc\DataStore\Interfaces\DataStoreInterface;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
+use Cicnavi\Oidc\Helpers\HttpHelper;
 
 class PhpSessionDataStore implements DataStoreInterface
 {
@@ -20,8 +21,6 @@ class PhpSessionDataStore implements DataStoreInterface
 
     /**
      * @throws OidcClientException If PHP session could not be started.
-     *
-     * @codeCoverageIgnore
      */
     protected function startSession(): void
     {
@@ -31,21 +30,35 @@ class PhpSessionDataStore implements DataStoreInterface
             return;
         }
 
-        if (headers_sent()) {
-            throw new OidcClientException('Session start error - headers already sent.');
+        if (session_status() == PHP_SESSION_ACTIVE) {
+            return;
         }
 
-        if (session_status() == PHP_SESSION_NONE) {
-            session_start();
+        $this->validatePhpSession();
+
+        $cookieParams = HttpHelper::normalizeSessionCookieParams(session_get_cookie_params());
+
+        if (! session_set_cookie_params($cookieParams)) {
+            throw new OidcClientException('Could not set session cookie params.');
+        }
+
+        if (! session_start()) {
+            throw new OidcClientException('Could not start PHP session.');
         }
     }
 
     /**
-     * @inheritDoc
+     * @throws OidcClientException
      */
-    public function exists(string $key): bool
+    protected function validatePhpSession(): void
     {
-        return isset($_SESSION[$key]);
+        if (headers_sent()) {
+            throw new OidcClientException('Session start error - headers already sent.');
+        }
+
+        if (session_status() == PHP_SESSION_DISABLED) {
+            throw new OidcClientException('Can not use PHP Session since PHP sessions are disabled.');
+        }
     }
 
     /**
@@ -58,6 +71,14 @@ class PhpSessionDataStore implements DataStoreInterface
         }
 
         return null;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function exists(string $key): bool
+    {
+        return isset($_SESSION[$key]);
     }
 
     /**

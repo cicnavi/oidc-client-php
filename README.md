@@ -16,12 +16,25 @@ to test the client with different OPs and let us know about the result.
 PHP environment:
 * Please check composer.json for environment requirements.
 * ODIC client uses PHP session to handle 'state', 'nonce' and 'code_verifier' parameters storage and validation.
+  If the session is not already started, OIDC client will try to start it using session config from php.ini.
 
 OpenID Provider must support:
 * authorization code flow
 * OIDC Discovery URL (well-known URL with OIDC metadata)
 * JWKS URI providing JWK key(s)
- 
+
+## Note on SameSite Cookie Attribute
+[SameSite Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite)
+attribute plays an important role in Single Sign-On (SSO) environments
+because it determines how cookies are delivered in third party contexts.
+During OIDC authorization code flow (the authentication flow this OIDC client uses),
+a series of HTTP redirects between RP and OP is performed.
+
+By default, the authorization code will be delivered to the RP using HTTP Redirect meaning that
+the User Agent will do a GET request to the RP callback.
+This means that the SameSite Cookie attribute can be set to 'Lax' or 'None', but not 'Strict'
+(if the value is 'None', the attribute 'Secure' must also be set).
+  
 ## Installation
 OIDC Client is available as a Composer package. In your project you can run: 
 ```shell script
