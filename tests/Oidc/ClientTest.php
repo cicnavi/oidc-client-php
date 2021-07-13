@@ -55,28 +55,17 @@ class ClientTest extends TestCase
 
     protected static array $sampleIdTokenPayload = [
         'iss' => 'https://login.example.org',
+        'sub' => 'bfa1605be44a50a7c',
         'aud' => '6e55295209782b7b2',
+        'exp' => 1602675070,
+        'iat' => 1602674470,
+        'auth_time' => 1602674470,
+        'nonce' => 'dtnmeBL5HVnhQkIR',
         'jti' => 'c44f4cffcc84f7990f7a1d5b2c',
         'nbf' => 1602674470,
-        'exp' => 1602675070,
-        'sub' => 'bfa1605be44a50a7c',
-        'iat' => 1602674470,
-        'nonce' => 'dtnmeBL5HVnhQkIR',
-        'name' => 'John Doe',
-        'family_name' => 'Doe',
-        'given_name' => 'John',
-        'preferred_username' => 'jdoe@example.org',
-        'email' => 'john.doe@example.org',
-        'hrEduPersonUniqueNumber' =>
-            array (
-                0 => 'LOCAL_NO: 1234',
-                1 => 'OIB: 12345678912',
-                2 => 'JMBAG: 1234567891',
-            ),
     ];
 
     protected static array $sampleUserinfoPayload = [
-        'sub' => 'bfa1605be44a50a7c',
         'name' => 'John Doe',
         'family_name' => 'Doe',
         'given_name' => 'John',
@@ -187,11 +176,16 @@ class ClientTest extends TestCase
             'Content-Type' => 'application/json'
         ], json_encode(self::$sampleJwksArray));
 
+        $userinfoResponse = new Response(200, [
+            'Content-Type' => 'application/json'
+        ], json_encode(self::$sampleUserinfoPayload));
+
         // Create a mock and queue responses.
         $responses = [
             $oidcConfigurationResponse,
             $tokenResponse,
-            $jwksResponse
+            $jwksResponse,
+            $userinfoResponse,
 //            new Response(200, ['Content-Type' => 'application/json'], json_encode('test')),
 //            new Response(202, ['Content-Length' => 0]),
 //            new RequestException('Error Communicating with Server', new Request('GET', 'test'))
@@ -446,26 +440,20 @@ class ClientTest extends TestCase
         $client->validateTokenDataArray($tokenData);
     }
 
-    public function testGetUserDataFromUserinfoEndpoint(): void
+    public function testUserDataFetchFromUserinfoEndpointIsNotPerformed(): void
     {
-        $tokenDataArray = self::$sampleTokenDataArray;
-        unset($tokenDataArray['id_token']);
+        $configOptions = self::$validConfigOptions;
+        $configOptions[Config::CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS] = false;
+        $config = new Config($configOptions);
 
-        $oidcConfigurationResponse = new Response(200, [
-            'Content-Type' => 'application/json'
-        ], self::$oidcConfigurationJson);
+        $stateNonceStub = $this->createStub(StateNonce::class);
+        $stateNonceStub->method('verify');
 
-        $userinfoResponse = new Response(200, [
-            'Content-Type' => 'application/json'
-        ], json_encode(self::$sampleUserinfoPayload));
+        $client = new Client($config, self::$cache, null, self::$guzzleHttpClientStub, null, $stateNonceStub);
 
-        $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub([$oidcConfigurationResponse, $userinfoResponse]);
+        $userData = $client->authenticate();
 
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
-
-        $userData = $client->getUserData($tokenDataArray);
-
-        $this->assertSame(self::$sampleUserinfoPayload['sub'], $userData['sub']);
+        $this->assertFalse(array_key_exists('name', $userData));
     }
 
     public function testRequestUserDataFromUserinfoEndpointThrowsWhenNotSupported(): void

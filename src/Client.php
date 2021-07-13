@@ -264,12 +264,12 @@ class Client
     }
 
     /**
-     * Get user data from ID token (if available) or 'userinfo' endpoint.
+     * Get claims from ID token (if available) and user data 'userinfo' endpoint.
      *
      * If 'openid' scope was present in authorization request, token endpoint will return ID token.
-     * In that case the user data will be extracted from ID token. If ID token is not present (no 'openid'
-     * scope was used), the user data will be fetched from 'userinfo' endpoint, meaning another HTTP request
-     * will be made using access token for authentication on 'userinfo' endpoint.
+     * In that case the claims will be extracted from ID token and combined with user claims fetched from 'userinfo'
+     * endpoint. To get claims from 'userinfo' endpoint another HTTP request will be made using
+     * access token for authentication.
      *
      * @param array $tokenData Array containing at least access_token, and optionally id_token.
      * @return array User data extracted from ID token (if available) or fetched from 'userinfo' endpoint.
@@ -279,11 +279,17 @@ class Client
     {
         $this->validateTokenDataArray($tokenData);
 
+        $claims = [];
+
         if (isset($tokenData['id_token'])) {
-            return $this->getDataFromIDToken($tokenData['id_token']);
+            $claims = $this->getDataFromIDToken($tokenData['id_token']);
         }
 
-        return $this->requestUserDataFromUserinfoEndpoint($tokenData['access_token']);
+        if ($this->config->shouldFetchUserinfoClaims()) {
+            $claims = array_merge($claims, $this->requestUserDataFromUserinfoEndpoint($tokenData['access_token']));
+        }
+
+        return $claims;
     }
 
     /**

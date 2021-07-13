@@ -81,4 +81,9 @@ interface ConfigInterface
      * @return bool
      */
     public function isNonceCheckEnabled(): bool;
+
+    /**
+     * @return bool
+     */
+    public function shouldFetchUserinfoClaims(): bool;
 }

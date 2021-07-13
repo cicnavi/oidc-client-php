@@ -25,6 +25,7 @@ class Config implements ConfigInterface
     public const CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY = 'OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY';
     public const CONFIG_KEY_OIDC_IS_STATE_CHECK_ENABLED = 'OIDC_IS_STATE_CHECK_ENABLED';
     public const CONFIG_KEY_OIDC_IS_NONCE_CHECK_ENABLED = 'OIDC_IS_NONCE_CHECK_ENABLED';
+    public const CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS = 'OIDC_SHOULD_FETCH_USERINFO_CLAIMS';
 
     /**
      * @var array<string,mixed> $config Default OIDC configuration parameters which will be used by OIDC client.
@@ -48,6 +49,7 @@ class Config implements ConfigInterface
         // State and nonce checks are enabled by default
         self::CONFIG_KEY_OIDC_IS_STATE_CHECK_ENABLED => true,
         self::CONFIG_KEY_OIDC_IS_NONCE_CHECK_ENABLED => true,
+        self::CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS => true,
     ];
 
     /**
@@ -99,6 +101,7 @@ class Config implements ConfigInterface
         ConfigValidator::isFalseZeroOrPositiveInt(self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY, $config);
         ConfigValidator::isBool(self::CONFIG_KEY_OIDC_IS_STATE_CHECK_ENABLED, $config);
         ConfigValidator::isBool(self::CONFIG_KEY_OIDC_IS_NONCE_CHECK_ENABLED, $config);
+        ConfigValidator::isBool(self::CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS, $config);
     }
 
     /**
@@ -224,5 +227,13 @@ class Config implements ConfigInterface
     public function isNonceCheckEnabled(): bool
     {
         return (bool)$this->config[self::CONFIG_KEY_OIDC_IS_NONCE_CHECK_ENABLED];
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function shouldFetchUserinfoClaims(): bool
+    {
+        return (bool)$this->config[self::CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS];
     }
 }
