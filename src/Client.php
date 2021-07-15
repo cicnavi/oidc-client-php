@@ -232,27 +232,35 @@ class Client
      */
     public function requestTokenData(string $authorizationCode): array
     {
-        $formParams = [
+        $params = [
             'grant_type' => 'authorization_code',
             'client_id' => $this->config->getClientId(),
             'code' => $authorizationCode,
             'redirect_uri' => $this->config->getRedirectUri(),
         ];
 
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/x-www-form-urlencoded',
+        ];
+
         if ($this->config->isConfidentialClient()) {
-            $formParams['client_secret'] = $this->config->getClientSecret();
+            $headers['Authorization'] = 'Basic ' .
+                base64_encode($this->config->getClientId() . ':' . $this->config->getClientSecret());
         } else {
-            $formParams['code_verifier'] = $this->pkceDataHandler->getCodeVerifier();
+            $params['code_verifier'] = $this->pkceDataHandler->getCodeVerifier();
         }
 
         try {
-            $bodyStream = Utils::streamFor(http_build_query($formParams));
+            $bodyStream = Utils::streamFor(http_build_query($params));
 
             $tokenRequest = $this->httpRequestFactory
                 ->createRequest('POST', $this->metadata->get('token_endpoint'))
-                ->withBody($bodyStream)
-                ->withHeader('Accept', 'application/json')
-                ->withHeader('Content-Type', 'application/x-www-form-urlencoded');
+                ->withBody($bodyStream);
+
+            foreach ($headers as $key => $value) {
+                $tokenRequest = $tokenRequest->withHeader($key, $value);
+            }
 
             $response = $this->httpClient->sendRequest($tokenRequest);
             $this->validateHttpResponseOk($response);
