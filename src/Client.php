@@ -385,18 +385,18 @@ class Client
         $this->validateJwksUriContentArary($jwksUriContent);
 
         foreach ($jwksUriContent['keys'] as $jwkContent) {
-            if ((! isset($jwkContent['use']) || ($jwkContent['use'] !== 'sig'))) {
+            if ((isset($jwkContent['use']) && ($jwkContent['use'] !== 'sig'))) {
                 continue;
             }
 
             if ($kid !== null) {
-                if ((! isset($jwkContent['kid'])) || ($jwkContent['kid'] !== $kid)) {
+                if ((isset($jwkContent['kid'])) && ($jwkContent['kid'] !== $kid)) {
                     continue;
                 }
             }
 
             if ($alg !== null) {
-                if ((! isset($jwkContent['alg'])) || ($jwkContent['alg'] !== $alg)) {
+                if ((isset($jwkContent['alg'])) && ($jwkContent['alg'] !== $alg)) {
                     continue;
                 }
             }

@@ -95,12 +95,12 @@ class ClientTest extends TestCase
     protected static JWK $publicTestKeyJwk;
     protected static array $sampleJwksArray = [
         'keys' => [
-            // Invalid - no alg
-            ['kid' => '69d8c46574', 'use' => 'sig', 'n' => '123', 'e' => 'AQAB', 'kty' => 'RSA',],
-            // Invalid - no kid
-            ['alg' => 'RS256', 'use' => 'sig', 'n' => '123', 'e' => 'AQAB', 'kty' => 'RSA',],
-            // Invalid - no use
-            ['alg' => 'RS256', 'kid' => '69d8c46574', 'n' => '123', 'e' => 'AQAB', 'kty' => 'RSA',],
+            // Invalid, different kid
+            ['kid' => '123', 'use' => 'sig', 'n' => '123', 'e' => 'AQAB', 'kty' => 'RSA',],
+            // Invalid, different alg
+            ['kid' => '69d8c46574', 'alg' => 'RS384', 'use' => 'sig', 'n' => '123', 'e' => 'AQAB', 'kty' => 'RSA',],
+            // Invalid, different use
+            ['kid' => '69d8c46574', 'alg' => 'RS256', 'use' => 'enc', 'n' => '123', 'e' => 'AQAB', 'kty' => 'RSA',],
             // Valid key to be added in setUpBeforeClass()
         ]
     ];
