@@ -15,7 +15,8 @@ use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Http\RequestFactory;
 use Cicnavi\Oidc\Interfaces\{ConfigInterface, MetadataInterface};
 use GuzzleHttp\Psr7\Utils;
-use Jose\Component\Core\JWK;
+use Jose\Component\Core\JWKSet;
+use Jose\Easy\AbstractLoader;
 use Jose\Easy\Load;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
@@ -307,48 +308,42 @@ class Client
      * @return array Claims from ID token
      * @throws OidcClientException
      */
-    public function getDataFromIDToken(string $idToken): array
+    public function getDataFromIDToken(string $idToken, bool $refreshCache = false): array
     {
-        // Split the JWT string into three parts
-        $jwt = explode('.', $idToken);
+        $jwtLoader = $this->resolveJwtLoader($idToken);
 
-        if (count($jwt) !== 3) {
-            throw new OidcClientException('id_token format not supported (no three parts).');
-        }
+        $jwkSet = JWKSet::createFromKeyData($this->getJwksUriContent($refreshCache));
 
-        try {
-            // Extract, base64 decode, then json decode it
-            $jwtHeader = $this->decodeJsonOrThrow(Base64Url::decode($jwt[0]));
-        } catch (Throwable $exception) {
-            throw new OidcClientException('JWT header error. ' . $exception->getMessage());
-        }
+        // TODO mivanci implement JWE support.
+        // Differentiate allowed algorithms depending if it is JWS or JWE loader
+//        if ($jwtLoader instanceof Validate) {
+//            $jwtLoader = $jwtLoader->algs($this->config->getIdTokenValidationAllowedSignatureAlgs());
+//        } else {
+//            $jwtLoader = $jwtLoader->algs($this->config->getIdTokenValidationAllowedEncryptionAlgs());
+//        }
 
-        $kid = $jwtHeader['kid'] ?? null;
-        $alg = $jwtHeader['alg'] ?? null;
-
-        try {
-            $signatureKey = $this->resolveSignatureKey($kid, $alg);
-            $jwk = new JWK($signatureKey);
-        } catch (Throwable $exception) {
-            throw new OidcClientException('Signature key error. ' . $exception->getMessage());
-        }
+        $jwtLoader = $jwtLoader->algs($this->config->getIdTokenValidationAllowedSignatureAlgs());
+        $jwtLoader = $jwtLoader->exp($this->config->getIdTokenValidationExpLeeway()) // Check "exp" claim
+            ->iat($this->config->getIdTokenValidationIatLeeway()) // Check "iat" claim
+            ->nbf($this->config->getIdTokenValidationNbfLeeway()) // Check "nbf" claim
+            ->aud($this->config->getClientId()) // Check allowed audience
+            ->iss($this->metadata->get('issuer')) // Check allowed issuer
+            ->keyset($jwkSet); // Set available keys used for token signature validation
 
         try {
             /**
              * Psalm reports that method run() doesn't exist, however, this works fine.
              * @psalm-suppress UndefinedMethod
              */
-            $jwt = Load::jws($idToken) // We want to load and verify the $idToken
-            ->algs($this->config->getIdTokenValidationAllowedAlgs()) // The algorithms allowed to be used
-            ->exp($this->config->getIdTokenValidationExpLeeway()) // We check the "exp" claim
-            ->iat($this->config->getIdTokenValidationIatLeeway()) // We check the "iat" claim
-            ->nbf($this->config->getIdTokenValidationNbfLeeway()) // We check the "nbf" claim
-            ->aud($this->config->getClientId()) // Allowed audience
-            ->iss($this->metadata->get('issuer')) // Allowed issuer
-            ->key($jwk) // Key used to verify the signature
-            ->run(); // Go!
+            $jwt = $jwtLoader->run(); // Go!
         } catch (Throwable $exception) {
-            throw new OidcClientException('ID token is not valid. ' . $exception->getMessage());
+            // If we have already refreshed our cache (we have fresh JWKS), throw...
+            if ($refreshCache) {
+                throw new OidcClientException('ID token is not valid. ' . $exception->getMessage());
+            }
+
+            // Try once more with refreshing cache (fetch fresh JWKS).
+            $this->getDataFromIDToken($idToken, true);
         }
 
         if ($this->config->isNonceCheckEnabled()) {
@@ -361,56 +356,6 @@ class Client
 
         // JWT claims...
         return $jwt->claims->all();
-    }
-
-    /**
-     * Try to find a matching JWK from the JWKS URI content.
-     *
-     * JWT was signed using particular key (indicated in JWT header). JWKS URI should contain the public key
-     * which can be used to validate the signature on JWT. This method will get the JWKS URI content from cache,
-     * and try to find the appropriate key. If the cache doesn't contain the appropriate key, it will fetch
-     * new data from JWKS URI (for a case of key rollover event, for example), and then again try to find
-     * the appropriate key. If the key is not found, it will fail.
-     *
-     * @param string|null $kid 'kid' value from JWT header.
-     * @param string|null $alg 'alg' value from JWT header.
-     * @param bool $refreshCache Indicate if the current JWK set cache value should be refreshed.
-     * @return array JWK parameters in an array format
-     * @throws OidcClientException
-     */
-    public function resolveSignatureKey(?string $kid = null, ?string $alg = null, bool $refreshCache = false): array
-    {
-        $jwksUriContent = $this->getJwksUriContent($refreshCache);
-
-        $this->validateJwksUriContentArary($jwksUriContent);
-
-        foreach ($jwksUriContent['keys'] as $jwkContent) {
-            if ((isset($jwkContent['use']) && ($jwkContent['use'] !== 'sig'))) {
-                continue;
-            }
-
-            if ($kid !== null) {
-                if ((isset($jwkContent['kid'])) && ($jwkContent['kid'] !== $kid)) {
-                    continue;
-                }
-            }
-
-            if ($alg !== null) {
-                if ((isset($jwkContent['alg'])) && ($jwkContent['alg'] !== $alg)) {
-                    continue;
-                }
-            }
-
-            return $jwkContent;
-        }
-
-        // If the cache has already been refreshed, it means that no keys are available at all.
-        if ($refreshCache) {
-            throw new OidcClientException('There is no applicable JWK for JWT signature verification.');
-        }
-
-        // Maybe we have stale keys, refresh local cache by requesting new data from JWKS_URI.
-        return $this->resolveSignatureKey($kid, $alg, true);
     }
 
     /**
@@ -567,5 +512,37 @@ class Client
         } catch (Throwable $exception) {
             throw new OidcClientException('JSON decode error.');
         }
+    }
+
+    /**
+     * @param string $token
+     * @return \Jose\Easy\Decrypt|\Jose\Easy\Validate
+     * @throws OidcClientException
+     */
+    protected function resolveJwtLoader(string $token): AbstractLoader
+    {
+        // Split the JWT string into three parts
+        $jwtArray = explode('.', $token);
+
+        if (count($jwtArray) < 3) {
+            throw new OidcClientException('id_token format not supported (no three parts).');
+        }
+
+        try {
+            // Extract, base64 decode, then json decode it
+            $jwtHeader = $this->decodeJsonOrThrow(Base64Url::decode($jwtArray[0]));
+        } catch (Throwable $exception) {
+            throw new OidcClientException('JWT header error. ' . $exception->getMessage());
+        }
+
+        // Check if it is JWE (header contains enc parameter).
+        if (isset($jwtHeader['enc']) && (! empty($jwtHeader['enc'])) && is_string($jwtHeader['enc'])) {
+            throw new OidcClientException('JWT header error. JWE support not implemented.');
+            // TODO mivanci implement JWE support.
+            //return Load::jwe($token);
+        }
+
+        // It is JWS.
+        return Load::jws($token);
     }
 }

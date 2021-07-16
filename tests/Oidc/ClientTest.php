@@ -47,7 +47,7 @@ class ClientTest extends TestCase
         'refresh_token' => 'sample',
     ];
 
-    protected static array $sampleIdTokenHeader = [
+    protected static array $sampleIdTokenHeaderJws = [
         'typ' => 'JWT',
         'alg' => 'RS256',
         'kid' => '69d8c46574'
@@ -91,8 +91,10 @@ class ClientTest extends TestCase
 
     protected static string $oidcConfigurationJson;
 
-    protected static JWK $privateTestKeyJwk;
-    protected static JWK $publicTestKeyJwk;
+    protected static JWK $privateTestKeyJwkSig;
+
+    protected static JWK $publicTestKeyJwkSig;
+
     protected static array $sampleJwksArray = [
         'keys' => [
             // Invalid, different kid
@@ -111,35 +113,40 @@ class ClientTest extends TestCase
         self::$config = new Config(self::$validConfigOptions);
         self::$cachePath = dirname(__DIR__, 2) . '/tmp/cache';
         self::$oidcConfigurationJson = file_get_contents(dirname(__DIR__) . '/data/oidc-config.json');
-        self::$privateTestKeyJwk = JWKFactory::createFromKeyFile(
+        self::$privateTestKeyJwkSig = JWKFactory::createFromKeyFile(
             dirname(__DIR__) . '/data/rsa-pcks8-private-test-key.pem',
             null,
             ['use' => 'sig',]
         );
-        self::$publicTestKeyJwk = JWKFactory::createFromKeyFile(
+        self::$publicTestKeyJwkSig = JWKFactory::createFromKeyFile(
             dirname(__DIR__) . '/data/rsa-pcks8-public-test-key.pem',
             null,
             ['use' => 'sig', 'kid' => '69d8c46574', 'alg' => 'RS256']
         );
-        self::$sampleJwksArray['keys'][] = self::$publicTestKeyJwk->all();
+
+        self::$sampleJwksArray['keys'][] = self::$publicTestKeyJwkSig->all();
     }
 
-    protected static function generateTokenDataArray(bool $shouldContainValidIdToken = false): array
-    {
+    protected static function generateTokenDataArray(
+        bool $shouldContainValidIdToken = false
+    ): array {
         $tokenArray = self::$sampleTokenDataArray;
 
         if ($shouldContainValidIdToken) {
-            $tokenArray['id_token'] = self::generateSampleIdToken(true);
+            $tokenArray['id_token'] = self::generateSampleIdTokenJws();
         }
 
         return $tokenArray;
     }
 
-    protected static function generateSampleIdToken(bool $shouldBeValid = true, ?array $customPayload = null): string
-    {
+    protected static function generateSampleIdTokenJws(
+        bool $shouldBeValid = true,
+        ?array $customPayload = null,
+        ?array $customHeader = null
+    ): string {
         $time = time();
 
-        $header = self::$sampleIdTokenHeader;
+        $header = $customHeader ?? self::$sampleIdTokenHeaderJws;
         $payload = $customPayload ?? self::$sampleIdTokenPayload;
 
         if ($shouldBeValid) {
@@ -156,7 +163,7 @@ class ClientTest extends TestCase
         /**
          * @psalm-suppress UndefinedMethod This works fine.
          */
-        return $jwsBuilder->sign(self::$privateTestKeyJwk);
+        return $jwsBuilder->sign(self::$privateTestKeyJwkSig);
     }
 
     public function setUp(): void
@@ -504,7 +511,7 @@ class ClientTest extends TestCase
         $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
 
         $this->expectException(Exception::class);
-        $client->getDataFromIDToken(self::generateSampleIdToken(false));
+        $client->getDataFromIDToken(self::generateSampleIdTokenJws(false));
     }
 
     public function testGetDataFromIdTokenThrowsForInvalidJson(): void
@@ -538,14 +545,14 @@ class ClientTest extends TestCase
 
         $this->expectException(Exception::class);
 
-        $client->getDataFromIDToken(self::generateSampleIdToken(true));
+        $client->getDataFromIDToken(self::generateSampleIdTokenJws(true));
     }
 
     public function testGetDataFromIdTokenThrowsForMissingNonce(): void
     {
         $idTokenPayload = self::$sampleIdTokenPayload;
         unset($idTokenPayload['nonce']);
-        $idToken = self::generateSampleIdToken(true, $idTokenPayload);
+        $idToken = self::generateSampleIdTokenJws(true, $idTokenPayload);
 
         $oidcConfigurationResponse = new Response(200, [
             'Content-Type' => 'application/json'
@@ -568,8 +575,12 @@ class ClientTest extends TestCase
         $client->getDataFromIDToken($idToken);
     }
 
-    public function testResolveSignatureKeyThrowsIfNoCandidates(): void
+    public function testGetDataFromIdTokenThrowsForMissingJweSupport(): void
     {
+        $idTokenHeader = self::$sampleIdTokenHeaderJws;
+        $idTokenHeader['enc'] = 'some-algo';
+        $idToken = self::generateSampleIdTokenJws(true, null, $idTokenHeader);
+
         $oidcConfigurationResponse = new Response(200, [
             'Content-Type' => 'application/json'
         ], self::$oidcConfigurationJson);
@@ -580,16 +591,15 @@ class ClientTest extends TestCase
 
         $responses = [
             $oidcConfigurationResponse,
-            $jwksResponse,
-            $jwksResponse,
+            $jwksResponse
         ];
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
+
         $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
 
         $this->expectException(Exception::class);
-
-        $client->resolveSignatureKey('invalid-kid');
+        $client->getDataFromIDToken($idToken);
     }
 
     public function testValidateJwksUriContentArrayThrowsIfNoKeys(): void

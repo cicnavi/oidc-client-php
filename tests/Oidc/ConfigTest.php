@@ -24,6 +24,9 @@ class ConfigTest extends TestCase
         Config::CONFIG_KEY_OIDC_CLIENT_SECRET => 'some-client-secret',
         Config::CONFIG_KEY_OIDC_REDIRECT_URI => 'https://some-redirect-uri.example.org/callback',
         Config::CONFIG_KEY_OIDC_SCOPE => 'openid profile',
+        Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ALGS => ['RS256', 'RS512'], // TODO mivanci remove_in_2
+        Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS => ['RS256', 'RS512'],
+        Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS => ['RSA-OAEP-256', 'A256GCM'],
     ];
 
     /**
@@ -155,6 +158,16 @@ class ConfigTest extends TestCase
     public function testGetIdTokenValidationAllowedAlgs(): void
     {
         $this->assertEquals(['RS256', 'RS512'], self::$config->getIdTokenValidationAllowedAlgs());
+    }
+
+    public function testGetIdTokenValidationAllowedSignatureAlgs(): void
+    {
+        $this->assertEquals(['RS256', 'RS512'], self::$config->getIdTokenValidationAllowedSignatureAlgs());
+    }
+
+    public function testGetIdTokenValidationAllowedEncryptionAlgs(): void
+    {
+        $this->assertEquals(['RSA-OAEP-256', 'A256GCM'], self::$config->getIdTokenValidationAllowedEncryptionAlgs());
     }
 
     public function testGetIdTokenValidationExpLeeway(): void
