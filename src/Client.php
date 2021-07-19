@@ -92,7 +92,7 @@ class Client
      */
     public function __construct(
         ConfigInterface $config,
-        CacheInterface $cache,
+        CacheInterface $cache, // TODO mivanci make caching optional
         ?DataStoreInterface $dataStore = null,
         ?ClientInterface $httpClient = null,
         ?RequestFactoryInterface $httpRequestFactory = null,

@@ -302,6 +302,7 @@ class Config implements ConfigInterface
             Algorithm\ES384::class,
             Algorithm\ES512::class,
             Algorithm\EdDSA::class,
+            // Algorithm\None::class, // TODO mivanci consider allowing none alg (override Validate class)
         ];
 
         return self::getAlgorithmNamesArray($algClasses);
