@@ -54,8 +54,36 @@ interface ConfigInterface
 
     /**
      * @return string[]
+     *
+     * @deprecated 2.0.0
+     * @see getIdTokenValidationAllowedSignatureAlgs()
+     * @see getIdTokenValidationAllowedEncryptionAlgs()
      */
     public function getIdTokenValidationAllowedAlgs(): array;
+
+    /**
+     * Get allowed signature algorithms.
+     * @return string[]
+     */
+    public function getIdTokenValidationAllowedSignatureAlgs(): array;
+
+    /**
+     * Get allowed encryption algorithms.
+     * @return string[]
+     */
+    public function getIdTokenValidationAllowedEncryptionAlgs(): array;
+
+    /**
+     * Get supported signature algorithms.
+     * @return string[]
+     */
+    public static function getIdTokenValidationSupportedSignatureAlgs(): array;
+
+    /**
+     * Get supported encryption algorithms.
+     * @return string[]
+     */
+    public static function getIdTokenValidationSupportedEncryptionAlgs(): array;
 
     /**
      * @return int|false

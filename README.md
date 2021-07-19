@@ -7,11 +7,6 @@ ID token verification and claims extraction, as well as 'userinfo' user data fet
 It can also be used to simulate authorization code flow using PKCE parameters
 intended for public clients.
 
-Important note: this client was only tested with AAI@EduHr OpenID Provider (OP) 
-(Croatian Education & Research Federation). However, if your OP complies with
-the below-mentioned prerequisites, it should work fine. Please, feel free
-to test the client with different OPs and let us know about the result. 
-
 ## Prerequisites
 PHP environment:
 * Please check composer.json for environment requirements.
@@ -54,7 +49,7 @@ Params CLIENT_ID and CLIENT_SECRET are obtained when registering a client with a
 OIDC client has some default configuration params already set, but 
 you can override them as necessary:
 ```
-OIDC_ID_TOKEN_VALIDATION_ALLOWED_ALGS=['RS256', 'RS512']
+OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS=['RS256', 'RS512']
 OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY=0 // Number of seconds in which the EXP claim is still considered valid
 OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY=0 // Number of seconds in which the IAT claim is still considered valid
 OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY=0 // Number of seconds in which the IAT claim is still considered valid
@@ -97,7 +92,8 @@ $config = [
     Config::CONFIG_KEY_OIDC_REDIRECT_URI => 'https://your-example.org/callback',
     Config::CONFIG_KEY_OIDC_SCOPE => 'openid profile',
     // Optional config items with default values
-    //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ALGS => ['RS256', 'RS512'],
+    //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS => ['RS256', 'RS512',],
+        // Check method Config::getIdTokenValidationSupportedSignatureAlgs for supported algos.
     //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY => 0,
     //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY => 0,
     //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY => 0,
