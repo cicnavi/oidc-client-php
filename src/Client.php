@@ -345,7 +345,7 @@ class Client
             }
 
             // Try once more with refreshing cache (fetch fresh JWKS).
-            $this->getDataFromIDToken($idToken, true);
+            return $this->getDataFromIDToken($idToken, true);
         }
 
         if ($this->config->isNonceCheckEnabled()) {
