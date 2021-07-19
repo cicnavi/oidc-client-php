@@ -323,7 +323,9 @@ class Client
 //        }
 
         $jwtLoader = $jwtLoader->algs($this->config->getIdTokenValidationAllowedSignatureAlgs());
-        $jwtLoader = $jwtLoader->exp($this->config->getIdTokenValidationExpLeeway()) // Check "exp" claim
+        $jwtLoader = $jwtLoader
+            ->mandatory(['iss', 'sub', 'aud', 'exp', 'iat'])
+            ->exp($this->config->getIdTokenValidationExpLeeway()) // Check "exp" claim
             ->iat($this->config->getIdTokenValidationIatLeeway()) // Check "iat" claim
             ->nbf($this->config->getIdTokenValidationNbfLeeway()) // Check "nbf" claim
             ->aud($this->config->getClientId()) // Check allowed audience
