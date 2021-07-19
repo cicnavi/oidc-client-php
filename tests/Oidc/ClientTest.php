@@ -65,7 +65,8 @@ class ClientTest extends TestCase
         'nbf' => 1602674470,
     ];
 
-    protected static array $sampleUserinfoPayload = [
+    protected static array $sampleUserInfoPayload = [
+        'sub' => 'bfa1605be44a50a7c',
         'name' => 'John Doe',
         'family_name' => 'Doe',
         'given_name' => 'John',
@@ -183,16 +184,16 @@ class ClientTest extends TestCase
             'Content-Type' => 'application/json'
         ], json_encode(self::$sampleJwksArray));
 
-        $userinfoResponse = new Response(200, [
+        $userInfoResponse = new Response(200, [
             'Content-Type' => 'application/json'
-        ], json_encode(self::$sampleUserinfoPayload));
+        ], json_encode(self::$sampleUserInfoPayload));
 
         // Create a mock and queue responses.
         $responses = [
             $oidcConfigurationResponse,
             $tokenResponse,
             $jwksResponse,
-            $userinfoResponse,
+            $userInfoResponse,
 //            new Response(200, ['Content-Type' => 'application/json'], json_encode('test')),
 //            new Response(202, ['Content-Length' => 0]),
 //            new RequestException('Error Communicating with Server', new Request('GET', 'test'))
@@ -463,7 +464,7 @@ class ClientTest extends TestCase
         $this->assertFalse(array_key_exists('name', $userData));
     }
 
-    public function testRequestUserDataFromUserinfoEndpointThrowsWhenNotSupported(): void
+    public function testRequestUserDataFromUserInfoEndpointThrowsWhenNotSupported(): void
     {
         $accessToken = self::$sampleTokenDataArray['access_token'];
 
@@ -481,7 +482,88 @@ class ClientTest extends TestCase
 
         $this->expectException(Exception::class);
 
-        $client->requestUserDataFromUserinfoEndpoint($accessToken);
+        $client->requestUserDataFromUserInfoEndpoint($accessToken);
+    }
+
+    public function testGetDataFromUserInfoEndpointThrowsForMissingSubClaim(): void
+    {
+        $accessToken = self::$sampleTokenDataArray['access_token'];
+
+        $oidcConfigurationResponse = new Response(200, [
+            'Content-Type' => 'application/json'
+        ], self::$oidcConfigurationJson);
+
+        $tokenResponse = new Response(200, [
+            'Content-Type' => 'application/json'
+        ], json_encode(self::generateTokenDataArray(true)));
+
+        $jwksResponse = new Response(200, [
+            'Content-Type' => 'application/json'
+        ], json_encode(self::$sampleJwksArray));
+
+        $userInfoPayload = self::$sampleUserInfoPayload;
+        unset($userInfoPayload['sub']);
+
+        $userInfoResponse = new Response(200, [
+            'Content-Type' => 'application/json'
+        ], json_encode($userInfoPayload));
+
+
+        $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub(
+            [
+                $oidcConfigurationResponse,
+                $tokenResponse,
+                $jwksResponse,
+                $userInfoResponse,
+            ]
+        );
+
+        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
+
+        $this->expectException(Exception::class);
+
+        $client->requestUserDataFromUserInfoEndpoint($accessToken);
+    }
+
+    public function testgetUserDataThrowsForInvalidSubClaim(): void
+    {
+
+        $oidcConfigurationResponse = new Response(200, [
+            'Content-Type' => 'application/json'
+        ], self::$oidcConfigurationJson);
+
+
+        $jwksResponse = new Response(200, [
+            'Content-Type' => 'application/json'
+        ], json_encode(self::$sampleJwksArray));
+
+        $tokenDataArray = self::$sampleTokenDataArray;
+        $tokenDataArray['id_token'] = self::generateSampleIdTokenJws(true);
+
+        $userInfoPayload = self::$sampleUserInfoPayload;
+        $userInfoPayload['sub'] = 'different-sub';
+
+        $userInfoResponse = new Response(200, [
+            'Content-Type' => 'application/json'
+        ], json_encode($userInfoPayload));
+
+
+        $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub(
+            [
+                $oidcConfigurationResponse,
+                $jwksResponse,
+                $userInfoResponse,
+            ]
+        );
+
+        $stateNonceStub = $this->createStub(StateNonce::class);
+        $stateNonceStub->method('verify');
+
+        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub, null, $stateNonceStub);
+
+        $this->expectException(Exception::class);
+
+        $client->getUserData($tokenDataArray);
     }
 
     public function testGetDataFromIdTokenThrowsForInvalidIdTokenFormat(): void

@@ -268,7 +268,7 @@ class Config implements ConfigInterface
     /**
      * @inheritDoc
      */
-    public function shouldFetchUserinfoClaims(): bool
+    public function shouldFetchUserInfoClaims(): bool
     {
         return (bool)$this->config[self::CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS];
     }

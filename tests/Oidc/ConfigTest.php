@@ -195,8 +195,8 @@ class ConfigTest extends TestCase
         $this->assertTrue(self::$config->isNonceCheckEnabled());
     }
 
-    public function testShouldFetchUserinfoClaims(): void
+    public function testShouldFetchUserInfoClaims(): void
     {
-        $this->assertTrue(self::$config->shouldFetchUserinfoClaims());
+        $this->assertTrue(self::$config->shouldFetchUserInfoClaims());
     }
 }

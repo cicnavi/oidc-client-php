@@ -113,5 +113,5 @@ interface ConfigInterface
     /**
      * @return bool
      */
-    public function shouldFetchUserinfoClaims(): bool;
+    public function shouldFetchUserInfoClaims(): bool;
 }

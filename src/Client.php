@@ -288,17 +288,19 @@ class Client
     {
         $this->validateTokenDataArray($tokenData);
 
-        $claims = [];
-
+        $idTokenClaims = [];
+        $userInfoClaims = [];
         if (isset($tokenData['id_token'])) {
-            $claims = $this->getDataFromIDToken($tokenData['id_token']);
+            $idTokenClaims = $this->getDataFromIDToken($tokenData['id_token']);
         }
 
-        if ($this->config->shouldFetchUserinfoClaims()) {
-            $claims = array_merge($claims, $this->requestUserDataFromUserinfoEndpoint($tokenData['access_token']));
+        if ($this->config->shouldFetchUserInfoClaims()) {
+            $userInfoClaims = $this->requestUserDataFromUserInfoEndpoint($tokenData['access_token']);
         }
 
-        return $claims;
+        $this->validateIdTokenAndUserInfoClaims($idTokenClaims, $userInfoClaims);
+
+        return array_merge($idTokenClaims, $userInfoClaims);
     }
 
     /**
@@ -432,22 +434,26 @@ class Client
      * @return array User data
      * @throws OidcClientException
      */
-    public function requestUserDataFromUserinfoEndpoint(string $accessToken): array
+    public function requestUserDataFromUserInfoEndpoint(string $accessToken): array
     {
         try {
-            $userinfoEndpoint = $this->metadata->get('userinfo_endpoint');
+            $userInfoEndpoint = $this->metadata->get('userinfo_endpoint');
 
-            $userinfoRequest = $this->httpRequestFactory
-                ->createRequest('GET', $userinfoEndpoint)
+            $userInfoRequest = $this->httpRequestFactory
+                ->createRequest('GET', $userInfoEndpoint)
                 ->withHeader('Authorization', 'Bearer ' . $accessToken)
                 ->withHeader('Accept', 'application/json');
 
-            $response = $this->httpClient->sendRequest($userinfoRequest);
+            $response = $this->httpClient->sendRequest($userInfoRequest);
             $this->validateHttpResponseOk($response);
 
-            return $this->getDecodedHttpResponseJson($response);
+            $claims = $this->getDecodedHttpResponseJson($response);
+
+            $this->validateUserInfoClaims($claims);
+
+            return $claims;
         } catch (Throwable $exception) {
-            throw new OidcClientException('Userinfo endpoint error. ' . $exception->getMessage());
+            throw new OidcClientException('UserInfo endpoint error. ' . $exception->getMessage());
         }
     }
 
@@ -546,5 +552,33 @@ class Client
 
         // It is JWS.
         return Load::jws($token);
+    }
+
+    /**
+     * @param array $claims
+     * @throws OidcClientException
+     */
+    protected function validateUserInfoClaims(array $claims): void
+    {
+        if (! isset($claims['sub'])) {
+            throw new OidcClientException('UserInfo Response does not contain mandatory sub claim.');
+        }
+    }
+
+    /**
+     * @param array $idTokenClaims
+     * @param array $userInfoClaims
+     * @throws OidcClientException
+     */
+    protected function validateIdTokenAndUserInfoClaims(array $idTokenClaims, array $userInfoClaims): void
+    {
+        if (! $this->config->shouldFetchUserInfoClaims()) {
+            return;
+        }
+
+        // Per https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
+        if ($idTokenClaims['sub'] !== $userInfoClaims['sub']) {
+            throw new OidcClientException('ID token and UserInfo sub claim must be equal.');
+        }
     }
 }
