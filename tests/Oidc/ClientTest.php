@@ -170,7 +170,7 @@ class ClientTest extends TestCase
     public function setUp(): void
     {
         mkdir(self::$cachePath, 0764, true);
-        self::$cache = new FileCache(self::$cachePath);
+        self::$cache = new FileCache(self::$cacheName, self::$cachePath);
 
         $oidcConfigurationResponse = new Response(200, [
             'Content-Type' => 'application/json'

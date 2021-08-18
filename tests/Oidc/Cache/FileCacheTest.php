@@ -35,16 +35,24 @@ class FileCacheTest extends TestCase
     {
         Tools::rmdirRecursive(self::$testCachePath);
     }
-    public function testConstructWithCustomCacheName(): void
+
+    public function testConstruct(): void
     {
-        $cache = new FileCache(self::$testCachePath, self::$testCacheName);
+        $cache = new FileCache();
+        $this->assertIsString($cache->getCacheName(), $cache->getCacheName());
+        $this->assertTrue(is_dir($cache->getCachePath()));
+    }
+
+    public function testConstructWithCustomCacheNameAndPath(): void
+    {
+        $cache = new FileCache(self::$testCacheName, self::$testCachePath);
         $this->assertSame(self::$testCacheName, $cache->getCacheName());
         $this->assertTrue(is_dir($cache->getCachePath()));
     }
 
     public function testSetHasGet(): void
     {
-        $cache = new FileCache(self::$testCachePath, self::$testCacheName);
+        $cache = new FileCache(self::$testCacheName, self::$testCachePath);
         $cache->set(self::$testKey, self::$testValue);
         $this->assertTrue($cache->has(self::$testKey));
         $this->assertSame(self::$testValue, $cache->get(self::$testKey));

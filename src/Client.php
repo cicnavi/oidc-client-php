@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Cicnavi\Oidc;
 
 use Base64Url\Base64Url;
+use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\PkceDataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\StateNonceDataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Pkce;
@@ -13,6 +14,7 @@ use Cicnavi\Oidc\DataStore\Interfaces\DataStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Http\RequestFactory;
+use Cicnavi\SimpleFileCache\Exceptions\CacheException;
 use Cicnavi\Oidc\Interfaces\{ConfigInterface, MetadataInterface};
 use GuzzleHttp\Psr7\Utils;
 use Jose\Component\Core\JWKSet;
@@ -81,18 +83,19 @@ class Client
     /**
      * Client constructor.
      * @param ConfigInterface $config
-     * @param CacheInterface $cache
+     * @param CacheInterface|null $cache
      * @param DataStoreInterface|null $dataStore
      * @param ClientInterface|null $httpClient
      * @param RequestFactoryInterface|null $httpRequestFactory
      * @param StateNonceDataHandlerInterface|null $stateNonceDataHandler
      * @param PkceDataHandlerInterface|null $pkceDataHandler
      * @param MetadataInterface|null $metadata
+     * @throws CacheException If cache could not be initialized.
      * @throws OidcClientException If cache could not be reinitialized.
      */
     public function __construct(
         ConfigInterface $config,
-        CacheInterface $cache, // TODO mivanci make caching optional
+        ?CacheInterface $cache = null,
         ?DataStoreInterface $dataStore = null,
         ?ClientInterface $httpClient = null,
         ?RequestFactoryInterface $httpRequestFactory = null,
@@ -101,7 +104,7 @@ class Client
         ?MetadataInterface $metadata = null
     ) {
         $this->config = $config;
-        $this->cache = $cache;
+        $this->cache = $cache ?? new FileCache('oidc-client-php-cache-' . md5($config->getClientId()));
 
         $this->validateCache();
 
@@ -127,8 +130,7 @@ class Client
                 $this->config->getOidcConfigurationUrl() !=
                 $this->cache->get(self::CACHE_KEY_OIDC_CONFIGURATION_URL)
             ) {
-                $this->cache->clear();
-                $this->cache->set(self::CACHE_KEY_OIDC_CONFIGURATION_URL, $this->config->getOidcConfigurationUrl());
+                $this->reinitializeCache();
             }
         } catch (Throwable | PsrSimpleCacheInvalidArgumentException $exception) {
             throw new OidcClientException('Cache validation error. ' . $exception->getMessage());
@@ -513,6 +515,9 @@ class Client
         }
     }
 
+    /**
+     * @throws OidcClientException
+     */
     protected function decodeJsonOrThrow(string $json): array
     {
         try {
@@ -580,5 +585,14 @@ class Client
         if ($idTokenClaims['sub'] !== $userInfoClaims['sub']) {
             throw new OidcClientException('ID token and UserInfo sub claim must be equal.');
         }
+    }
+
+    /**
+     * @throws CacheException
+     */
+    public function reinitializeCache(): void
+    {
+        $this->cache->clear();
+        $this->cache->set(self::CACHE_KEY_OIDC_CONFIGURATION_URL, $this->config->getOidcConfigurationUrl());
     }
 }

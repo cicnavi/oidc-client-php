@@ -49,7 +49,7 @@ class MetadataTest extends TestCase
 
         self::$cachePath = dirname(__DIR__, 2) . '/tmp/cache-test';
         mkdir(self::$cachePath, 0764, true);
-        self::$cache = new FileCache(self::$cachePath);
+        self::$cache = new FileCache('oidc-cache', self::$cachePath);
     }
 
     public static function tearDownAfterClass(): void

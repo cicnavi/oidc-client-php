@@ -17,18 +17,6 @@ OpenID Provider must support:
 * authorization code flow
 * OIDC Discovery URL (well-known URL with OIDC metadata)
 * JWKS URI providing JWK key(s)
-
-## Note on SameSite Cookie Attribute
-[SameSite Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite)
-attribute plays an important role in Single Sign-On (SSO) environments
-because it determines how cookies are delivered in third party contexts.
-During OIDC authorization code flow (the authentication flow this OIDC client uses),
-a series of HTTP redirects between RP and OP is performed.
-
-By default, the authorization code will be delivered to the RP using HTTP Redirect meaning that
-the User Agent will do a GET request to the RP callback.
-This means that the SameSite Cookie attribute can be set to 'Lax' or 'None', but not 'Strict'
-(if the value is 'None', the attribute 'Secure' must also be set).
   
 ## Installation
 OIDC Client is available as a Composer package. In your project you can run: 
@@ -63,26 +51,12 @@ Note: the following params can be set to false, which will disable corresponding
 * OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY
 * OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY
 
-By default, OIDC client uses file based caching, meaning
-you'll have to provide a folder path which will be used for caching.
-Note that this folder must be writable by the web server. 
-For your convenience, you can use the available class Cicnavi\Oidc\Cache\FileCache
-to instantiate a Cache instance. In the background, this class will use the cicnavi/simple-file-cache-php package.
-If you want, you can utilize other caching techniques (memcached, redis...) by installing the corresponding
-package which provides
-[psr/simple-cache-implementation](https://packagist.org/providers/psr/simple-cache-implementation),
-and use it for OIDC client instantiation.
-
 ## Client instantiation
-To instantiate a client you will have to prepare:
-* Config instance
-* Cache instance
-
+To instantiate a client you will have to prepare a Config instance.
 First, prepare an array with the following OIDC configuration values,
 for example:
 ```
 use Cicnavi\Oidc\Config;
-use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\Client;
 
 $config = [
@@ -112,19 +86,10 @@ prepared config array:
 ```
 $oidcConfig = new Config($config);
 ```
-OIDC client uses caching to avoid sending HTTP requests to fetch 
-OIDC configuration content and JWKS content on every client usage.
-OIDC client includes class Cicnavi\Oidc\Cache\FileCache which can be used 
-to provide a file based caching mechanism. To instantiate it, 
-you'll have to provide a folder path which will be used to store the 
-cache file. Make sure the folder exists and is writable by the web server.
+
+OIDC client can now be instantiated using config instance as parameter:
 ```
-$storagePath = __DIR__ . '/../storage';
-$oidcCache = new FileCache($storagePath);
-```
-OIDC client can now be instantiated using config and cache as parameters:
-```
-$oidcClient = new Client($oidcConfig, $oidcCache);
+$oidcClient = new Client($oidcConfig);
 ```
 
 ## Client usage
@@ -153,7 +118,7 @@ an HTTP request to token endpoint using the
 provided authorization code in order to retrieve tokens (access and
 ID token). After that it will try to extract claims from ID token
 (if it was returned, that is if 'openid' scope was used in client configuration),
-or it will fetch user data from 'userinfo' endpoint using access token
+and will fetch user data from 'userinfo' endpoint using access token
  for authentication.
 ```
 // File: callback.php
@@ -237,6 +202,48 @@ claims that have multiple values, for example:
     1 => 'jdoe@example.org',
   ),
 ```
+
+## Note on Caching
+OIDC client uses caching to avoid sending HTTP requests to fetch OIDC configuration content and 
+JWKS content on every client usage.
+By default, OIDC client uses file based caching. This means that it uses a folder on your system
+to store files with cached data. 
+For your convenience, class Cicnavi\Oidc\Cache\FileCache is used to instantiate a Cache instance 
+which will store files in the default system 'tmp' folder.
+In the background, this class will use the cicnavi/simple-file-cache-php package.
+If you want, you can utilize other caching techniques (memcached, redis...) by installing the corresponding
+package which provides
+[psr/simple-cache-implementation](https://packagist.org/providers/psr/simple-cache-implementation),
+and use it for OIDC client instantiation.
+
+Example below demonstrates how to initialize default 
+FileCache instance using custom cache name and folder path (make sure the folder exists 
+and is writable by the web server).
+```
+use Cicnavi\Oidc\Cache\FileCache;
+// ... other imports
+
+$storagePath = __DIR__ . '/../storage';
+$oidcCache = new FileCache($storagePath);
+
+// ... prepare $oidcConfig
+
+// Create client instance using config and cache instances.
+$oidcClient = new Client($oidcConfig, $oidcCache);
+```
+
+## Note on SameSite Cookie Attribute
+[SameSite Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite)
+attribute plays an important role in Single Sign-On (SSO) environments
+because it determines how cookies are delivered in third party contexts.
+During OIDC authorization code flow (the authentication flow this OIDC client uses),
+a series of HTTP redirects between RP and OP is performed.
+
+By default, the authorization code will be delivered to the RP using HTTP Redirect meaning that
+the User Agent will do a GET request to the RP callback.
+This means that the SameSite Cookie attribute can be set to 'Lax' or 'None', but not 'Strict'
+(if the value is 'None', the attribute 'Secure' must also be set).
+
 ## Run tests
 All tests are available as Composer scripts, so you can simply run them like this:
 ```bash

@@ -13,7 +13,7 @@
         "psr/http-message": "^1.0",
         "psr/http-factory": "^1.0",
         "psr/http-client": "^1.0",
-        "cicnavi/simple-file-cache-php": "1.*"
+        "cicnavi/simple-file-cache-php": "dev-version2"
     },
     "autoload": {
         "psr-4": {
