@@ -20,7 +20,7 @@ interface ConfigInterface
     /**
      * @return string
      */
-    public function getOidcConfigurationUrl(): string;
+    public function getOpConfigurationUrl(): string;
 
     /**
      * @return string
@@ -51,15 +51,6 @@ interface ConfigInterface
      * @return string
      */
     public function getPkceCodeChallengeMethod(): string;
-
-    /**
-     * @return string[]
-     *
-     * @deprecated 2.0.0
-     * @see getIdTokenValidationAllowedSignatureAlgs()
-     * @see getIdTokenValidationAllowedEncryptionAlgs()
-     */
-    public function getIdTokenValidationAllowedAlgs(): array;
 
     /**
      * Get allowed signature algorithms.

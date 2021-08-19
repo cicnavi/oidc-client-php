@@ -32,11 +32,11 @@ class ClientTest extends TestCase
      * @var array<string,mixed>
      */
     protected static array $validConfigOptions = [
-        Config::CONFIG_KEY_OIDC_CONFIGURATION_URL => 'https://login.example.org/.well-known/openid-configuration',
-        Config::CONFIG_KEY_OIDC_CLIENT_ID => '6e55295209782b7b2',
-        Config::CONFIG_KEY_OIDC_CLIENT_SECRET => 'ad6dsd63sgj54hd5s',
-        Config::CONFIG_KEY_OIDC_REDIRECT_URI => 'https://some-redirect-uri.example.org/callback',
-        Config::CONFIG_KEY_OIDC_SCOPE => 'openid profile',
+        Config::OPTION_OP_CONFIGURATION_URL => 'https://login.example.org/.well-known/openid-configuration',
+        Config::OPTION_CLIENT_ID => '6e55295209782b7b2',
+        Config::OPTION_CLIENT_SECRET => 'ad6dsd63sgj54hd5s',
+        Config::OPTION_REDIRECT_URI => 'https://some-redirect-uri.example.org/callback',
+        Config::OPTION_SCOPE => 'openid profile',
     ];
 
     protected static array $sampleTokenDataArray = [
@@ -170,7 +170,7 @@ class ClientTest extends TestCase
     public function setUp(): void
     {
         mkdir(self::$cachePath, 0764, true);
-        self::$cache = new FileCache(self::$cachePath);
+        self::$cache = new FileCache(self::$cacheName, self::$cachePath);
 
         $oidcConfigurationResponse = new Response(200, [
             'Content-Type' => 'application/json'
@@ -272,19 +272,19 @@ class ClientTest extends TestCase
         $this->assertTrue(
             mb_strpos(
                 $redirectUrlParts['query'],
-                'client_id=' . urlencode(self::$validConfigOptions[Config::CONFIG_KEY_OIDC_CLIENT_ID])
+                'client_id=' . urlencode(self::$validConfigOptions[Config::OPTION_CLIENT_ID])
             ) !== false
         );
         $this->assertTrue(
             mb_strpos(
                 $redirectUrlParts['query'],
-                'redirect_uri=' . urlencode(self::$validConfigOptions[Config::CONFIG_KEY_OIDC_REDIRECT_URI])
+                'redirect_uri=' . urlencode(self::$validConfigOptions[Config::OPTION_REDIRECT_URI])
             ) !== false
         );
         $this->assertTrue(
             mb_strpos(
                 $redirectUrlParts['query'],
-                'scope=' . urlencode(self::$validConfigOptions[Config::CONFIG_KEY_OIDC_SCOPE])
+                'scope=' . urlencode(self::$validConfigOptions[Config::OPTION_SCOPE])
             ) !== false
         );
         $this->assertTrue(
@@ -310,7 +310,7 @@ class ClientTest extends TestCase
     {
         $publicClientConfigArray = array_merge(
             self::$validConfigOptions,
-            [Config::CONFIG_KEY_OIDC_IS_CONFIDENTIAL_CLIENT => false]
+            [Config::OPTION_IS_CONFIDENTIAL_CLIENT => false]
         );
 
         $publicConfig = new Config($publicClientConfigArray);
@@ -354,7 +354,7 @@ class ClientTest extends TestCase
     {
         $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
         $this->expectException(Throwable::class);
-        $client->authenticate();
+        $client->getUserData();
     }
 
     /**
@@ -362,31 +362,31 @@ class ClientTest extends TestCase
      *
      * @backupGlobals enabled
      */
-    public function testAuthenticateErrorThrows(): void
+    public function testGetUserDataErrorThrows(): void
     {
         $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
         $this->expectException(Throwable::class);
         global $_GET;
         $_GET['error'] = 'invalid_request';
-        $client->authenticate();
+        $client->getUserData();
     }
 
     /**
      * @throws Exception
      */
-    public function testAuthenticateMissingStateThrows(): void
+    public function testGetUserDataMissingStateThrows(): void
     {
         $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
         $this->expectException(Throwable::class);
         global $_GET;
         $_GET['code'] = 'sample-auth-code';
-        $client->authenticate();
+        $client->getUserData();
     }
 
     /**
      * @throws Exception
      */
-    public function testAuthenticate(): void
+    public function testGetUserData(): void
     {
         $stateNonceStub = $this->createStub(StateNonce::class);
         $stateNonceStub->method('verify');
@@ -397,20 +397,20 @@ class ClientTest extends TestCase
         $_GET['code'] = 'sample-auth-code';
         $_GET['state'] = 'sample-state';
 
-        $userData = $client->authenticate();
+        $userData = $client->getUserData();
 
-        $this->assertSame(self::$validConfigOptions[Config::CONFIG_KEY_OIDC_CLIENT_ID], $userData['aud']);
+        $this->assertSame(self::$validConfigOptions[Config::OPTION_CLIENT_ID], $userData['aud']);
         $this->assertSame(json_decode(self::$oidcConfigurationJson, true)['issuer'], $userData['iss']);
     }
 
     /**
      * @throws Exception
      */
-    public function testAuthenticateForPublicClient(): void
+    public function testGetUserDataForPublicClient(): void
     {
         $publicClientConfigArray = array_merge(
             self::$validConfigOptions,
-            [Config::CONFIG_KEY_OIDC_IS_CONFIDENTIAL_CLIENT => false]
+            [Config::OPTION_IS_CONFIDENTIAL_CLIENT => false]
         );
 
         $publicConfig = new Config($publicClientConfigArray);
@@ -424,9 +424,9 @@ class ClientTest extends TestCase
         $_GET['code'] = 'sample-auth-code';
         $_GET['state'] = 'sample-state';
 
-        $userData = $client->authenticate();
+        $userData = $client->getUserData();
 
-        $this->assertSame(self::$validConfigOptions[Config::CONFIG_KEY_OIDC_CLIENT_ID], $userData['aud']);
+        $this->assertSame(self::$validConfigOptions[Config::OPTION_CLIENT_ID], $userData['aud']);
         $this->assertSame(json_decode(self::$oidcConfigurationJson, true)['issuer'], $userData['iss']);
     }
 
@@ -451,7 +451,7 @@ class ClientTest extends TestCase
     public function testUserDataFetchFromUserinfoEndpointIsNotPerformed(): void
     {
         $configOptions = self::$validConfigOptions;
-        $configOptions[Config::CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS] = false;
+        $configOptions[Config::OPTION_SHOULD_FETCH_USERINFO_CLAIMS] = false;
         $config = new Config($configOptions);
 
         $stateNonceStub = $this->createStub(StateNonce::class);
@@ -459,7 +459,7 @@ class ClientTest extends TestCase
 
         $client = new Client($config, self::$cache, null, self::$guzzleHttpClientStub, null, $stateNonceStub);
 
-        $userData = $client->authenticate();
+        $userData = $client->getUserData();
 
         $this->assertFalse(array_key_exists('name', $userData));
     }
@@ -525,7 +525,7 @@ class ClientTest extends TestCase
         $client->requestUserDataFromUserInfoEndpoint($accessToken);
     }
 
-    public function testgetUserDataThrowsForInvalidSubClaim(): void
+    public function testGetClaimsThrowsForInvalidSubClaim(): void
     {
 
         $oidcConfigurationResponse = new Response(200, [
@@ -563,7 +563,7 @@ class ClientTest extends TestCase
 
         $this->expectException(Exception::class);
 
-        $client->getUserData($tokenDataArray);
+        $client->getClaims($tokenDataArray);
     }
 
     public function testGetDataFromIdTokenThrowsForInvalidIdTokenFormat(): void
@@ -721,7 +721,7 @@ class ClientTest extends TestCase
     public function testValidateCacheThrows(): void
     {
         $configStub = $this->createStub(Config::class);
-        $configStub->method('getOidcConfigurationUrl')
+        $configStub->method('getOpConfigurationUrl')
             ->will($this->throwException(new Exception('Sample error')));
 
         $this->expectException(Exception::class);
@@ -774,7 +774,7 @@ class ClientTest extends TestCase
         $cacheStub->method('get')
             ->will($this->onConsecutiveCalls(
                 // for check if the OIDC metadata URL was changed
-                self::$validConfigOptions[Config::CONFIG_KEY_OIDC_CONFIGURATION_URL],
+                self::$validConfigOptions[Config::OPTION_OP_CONFIGURATION_URL],
                 // For Metadata OIDC Configuration fetch
                 null,
                 // For simulating cache error on get JWKS content

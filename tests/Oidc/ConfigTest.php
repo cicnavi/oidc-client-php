@@ -19,14 +19,13 @@ class ConfigTest extends TestCase
      * @var array<string,mixed>
      */
     protected static array $validConfigOptions = [
-        Config::CONFIG_KEY_OIDC_CONFIGURATION_URL => 'https://login.aaiedu.hr/.well-known/openid-configuration',
-        Config::CONFIG_KEY_OIDC_CLIENT_ID => 'some-client-id',
-        Config::CONFIG_KEY_OIDC_CLIENT_SECRET => 'some-client-secret',
-        Config::CONFIG_KEY_OIDC_REDIRECT_URI => 'https://some-redirect-uri.example.org/callback',
-        Config::CONFIG_KEY_OIDC_SCOPE => 'openid profile',
-        Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ALGS => ['RS256', 'RS512'], // TODO mivanci remove_in_2
-        Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS => ['RS256', 'RS512'],
-        Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS => ['RSA-OAEP-256', 'A256GCM'],
+        Config::OPTION_OP_CONFIGURATION_URL => 'https://login.aaiedu.hr/.well-known/openid-configuration',
+        Config::OPTION_CLIENT_ID => 'some-client-id',
+        Config::OPTION_CLIENT_SECRET => 'some-client-secret',
+        Config::OPTION_REDIRECT_URI => 'https://some-redirect-uri.example.org/callback',
+        Config::OPTION_SCOPE => 'openid profile',
+        Config::OPTION_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS => ['RS256', 'RS512'],
+        Config::OPTION_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS => ['RSA-OAEP-256', 'A256GCM'],
     ];
 
     /**
@@ -68,25 +67,25 @@ class ConfigTest extends TestCase
     public function invalidOptionsProvider(): array
     {
         return [
-            [[Config::CONFIG_KEY_OIDC_CONFIGURATION_URL => '']],
-            [[Config::CONFIG_KEY_OIDC_CLIENT_ID => '']],
-            [[Config::CONFIG_KEY_OIDC_CLIENT_SECRET => '']],
-            [[Config::CONFIG_KEY_OIDC_REDIRECT_URI => '']],
-            [[Config::CONFIG_KEY_OIDC_SCOPE => '']],
-            [[Config::CONFIG_KEY_OIDC_IS_CONFIDENTIAL_CLIENT => '']],
-            [[Config::CONFIG_KEY_OIDC_PKCE_CODE_CHALLENGE_METHOD => '']],
-            [[Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ALGS => ['a', 'b']]],
-            [[Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY => -1]],
-            [[Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY => -1]],
-            [[Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY => -1]],
-            [[Config::CONFIG_KEY_OIDC_IS_STATE_CHECK_ENABLED => '']],
-            [[Config::CONFIG_KEY_OIDC_IS_NONCE_CHECK_ENABLED => '']],
+            [[Config::OPTION_OP_CONFIGURATION_URL => '']],
+            [[Config::OPTION_CLIENT_ID => '']],
+            [[Config::OPTION_CLIENT_SECRET => '']],
+            [[Config::OPTION_REDIRECT_URI => '']],
+            [[Config::OPTION_SCOPE => '']],
+            [[Config::OPTION_IS_CONFIDENTIAL_CLIENT => '']],
+            [[Config::OPTION_PKCE_CODE_CHALLENGE_METHOD => '']],
+            [[Config::OPTION_ID_TOKEN_VALIDATION_EXP_LEEWAY => -1]],
+            [[Config::OPTION_ID_TOKEN_VALIDATION_IAT_LEEWAY => -1]],
+            [[Config::OPTION_ID_TOKEN_VALIDATION_NBF_LEEWAY => -1]],
+            [[Config::OPTION_IS_STATE_CHECK_ENABLED => '']],
+            [[Config::OPTION_IS_NONCE_CHECK_ENABLED => '']],
+            [[Config::OPTION_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS => ['invalid']]],
         ];
     }
 
     public function testGet(): void
     {
-        $sampleConfigKey = array_key_first(self::$validConfigOptions) ?: Config::CONFIG_KEY_OIDC_CONFIGURATION_URL;
+        $sampleConfigKey = array_key_first(self::$validConfigOptions) ?: Config::OPTION_OP_CONFIGURATION_URL;
         $this->assertEquals(
             self::$validConfigOptions[$sampleConfigKey],
             self::$config->get($sampleConfigKey)
@@ -105,18 +104,18 @@ class ConfigTest extends TestCase
         $this->assertTrue(in_array(array_key_first(self::$validConfigOptions), self::$config->getConfigKeys()));
     }
 
-    public function testGetOidcConfigurationUrl(): void
+    public function testGetOpConfigurationUrl(): void
     {
         $this->assertEquals(
-            self::$validConfigOptions[Config::CONFIG_KEY_OIDC_CONFIGURATION_URL],
-            self::$config->getOidcConfigurationUrl()
+            self::$validConfigOptions[Config::OPTION_OP_CONFIGURATION_URL],
+            self::$config->getOpConfigurationUrl()
         );
     }
 
     public function testGetClientId(): void
     {
         $this->assertEquals(
-            self::$validConfigOptions[Config::CONFIG_KEY_OIDC_CLIENT_ID],
+            self::$validConfigOptions[Config::OPTION_CLIENT_ID],
             self::$config->getClientId()
         );
     }
@@ -124,7 +123,7 @@ class ConfigTest extends TestCase
     public function testGetClientSecret(): void
     {
         $this->assertEquals(
-            self::$validConfigOptions[Config::CONFIG_KEY_OIDC_CLIENT_SECRET],
+            self::$validConfigOptions[Config::OPTION_CLIENT_SECRET],
             self::$config->getClientSecret()
         );
     }
@@ -132,7 +131,7 @@ class ConfigTest extends TestCase
     public function testGetRedirectUri(): void
     {
         $this->assertEquals(
-            self::$validConfigOptions[Config::CONFIG_KEY_OIDC_REDIRECT_URI],
+            self::$validConfigOptions[Config::OPTION_REDIRECT_URI],
             self::$config->getRedirectUri()
         );
     }
@@ -140,7 +139,7 @@ class ConfigTest extends TestCase
     public function testGetScope(): void
     {
         $this->assertEquals(
-            self::$validConfigOptions[Config::CONFIG_KEY_OIDC_SCOPE],
+            self::$validConfigOptions[Config::OPTION_SCOPE],
             self::$config->getScope()
         );
     }
@@ -153,11 +152,6 @@ class ConfigTest extends TestCase
     public function testGetPkceCodeChallengeMethod(): void
     {
         $this->assertEquals('S256', self::$config->getPkceCodeChallengeMethod());
-    }
-
-    public function testGetIdTokenValidationAllowedAlgs(): void
-    {
-        $this->assertEquals(['RS256', 'RS512'], self::$config->getIdTokenValidationAllowedAlgs());
     }
 
     public function testGetIdTokenValidationAllowedSignatureAlgs(): void

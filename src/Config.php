@@ -16,30 +16,24 @@ use Throwable;
 
 class Config implements ConfigInterface
 {
-    // Config keys
-    public const CONFIG_KEY_OIDC_CONFIGURATION_URL = 'OIDC_CONFIGURATION_URL';
-    public const CONFIG_KEY_OIDC_CLIENT_ID = 'OIDC_CLIENT_ID';
-    public const CONFIG_KEY_OIDC_CLIENT_SECRET = 'OIDC_CLIENT_SECRET';
-    public const CONFIG_KEY_OIDC_REDIRECT_URI = 'OIDC_REDIRECT_URI';
-    public const CONFIG_KEY_OIDC_SCOPE = 'OIDC_SCOPE';
-    public const CONFIG_KEY_OIDC_IS_CONFIDENTIAL_CLIENT = 'OIDC_IS_CONFIDENTIAL_CLIENT';
-    public const CONFIG_KEY_OIDC_PKCE_CODE_CHALLENGE_METHOD = 'OIDC_PKCE_CODE_CHALLENGE_METHOD';
-    /**
-     * TODO mivanci remove_in_2
-     * @deprecated 2.0.0
-     * @see CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS
-     */
-    public const CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ALGS = 'OIDC_ID_TOKEN_VALIDATION_ALLOWED_ALGS';
-    public const CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS =
+    // Keys for config options
+    public const OPTION_OP_CONFIGURATION_URL = 'OIDC_OP_CONFIGURATION_URL';
+    public const OPTION_CLIENT_ID = 'OIDC_CLIENT_ID';
+    public const OPTION_CLIENT_SECRET = 'OIDC_CLIENT_SECRET';
+    public const OPTION_REDIRECT_URI = 'OIDC_REDIRECT_URI';
+    public const OPTION_SCOPE = 'OIDC_SCOPE';
+    public const OPTION_IS_CONFIDENTIAL_CLIENT = 'OIDC_IS_CONFIDENTIAL_CLIENT';
+    public const OPTION_PKCE_CODE_CHALLENGE_METHOD = 'OIDC_PKCE_CODE_CHALLENGE_METHOD';
+    public const OPTION_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS =
         'OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS';
-    public const CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS =
+    public const OPTION_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS =
         'OIDC_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS';
-    public const CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY = 'OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY';
-    public const CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY = 'OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY';
-    public const CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY = 'OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY';
-    public const CONFIG_KEY_OIDC_IS_STATE_CHECK_ENABLED = 'OIDC_IS_STATE_CHECK_ENABLED';
-    public const CONFIG_KEY_OIDC_IS_NONCE_CHECK_ENABLED = 'OIDC_IS_NONCE_CHECK_ENABLED';
-    public const CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS = 'OIDC_SHOULD_FETCH_USERINFO_CLAIMS';
+    public const OPTION_ID_TOKEN_VALIDATION_EXP_LEEWAY = 'OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY';
+    public const OPTION_ID_TOKEN_VALIDATION_IAT_LEEWAY = 'OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY';
+    public const OPTION_ID_TOKEN_VALIDATION_NBF_LEEWAY = 'OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY';
+    public const OPTION_IS_STATE_CHECK_ENABLED = 'OIDC_IS_STATE_CHECK_ENABLED';
+    public const OPTION_IS_NONCE_CHECK_ENABLED = 'OIDC_IS_NONCE_CHECK_ENABLED';
+    public const OPTION_SHOULD_FETCH_USERINFO_CLAIMS = 'OIDC_SHOULD_FETCH_USERINFO_CLAIMS';
 
     /**
      * @var array<string,mixed> $config
@@ -68,31 +62,36 @@ class Config implements ConfigInterface
     public function getDefaultConfig(): array
     {
         return [
-            self::CONFIG_KEY_OIDC_CONFIGURATION_URL => null,
-            self::CONFIG_KEY_OIDC_CLIENT_ID => null,
-            self::CONFIG_KEY_OIDC_CLIENT_SECRET => null,
-            self::CONFIG_KEY_OIDC_REDIRECT_URI => null,
-            self::CONFIG_KEY_OIDC_SCOPE => null,
-            self::CONFIG_KEY_OIDC_IS_CONFIDENTIAL_CLIENT => true,
-            self::CONFIG_KEY_OIDC_PKCE_CODE_CHALLENGE_METHOD => 'S256',
-            // Validation related
-            // TODO mivanci remove_in_2
-            self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ALGS =>
-                self::getIdTokenValidationSupportedSignatureAlgs(),
-            self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS =>
-                self::getIdTokenValidationSupportedSignatureAlgs(),
-            self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS =>
-                self::getIdTokenValidationSupportedEncryptionAlgs(),
+            // Mandatory config items
+            self::OPTION_OP_CONFIGURATION_URL => null,
+            self::OPTION_CLIENT_ID => null,
+            self::OPTION_CLIENT_SECRET => null,
+            self::OPTION_REDIRECT_URI => null,
+            self::OPTION_SCOPE => null,
+
+            // Optional config items with default values
             // Additional time for which the claim 'exp' is considered valid. If false, the check will be skipped.
-            self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY => 0,
+            self::OPTION_ID_TOKEN_VALIDATION_EXP_LEEWAY => 0,
             // Additional time for which the claim 'iat' is considered valid. If false, the check will be skipped.
-            self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY => 0,
+            self::OPTION_ID_TOKEN_VALIDATION_IAT_LEEWAY => 0,
             // Additional time for which the claim 'nbf' is considered valid. If false, the check will be skipped.
-            self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY => 0,
-            // State and nonce checks are enabled by default
-            self::CONFIG_KEY_OIDC_IS_STATE_CHECK_ENABLED => true,
-            self::CONFIG_KEY_OIDC_IS_NONCE_CHECK_ENABLED => true,
-            self::CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS => true,
+            self::OPTION_ID_TOKEN_VALIDATION_NBF_LEEWAY => 0,
+            // Enable or disable State check
+            self::OPTION_IS_STATE_CHECK_ENABLED => true,
+            // Enable or disable Nonce check
+            self::OPTION_IS_NONCE_CHECK_ENABLED => true,
+            // Set allowed signature algorithms
+            self::OPTION_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS =>
+                self::getIdTokenValidationSupportedSignatureAlgs(),
+            // Set allowed encryption algorithms
+            self::OPTION_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS =>
+                self::getIdTokenValidationSupportedEncryptionAlgs(),
+            // Should client fetch userinfo claims
+            self::OPTION_SHOULD_FETCH_USERINFO_CLAIMS => true,
+            // Choose if client should act as confidential client or public client
+            self::OPTION_IS_CONFIDENTIAL_CLIENT => true,
+            // If public client, set PKCE code challenge method to use
+            self::OPTION_PKCE_CODE_CHALLENGE_METHOD => 'S256',
         ];
     }
 
@@ -103,39 +102,33 @@ class Config implements ConfigInterface
     protected function validateConfig(array $config): void
     {
         ConfigValidator::hasRequiredKeys($this->getConfigKeys(), $config);
-        ConfigValidator::isUrl(self::CONFIG_KEY_OIDC_CONFIGURATION_URL, $config);
-        ConfigValidator::isString(self::CONFIG_KEY_OIDC_CLIENT_ID, $config);
-        ConfigValidator::isString(self::CONFIG_KEY_OIDC_CLIENT_SECRET, $config);
-        ConfigValidator::isUrl(self::CONFIG_KEY_OIDC_REDIRECT_URI, $config);
-        ConfigValidator::isString(self::CONFIG_KEY_OIDC_SCOPE, $config);
-        ConfigValidator::isBool(self::CONFIG_KEY_OIDC_IS_CONFIDENTIAL_CLIENT, $config);
+        ConfigValidator::isUrl(self::OPTION_OP_CONFIGURATION_URL, $config);
+        ConfigValidator::isString(self::OPTION_CLIENT_ID, $config);
+        ConfigValidator::isString(self::OPTION_CLIENT_SECRET, $config);
+        ConfigValidator::isUrl(self::OPTION_REDIRECT_URI, $config);
+        ConfigValidator::isString(self::OPTION_SCOPE, $config);
+        ConfigValidator::isBool(self::OPTION_IS_CONFIDENTIAL_CLIENT, $config);
         ConfigValidator::isValidValue(
-            self::CONFIG_KEY_OIDC_PKCE_CODE_CHALLENGE_METHOD,
+            self::OPTION_PKCE_CODE_CHALLENGE_METHOD,
             $config,
             Pkce::VALID_PKCE_CODE_CHALLENGE_METHODS
         );
-        // TODO mivanci remove_in_2
         ConfigValidator::isArrayWithValidValues(
-            self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ALGS,
+            self::OPTION_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS,
             $config,
             self::getIdTokenValidationSupportedSignatureAlgs()
         );
         ConfigValidator::isArrayWithValidValues(
-            self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS,
-            $config,
-            self::getIdTokenValidationSupportedSignatureAlgs()
-        );
-        ConfigValidator::isArrayWithValidValues(
-            self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS,
+            self::OPTION_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS,
             $config,
             self::getIdTokenValidationSupportedEncryptionAlgs()
         );
-        ConfigValidator::isFalseZeroOrPositiveInt(self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY, $config);
-        ConfigValidator::isFalseZeroOrPositiveInt(self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY, $config);
-        ConfigValidator::isFalseZeroOrPositiveInt(self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY, $config);
-        ConfigValidator::isBool(self::CONFIG_KEY_OIDC_IS_STATE_CHECK_ENABLED, $config);
-        ConfigValidator::isBool(self::CONFIG_KEY_OIDC_IS_NONCE_CHECK_ENABLED, $config);
-        ConfigValidator::isBool(self::CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS, $config);
+        ConfigValidator::isFalseZeroOrPositiveInt(self::OPTION_ID_TOKEN_VALIDATION_EXP_LEEWAY, $config);
+        ConfigValidator::isFalseZeroOrPositiveInt(self::OPTION_ID_TOKEN_VALIDATION_IAT_LEEWAY, $config);
+        ConfigValidator::isFalseZeroOrPositiveInt(self::OPTION_ID_TOKEN_VALIDATION_NBF_LEEWAY, $config);
+        ConfigValidator::isBool(self::OPTION_IS_STATE_CHECK_ENABLED, $config);
+        ConfigValidator::isBool(self::OPTION_IS_NONCE_CHECK_ENABLED, $config);
+        ConfigValidator::isBool(self::OPTION_SHOULD_FETCH_USERINFO_CLAIMS, $config);
     }
 
     /**
@@ -163,9 +156,9 @@ class Config implements ConfigInterface
     /**
      * @inheritDoc
      */
-    public function getOidcConfigurationUrl(): string
+    public function getOpConfigurationUrl(): string
     {
-        return $this->config[self::CONFIG_KEY_OIDC_CONFIGURATION_URL];
+        return $this->config[self::OPTION_OP_CONFIGURATION_URL];
     }
 
     /**
@@ -173,7 +166,7 @@ class Config implements ConfigInterface
      */
     public function getClientId(): string
     {
-        return $this->config[self::CONFIG_KEY_OIDC_CLIENT_ID];
+        return $this->config[self::OPTION_CLIENT_ID];
     }
 
     /**
@@ -181,7 +174,7 @@ class Config implements ConfigInterface
      */
     public function getClientSecret(): string
     {
-        return $this->config[self::CONFIG_KEY_OIDC_CLIENT_SECRET];
+        return $this->config[self::OPTION_CLIENT_SECRET];
     }
 
     /**
@@ -189,7 +182,7 @@ class Config implements ConfigInterface
      */
     public function getRedirectUri(): string
     {
-        return $this->config[self::CONFIG_KEY_OIDC_REDIRECT_URI];
+        return $this->config[self::OPTION_REDIRECT_URI];
     }
 
     /**
@@ -197,7 +190,7 @@ class Config implements ConfigInterface
      */
     public function getScope(): string
     {
-        return $this->config[self::CONFIG_KEY_OIDC_SCOPE];
+        return $this->config[self::OPTION_SCOPE];
     }
 
     /**
@@ -205,7 +198,7 @@ class Config implements ConfigInterface
      */
     public function isConfidentialClient(): bool
     {
-        return (bool)$this->config[self::CONFIG_KEY_OIDC_IS_CONFIDENTIAL_CLIENT];
+        return (bool)$this->config[self::OPTION_IS_CONFIDENTIAL_CLIENT];
     }
 
     /**
@@ -213,16 +206,7 @@ class Config implements ConfigInterface
      */
     public function getPkceCodeChallengeMethod(): string
     {
-        return $this->config[self::CONFIG_KEY_OIDC_PKCE_CODE_CHALLENGE_METHOD];
-    }
-
-    /**
-     * @inheritDoc
-     * @deprecated 2.0.0
-     */
-    public function getIdTokenValidationAllowedAlgs(): array
-    {
-        return $this->config[self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ALGS];
+        return $this->config[self::OPTION_PKCE_CODE_CHALLENGE_METHOD];
     }
 
     /**
@@ -230,7 +214,7 @@ class Config implements ConfigInterface
      */
     public function getIdTokenValidationExpLeeway()
     {
-        return $this->config[self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY];
+        return $this->config[self::OPTION_ID_TOKEN_VALIDATION_EXP_LEEWAY];
     }
 
     /**
@@ -238,7 +222,7 @@ class Config implements ConfigInterface
      */
     public function getIdTokenValidationIatLeeway()
     {
-        return $this->config[self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY];
+        return $this->config[self::OPTION_ID_TOKEN_VALIDATION_IAT_LEEWAY];
     }
 
     /**
@@ -246,7 +230,7 @@ class Config implements ConfigInterface
      */
     public function getIdTokenValidationNbfLeeway()
     {
-        return $this->config[self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY];
+        return $this->config[self::OPTION_ID_TOKEN_VALIDATION_NBF_LEEWAY];
     }
 
     /**
@@ -254,7 +238,7 @@ class Config implements ConfigInterface
      */
     public function isStateCheckEnabled(): bool
     {
-        return (bool)$this->config[self::CONFIG_KEY_OIDC_IS_STATE_CHECK_ENABLED];
+        return (bool)$this->config[self::OPTION_IS_STATE_CHECK_ENABLED];
     }
 
     /**
@@ -262,7 +246,7 @@ class Config implements ConfigInterface
      */
     public function isNonceCheckEnabled(): bool
     {
-        return (bool)$this->config[self::CONFIG_KEY_OIDC_IS_NONCE_CHECK_ENABLED];
+        return (bool)$this->config[self::OPTION_IS_NONCE_CHECK_ENABLED];
     }
 
     /**
@@ -270,17 +254,17 @@ class Config implements ConfigInterface
      */
     public function shouldFetchUserInfoClaims(): bool
     {
-        return (bool)$this->config[self::CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS];
+        return (bool)$this->config[self::OPTION_SHOULD_FETCH_USERINFO_CLAIMS];
     }
 
     public function getIdTokenValidationAllowedSignatureAlgs(): array
     {
-        return $this->config[self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS];
+        return $this->config[self::OPTION_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS];
     }
 
     public function getIdTokenValidationAllowedEncryptionAlgs(): array
     {
-        return $this->config[self::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS];
+        return $this->config[self::OPTION_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS];
     }
 
     /**

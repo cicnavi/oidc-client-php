@@ -17,90 +17,57 @@ OpenID Provider must support:
 * authorization code flow
 * OIDC Discovery URL (well-known URL with OIDC metadata)
 * JWKS URI providing JWK key(s)
-
-## Note on SameSite Cookie Attribute
-[SameSite Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite)
-attribute plays an important role in Single Sign-On (SSO) environments
-because it determines how cookies are delivered in third party contexts.
-During OIDC authorization code flow (the authentication flow this OIDC client uses),
-a series of HTTP redirects between RP and OP is performed.
-
-By default, the authorization code will be delivered to the RP using HTTP Redirect meaning that
-the User Agent will do a GET request to the RP callback.
-This means that the SameSite Cookie attribute can be set to 'Lax' or 'None', but not 'Strict'
-(if the value is 'None', the attribute 'Secure' must also be set).
   
 ## Installation
 OIDC Client is available as a Composer package. In your project you can run: 
 ```shell script
 composer require cicnavi/oidc-client-php
 ```
-You will need the following parameters for client configuration:
-```
-OIDC_CONFIGURATION_URL="https://example.org/oidc/.well-known/openid-configuration"
-OIDC_CLIENT_ID="some-client-id"
-OIDC_CLIENT_SECRET="some-client-secret"
-OIDC_REDIRECT_URI="redirect-uri-to-which-the-authorization-server-will-send-auth-code"
-OIDC_SCOPE="openid {other-oidc-standard-scopes} {other-private-or-public-scopes}"
-```
-Params CLIENT_ID and CLIENT_SECRET are obtained when registering a client with an OpenID Provider 
-(refer to the documentation for your OpenID Provider).
-
-OIDC client has some default configuration params already set, but 
-you can override them as necessary:
-```
-OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS=['RS256', 'RS512']
-OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY=0 // Number of seconds in which the EXP claim is still considered valid
-OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY=0 // Number of seconds in which the IAT claim is still considered valid
-OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY=0 // Number of seconds in which the IAT claim is still considered valid
-OIDC_IS_STATE_CHECK_ENABLED=true
-OIDC_IS_NONCE_CHECK_ENABLED=true
-OIDC_IS_CONFIDENTIAL_CLIENT=true // true is default for confidential clients (web apps with backend)
-OIDC_PKCE_CODE_CHALLENGE_METHOD="S256" // Only used if OIDC_IS_CONFIDENTIAL_CLIENT is set to false
-```
-Note: the following params can be set to false, which will disable corresponding check:
-* OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY
-* OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY
-* OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY
-
-By default, OIDC client uses file based caching, meaning
-you'll have to provide a folder path which will be used for caching.
-Note that this folder must be writable by the web server. 
-For your convenience, you can use the available class Cicnavi\Oidc\Cache\FileCache
-to instantiate a Cache instance. In the background, this class will use the cicnavi/simple-file-cache-php package.
-If you want, you can utilize other caching techniques (memcached, redis...) by installing the corresponding
-package which provides
-[psr/simple-cache-implementation](https://packagist.org/providers/psr/simple-cache-implementation),
-and use it for OIDC client instantiation.
 
 ## Client instantiation
-To instantiate a client you will have to prepare:
-* Config instance
-* Cache instance
-
+To instantiate a client you will have to prepare a Config instance.
 First, prepare an array with the following OIDC configuration values,
 for example:
 ```
 use Cicnavi\Oidc\Config;
-use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\Client;
 
 $config = [
-    Config::CONFIG_KEY_OIDC_CONFIGURATION_URL => 'https://example.org/oidc/.well-known/openid-configuration',
-    Config::CONFIG_KEY_OIDC_CLIENT_ID => 'some-client-id',
-    Config::CONFIG_KEY_OIDC_CLIENT_SECRET => 'some-client-secret',
-    Config::CONFIG_KEY_OIDC_REDIRECT_URI => 'https://your-example.org/callback',
-    Config::CONFIG_KEY_OIDC_SCOPE => 'openid profile',
-    // Optional config items with default values
-    //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS => ['RS256', 'RS512',],
-        // Check method Config::getIdTokenValidationSupportedSignatureAlgs for supported algos.
-    //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY => 0,
-    //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY => 0,
-    //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY => 0,
-    //Config::CONFIG_KEY_OIDC_IS_STATE_CHECK_ENABLED => true,
-    //Config::CONFIG_KEY_OIDC_IS_NONCE_CHECK_ENABLED => true,
-    //Config::CONFIG_KEY_OIDC_IS_CONFIDENTIAL_CLIENT => 1,
-    //Config::CONFIG_KEY_OIDC_PKCE_CODE_CHALLENGE_METHOD => 'S256',
+    // Mandatory config items
+    // OpenID Provider (OP) well-known configuration URL
+    Config::OPTION_OP_CONFIGURATION_URL => 'https://example.org/oidc/.well-known/openid-configuration',
+    // Client ID - obtained durign client registration at OP
+    Config::OPTION_CLIENT_ID => 'some-client-id',
+    // Client Secret - obtained durign client registration at OP
+    Config::OPTION_CLIENT_SECRET => 'some-client-secret',
+    // Redirect URI to which the authorization server will return auth code
+    Config::OPTION_REDIRECT_URI => 'https://your-example.org/callback',
+    // Scopes
+    Config::OPTION_SCOPE => 'openid profile',
+    
+    // Optional config items with default values (override them as necessary)
+    // Additional time for which the claim 'exp' is considered valid. If false, the check will be skipped.
+    //Config::OPTION_ID_TOKEN_VALIDATION_EXP_LEEWAY => 0,
+    // Additional time for which the claim 'iat' is considered valid. If false, the check will be skipped.
+    //Config::OPTION_ID_TOKEN_VALIDATION_IAT_LEEWAY => 0,
+    // Additional time for which the claim 'nbf' is considered valid. If false, the check will be skipped.
+    //Config::OPTION_ID_TOKEN_VALIDATION_NBF_LEEWAY => 0,
+    // Enable or disable State check
+    //Config::OPTION_IS_STATE_CHECK_ENABLED => true,
+    // Enable or disable Nonce check
+    //Config::OPTION_IS_NONCE_CHECK_ENABLED => true,
+    // Set allowed signature algorithms
+    //Config::OPTION_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS =>
+    //    Config::getIdTokenValidationSupportedSignatureAlgs(), // Or set your own like ['RS256', 'RS512',]
+    // Set allowed encryption algorithms
+    //Config::OPTION_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS =>
+    //    Config::getIdTokenValidationSupportedEncryptionAlgs(),
+    // Should client fetch userinfo claims
+    //Config::OPTION_SHOULD_FETCH_USERINFO_CLAIMS => true,
+    // Choose if client should act as confidential client or public client
+    //Config::OPTION_IS_CONFIDENTIAL_CLIENT => true,
+    // If public client, set PKCE code challenge method to use
+    //Config::OPTION_PKCE_CODE_CHALLENGE_METHOD => 'S256',
 ];
 ```
 Make sure to include 'openid' scope in order to use ID token for user
@@ -112,19 +79,10 @@ prepared config array:
 ```
 $oidcConfig = new Config($config);
 ```
-OIDC client uses caching to avoid sending HTTP requests to fetch 
-OIDC configuration content and JWKS content on every client usage.
-OIDC client includes class Cicnavi\Oidc\Cache\FileCache which can be used 
-to provide a file based caching mechanism. To instantiate it, 
-you'll have to provide a folder path which will be used to store the 
-cache file. Make sure the folder exists and is writable by the web server.
+
+OIDC client can now be instantiated using config instance as parameter:
 ```
-$storagePath = __DIR__ . '/../storage';
-$oidcCache = new FileCache($storagePath);
-```
-OIDC client can now be instantiated using config and cache as parameters:
-```
-$oidcClient = new Client($oidcConfig, $oidcCache);
+$oidcClient = new Client($oidcConfig);
 ```
 
 ## Client usage
@@ -147,20 +105,20 @@ which was registered with the client (this is your callback).
 
 On the callback URI, you'll receive authorization code and state
 (if state check is enabled) as GET parameters.
-To use that authorization code, you can use authenticate() method.
+To use that authorization code, you can use getUserData() method.
 This method will validate state (if state check is enabled) and send 
 an HTTP request to token endpoint using the
 provided authorization code in order to retrieve tokens (access and
 ID token). After that it will try to extract claims from ID token
 (if it was returned, that is if 'openid' scope was used in client configuration),
-or it will fetch user data from 'userinfo' endpoint using access token
+and will fetch user data from 'userinfo' endpoint using access token
  for authentication.
 ```
 // File: callback.php
 try {
-    $userData = $oidcClient->authenticate();
+    $userData = $oidcClient->getUserData();
 
-    // Log in the user, for example:
+    // Log in the user locally, for example:
     if (isset($userData['preferred_username'])) {
         $_SESSION['user'] = $userData['preferred_username'];
         // In real app redirect to another page, show success message...
@@ -237,6 +195,48 @@ claims that have multiple values, for example:
     1 => 'jdoe@example.org',
   ),
 ```
+
+## Note on Caching
+OIDC client uses caching to avoid sending HTTP requests to fetch OIDC configuration content and 
+JWKS content on every client usage.
+By default, OIDC client uses file based caching. This means that it uses a folder on your system
+to store files with cached data. 
+For your convenience, class Cicnavi\Oidc\Cache\FileCache is used to instantiate a Cache instance 
+which will store files in the default system 'tmp' folder.
+In the background, this class will use the cicnavi/simple-file-cache-php package.
+If you want, you can utilize other caching techniques (memcached, redis...) by installing the corresponding
+package which provides
+[psr/simple-cache-implementation](https://packagist.org/providers/psr/simple-cache-implementation),
+and use it for OIDC client instantiation.
+
+Example below demonstrates how to initialize default 
+FileCache instance using custom cache name and folder path (make sure the folder exists 
+and is writable by the web server).
+```
+use Cicnavi\Oidc\Cache\FileCache;
+// ... other imports
+
+$storagePath = __DIR__ . '/../storage';
+$oidcCache = new FileCache($storagePath);
+
+// ... prepare $oidcConfig
+
+// Create client instance using config and cache instances.
+$oidcClient = new Client($oidcConfig, $oidcCache);
+```
+
+## Note on SameSite Cookie Attribute
+[SameSite Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite)
+attribute plays an important role in Single Sign-On (SSO) environments
+because it determines how cookies are delivered in third party contexts.
+During OIDC authorization code flow (the authentication flow this OIDC client uses),
+a series of HTTP redirects between RP and OP is performed.
+
+By default, the authorization code will be delivered to the RP using HTTP Redirect meaning that
+the User Agent will do a GET request to the RP callback.
+This means that the SameSite Cookie attribute can be set to 'Lax' or 'None', but not 'Strict'
+(if the value is 'None', the attribute 'Secure' must also be set).
+
 ## Run tests
 All tests are available as Composer scripts, so you can simply run them like this:
 ```bash

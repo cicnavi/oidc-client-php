@@ -12,12 +12,12 @@ class FileCache extends SimpleFileCache
 
     /**
      * FileCache constructor.
-     * @param string $storagePath
      * @param string $cacheName
+     * @param string|null $storagePath
      * @throws CacheException
      */
-    public function __construct(string $storagePath, string $cacheName = 'oidc-cache')
+    public function __construct(string $cacheName = 'oidc-client-php-cache', string $storagePath = null)
     {
-        parent::__construct($storagePath, $cacheName);
+        parent::__construct($cacheName, $storagePath);
     }
 }
