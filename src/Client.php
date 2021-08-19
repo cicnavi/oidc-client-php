@@ -180,12 +180,12 @@ class Client
     }
 
     /**
-     * Perform HTTP requests to token endpoint first and then use tokens to get user data.
+     * Get user data by performing HTTP requests to token endpoint first and then using tokens to get user data.
      *
      * @return array User data.
      * @throws OidcClientException
      */
-    public function authenticate(): array
+    public function getUserData(): array
     {
         $this->validateAuthorizationResponse();
 
@@ -198,7 +198,7 @@ class Client
             $this->pkceDataHandler->removeCodeVerifier();
         }
 
-        return $this->getUserData($tokenData);
+        return $this->getClaims($tokenData);
     }
 
     /**
@@ -286,7 +286,7 @@ class Client
      * @return array User data extracted from ID token (if available) or fetched from 'userinfo' endpoint.
      * @throws OidcClientException
      */
-    public function getUserData(array $tokenData): array
+    public function getClaims(array $tokenData): array
     {
         $this->validateTokenDataArray($tokenData);
 

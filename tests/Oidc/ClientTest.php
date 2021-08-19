@@ -354,7 +354,7 @@ class ClientTest extends TestCase
     {
         $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
         $this->expectException(Throwable::class);
-        $client->authenticate();
+        $client->getUserData();
     }
 
     /**
@@ -362,31 +362,31 @@ class ClientTest extends TestCase
      *
      * @backupGlobals enabled
      */
-    public function testAuthenticateErrorThrows(): void
+    public function testGetUserDataErrorThrows(): void
     {
         $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
         $this->expectException(Throwable::class);
         global $_GET;
         $_GET['error'] = 'invalid_request';
-        $client->authenticate();
+        $client->getUserData();
     }
 
     /**
      * @throws Exception
      */
-    public function testAuthenticateMissingStateThrows(): void
+    public function testGetUserDataMissingStateThrows(): void
     {
         $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
         $this->expectException(Throwable::class);
         global $_GET;
         $_GET['code'] = 'sample-auth-code';
-        $client->authenticate();
+        $client->getUserData();
     }
 
     /**
      * @throws Exception
      */
-    public function testAuthenticate(): void
+    public function testGetUserData(): void
     {
         $stateNonceStub = $this->createStub(StateNonce::class);
         $stateNonceStub->method('verify');
@@ -397,7 +397,7 @@ class ClientTest extends TestCase
         $_GET['code'] = 'sample-auth-code';
         $_GET['state'] = 'sample-state';
 
-        $userData = $client->authenticate();
+        $userData = $client->getUserData();
 
         $this->assertSame(self::$validConfigOptions[Config::OPTION_CLIENT_ID], $userData['aud']);
         $this->assertSame(json_decode(self::$oidcConfigurationJson, true)['issuer'], $userData['iss']);
@@ -406,7 +406,7 @@ class ClientTest extends TestCase
     /**
      * @throws Exception
      */
-    public function testAuthenticateForPublicClient(): void
+    public function testGetUserDataForPublicClient(): void
     {
         $publicClientConfigArray = array_merge(
             self::$validConfigOptions,
@@ -424,7 +424,7 @@ class ClientTest extends TestCase
         $_GET['code'] = 'sample-auth-code';
         $_GET['state'] = 'sample-state';
 
-        $userData = $client->authenticate();
+        $userData = $client->getUserData();
 
         $this->assertSame(self::$validConfigOptions[Config::OPTION_CLIENT_ID], $userData['aud']);
         $this->assertSame(json_decode(self::$oidcConfigurationJson, true)['issuer'], $userData['iss']);
@@ -459,7 +459,7 @@ class ClientTest extends TestCase
 
         $client = new Client($config, self::$cache, null, self::$guzzleHttpClientStub, null, $stateNonceStub);
 
-        $userData = $client->authenticate();
+        $userData = $client->getUserData();
 
         $this->assertFalse(array_key_exists('name', $userData));
     }
@@ -525,7 +525,7 @@ class ClientTest extends TestCase
         $client->requestUserDataFromUserInfoEndpoint($accessToken);
     }
 
-    public function testgetUserDataThrowsForInvalidSubClaim(): void
+    public function testGetClaimsThrowsForInvalidSubClaim(): void
     {
 
         $oidcConfigurationResponse = new Response(200, [
@@ -563,7 +563,7 @@ class ClientTest extends TestCase
 
         $this->expectException(Exception::class);
 
-        $client->getUserData($tokenDataArray);
+        $client->getClaims($tokenDataArray);
     }
 
     public function testGetDataFromIdTokenThrowsForInvalidIdTokenFormat(): void

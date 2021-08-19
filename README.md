@@ -23,33 +23,6 @@ OIDC Client is available as a Composer package. In your project you can run:
 ```shell script
 composer require cicnavi/oidc-client-php
 ```
-You will need the following parameters for client configuration:
-```
-OIDC_OP_CONFIGURATION_URL="https://example.org/oidc/.well-known/openid-configuration"
-OIDC_CLIENT_ID="some-client-id"
-OIDC_CLIENT_SECRET="some-client-secret"
-OIDC_REDIRECT_URI="redirect-uri-to-which-the-authorization-server-will-send-auth-code"
-OIDC_SCOPE="openid {other-oidc-standard-scopes} {other-private-or-public-scopes}"
-```
-Params CLIENT_ID and CLIENT_SECRET are obtained when registering a client with an OpenID Provider 
-(refer to the documentation for your OpenID Provider).
-
-OIDC client has some default configuration params already set, but 
-you can override them as necessary:
-```
-OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS=['RS256', 'RS512']
-OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY=0 // Number of seconds in which the EXP claim is still considered valid
-OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY=0 // Number of seconds in which the IAT claim is still considered valid
-OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY=0 // Number of seconds in which the IAT claim is still considered valid
-OIDC_IS_STATE_CHECK_ENABLED=true
-OIDC_IS_NONCE_CHECK_ENABLED=true
-OIDC_IS_CONFIDENTIAL_CLIENT=true // true is default for confidential clients (web apps with backend)
-OIDC_PKCE_CODE_CHALLENGE_METHOD="S256" // Only used if OIDC_IS_CONFIDENTIAL_CLIENT is set to false
-```
-Note: the following params can be set to false, which will disable corresponding check:
-* OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY
-* OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY
-* OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY
 
 ## Client instantiation
 To instantiate a client you will have to prepare a Config instance.
@@ -132,7 +105,7 @@ which was registered with the client (this is your callback).
 
 On the callback URI, you'll receive authorization code and state
 (if state check is enabled) as GET parameters.
-To use that authorization code, you can use authenticate() method.
+To use that authorization code, you can use getUserData() method.
 This method will validate state (if state check is enabled) and send 
 an HTTP request to token endpoint using the
 provided authorization code in order to retrieve tokens (access and
@@ -143,9 +116,9 @@ and will fetch user data from 'userinfo' endpoint using access token
 ```
 // File: callback.php
 try {
-    $userData = $oidcClient->authenticate();
+    $userData = $oidcClient->getUserData();
 
-    // Log in the user, for example:
+    // Log in the user locally, for example:
     if (isset($userData['preferred_username'])) {
         $_SESSION['user'] = $userData['preferred_username'];
         // In real app redirect to another page, show success message...
