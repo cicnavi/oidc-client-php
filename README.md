@@ -25,7 +25,7 @@ composer require cicnavi/oidc-client-php
 ```
 You will need the following parameters for client configuration:
 ```
-OIDC_CONFIGURATION_URL="https://example.org/oidc/.well-known/openid-configuration"
+OIDC_OP_CONFIGURATION_URL="https://example.org/oidc/.well-known/openid-configuration"
 OIDC_CLIENT_ID="some-client-id"
 OIDC_CLIENT_SECRET="some-client-secret"
 OIDC_REDIRECT_URI="redirect-uri-to-which-the-authorization-server-will-send-auth-code"
@@ -60,21 +60,41 @@ use Cicnavi\Oidc\Config;
 use Cicnavi\Oidc\Client;
 
 $config = [
-    Config::CONFIG_KEY_OIDC_CONFIGURATION_URL => 'https://example.org/oidc/.well-known/openid-configuration',
-    Config::CONFIG_KEY_OIDC_CLIENT_ID => 'some-client-id',
-    Config::CONFIG_KEY_OIDC_CLIENT_SECRET => 'some-client-secret',
-    Config::CONFIG_KEY_OIDC_REDIRECT_URI => 'https://your-example.org/callback',
-    Config::CONFIG_KEY_OIDC_SCOPE => 'openid profile',
-    // Optional config items with default values
-    //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS => ['RS256', 'RS512',],
-        // Check method Config::getIdTokenValidationSupportedSignatureAlgs for supported algos.
-    //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_EXP_LEEWAY => 0,
-    //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_IAT_LEEWAY => 0,
-    //Config::CONFIG_KEY_OIDC_ID_TOKEN_VALIDATION_NBF_LEEWAY => 0,
-    //Config::CONFIG_KEY_OIDC_IS_STATE_CHECK_ENABLED => true,
-    //Config::CONFIG_KEY_OIDC_IS_NONCE_CHECK_ENABLED => true,
-    //Config::CONFIG_KEY_OIDC_IS_CONFIDENTIAL_CLIENT => 1,
-    //Config::CONFIG_KEY_OIDC_PKCE_CODE_CHALLENGE_METHOD => 'S256',
+    // Mandatory config items
+    // OpenID Provider (OP) well-known configuration URL
+    Config::OPTION_OP_CONFIGURATION_URL => 'https://example.org/oidc/.well-known/openid-configuration',
+    // Client ID - obtained durign client registration at OP
+    Config::OPTION_CLIENT_ID => 'some-client-id',
+    // Client Secret - obtained durign client registration at OP
+    Config::OPTION_CLIENT_SECRET => 'some-client-secret',
+    // Redirect URI to which the authorization server will return auth code
+    Config::OPTION_REDIRECT_URI => 'https://your-example.org/callback',
+    // Scopes
+    Config::OPTION_SCOPE => 'openid profile',
+    
+    // Optional config items with default values (override them as necessary)
+    // Additional time for which the claim 'exp' is considered valid. If false, the check will be skipped.
+    //Config::OPTION_ID_TOKEN_VALIDATION_EXP_LEEWAY => 0,
+    // Additional time for which the claim 'iat' is considered valid. If false, the check will be skipped.
+    //Config::OPTION_ID_TOKEN_VALIDATION_IAT_LEEWAY => 0,
+    // Additional time for which the claim 'nbf' is considered valid. If false, the check will be skipped.
+    //Config::OPTION_ID_TOKEN_VALIDATION_NBF_LEEWAY => 0,
+    // Enable or disable State check
+    //Config::OPTION_IS_STATE_CHECK_ENABLED => true,
+    // Enable or disable Nonce check
+    //Config::OPTION_IS_NONCE_CHECK_ENABLED => true,
+    // Set allowed signature algorithms
+    //Config::OPTION_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS =>
+    //    Config::getIdTokenValidationSupportedSignatureAlgs(), // Or set your own like ['RS256', 'RS512',]
+    // Set allowed encryption algorithms
+    //Config::OPTION_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS =>
+    //    Config::getIdTokenValidationSupportedEncryptionAlgs(),
+    // Should client fetch userinfo claims
+    //Config::OPTION_SHOULD_FETCH_USERINFO_CLAIMS => true,
+    // Choose if client should act as confidential client or public client
+    //Config::OPTION_IS_CONFIDENTIAL_CLIENT => true,
+    // If public client, set PKCE code challenge method to use
+    //Config::OPTION_PKCE_CODE_CHALLENGE_METHOD => 'S256',
 ];
 ```
 Make sure to include 'openid' scope in order to use ID token for user

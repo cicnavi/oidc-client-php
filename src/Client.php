@@ -63,7 +63,7 @@ class Client
     /**
      * @var string Key used to store OIDC configuration URL in cache.
      */
-    protected const CACHE_KEY_OIDC_CONFIGURATION_URL = 'OIDC_CONFIGURATION_URL';
+    protected const CACHE_KEY_OP_CONFIGURATION_URL = 'OIDC_OP_CONFIGURATION_URL';
 
     /**
      * @var DataStoreInterface $dataStore Data store for State, Nonce, and PKCE parameter handling.
@@ -127,8 +127,8 @@ class Client
     {
         try {
             if (
-                $this->config->getOidcConfigurationUrl() !=
-                $this->cache->get(self::CACHE_KEY_OIDC_CONFIGURATION_URL)
+                $this->config->getOpConfigurationUrl() !=
+                $this->cache->get(self::CACHE_KEY_OP_CONFIGURATION_URL)
             ) {
                 $this->reinitializeCache();
             }
@@ -593,6 +593,6 @@ class Client
     public function reinitializeCache(): void
     {
         $this->cache->clear();
-        $this->cache->set(self::CACHE_KEY_OIDC_CONFIGURATION_URL, $this->config->getOidcConfigurationUrl());
+        $this->cache->set(self::CACHE_KEY_OP_CONFIGURATION_URL, $this->config->getOpConfigurationUrl());
     }
 }

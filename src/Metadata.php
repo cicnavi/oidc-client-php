@@ -108,7 +108,7 @@ class Metadata implements MetadataInterface
     {
         try {
             $request = $this->httpRequestFactory
-                ->createRequest('GET', $this->config->getOidcConfigurationUrl())
+                ->createRequest('GET', $this->config->getOpConfigurationUrl())
                 ->withHeader('Accept', 'application/json');
             $response = $this->httpClient->sendRequest($request);
         } catch (PsrHttpClientClientExceptionInterface $exception) {

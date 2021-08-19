@@ -29,11 +29,11 @@ class MetadataTest extends TestCase
      * @var array<string,mixed>
      */
     protected static array $validConfigOptions = [
-        Config::CONFIG_KEY_OIDC_CONFIGURATION_URL => 'https://login.aaiedu.hr/.well-known/openid-configuration',
-        Config::CONFIG_KEY_OIDC_CLIENT_ID => 'some-client-id',
-        Config::CONFIG_KEY_OIDC_CLIENT_SECRET => 'some-client-secret',
-        Config::CONFIG_KEY_OIDC_REDIRECT_URI => 'https://some-redirect-uri.example.org/callback',
-        Config::CONFIG_KEY_OIDC_SCOPE => 'openid profile',
+        Config::OPTION_OP_CONFIGURATION_URL => 'https://login.aaiedu.hr/.well-known/openid-configuration',
+        Config::OPTION_CLIENT_ID => 'some-client-id',
+        Config::OPTION_CLIENT_SECRET => 'some-client-secret',
+        Config::OPTION_REDIRECT_URI => 'https://some-redirect-uri.example.org/callback',
+        Config::OPTION_SCOPE => 'openid profile',
     ];
 
     protected static Config $config;

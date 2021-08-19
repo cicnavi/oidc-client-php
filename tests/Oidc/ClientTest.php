@@ -32,11 +32,11 @@ class ClientTest extends TestCase
      * @var array<string,mixed>
      */
     protected static array $validConfigOptions = [
-        Config::CONFIG_KEY_OIDC_CONFIGURATION_URL => 'https://login.example.org/.well-known/openid-configuration',
-        Config::CONFIG_KEY_OIDC_CLIENT_ID => '6e55295209782b7b2',
-        Config::CONFIG_KEY_OIDC_CLIENT_SECRET => 'ad6dsd63sgj54hd5s',
-        Config::CONFIG_KEY_OIDC_REDIRECT_URI => 'https://some-redirect-uri.example.org/callback',
-        Config::CONFIG_KEY_OIDC_SCOPE => 'openid profile',
+        Config::OPTION_OP_CONFIGURATION_URL => 'https://login.example.org/.well-known/openid-configuration',
+        Config::OPTION_CLIENT_ID => '6e55295209782b7b2',
+        Config::OPTION_CLIENT_SECRET => 'ad6dsd63sgj54hd5s',
+        Config::OPTION_REDIRECT_URI => 'https://some-redirect-uri.example.org/callback',
+        Config::OPTION_SCOPE => 'openid profile',
     ];
 
     protected static array $sampleTokenDataArray = [
@@ -272,19 +272,19 @@ class ClientTest extends TestCase
         $this->assertTrue(
             mb_strpos(
                 $redirectUrlParts['query'],
-                'client_id=' . urlencode(self::$validConfigOptions[Config::CONFIG_KEY_OIDC_CLIENT_ID])
+                'client_id=' . urlencode(self::$validConfigOptions[Config::OPTION_CLIENT_ID])
             ) !== false
         );
         $this->assertTrue(
             mb_strpos(
                 $redirectUrlParts['query'],
-                'redirect_uri=' . urlencode(self::$validConfigOptions[Config::CONFIG_KEY_OIDC_REDIRECT_URI])
+                'redirect_uri=' . urlencode(self::$validConfigOptions[Config::OPTION_REDIRECT_URI])
             ) !== false
         );
         $this->assertTrue(
             mb_strpos(
                 $redirectUrlParts['query'],
-                'scope=' . urlencode(self::$validConfigOptions[Config::CONFIG_KEY_OIDC_SCOPE])
+                'scope=' . urlencode(self::$validConfigOptions[Config::OPTION_SCOPE])
             ) !== false
         );
         $this->assertTrue(
@@ -310,7 +310,7 @@ class ClientTest extends TestCase
     {
         $publicClientConfigArray = array_merge(
             self::$validConfigOptions,
-            [Config::CONFIG_KEY_OIDC_IS_CONFIDENTIAL_CLIENT => false]
+            [Config::OPTION_IS_CONFIDENTIAL_CLIENT => false]
         );
 
         $publicConfig = new Config($publicClientConfigArray);
@@ -399,7 +399,7 @@ class ClientTest extends TestCase
 
         $userData = $client->authenticate();
 
-        $this->assertSame(self::$validConfigOptions[Config::CONFIG_KEY_OIDC_CLIENT_ID], $userData['aud']);
+        $this->assertSame(self::$validConfigOptions[Config::OPTION_CLIENT_ID], $userData['aud']);
         $this->assertSame(json_decode(self::$oidcConfigurationJson, true)['issuer'], $userData['iss']);
     }
 
@@ -410,7 +410,7 @@ class ClientTest extends TestCase
     {
         $publicClientConfigArray = array_merge(
             self::$validConfigOptions,
-            [Config::CONFIG_KEY_OIDC_IS_CONFIDENTIAL_CLIENT => false]
+            [Config::OPTION_IS_CONFIDENTIAL_CLIENT => false]
         );
 
         $publicConfig = new Config($publicClientConfigArray);
@@ -426,7 +426,7 @@ class ClientTest extends TestCase
 
         $userData = $client->authenticate();
 
-        $this->assertSame(self::$validConfigOptions[Config::CONFIG_KEY_OIDC_CLIENT_ID], $userData['aud']);
+        $this->assertSame(self::$validConfigOptions[Config::OPTION_CLIENT_ID], $userData['aud']);
         $this->assertSame(json_decode(self::$oidcConfigurationJson, true)['issuer'], $userData['iss']);
     }
 
@@ -451,7 +451,7 @@ class ClientTest extends TestCase
     public function testUserDataFetchFromUserinfoEndpointIsNotPerformed(): void
     {
         $configOptions = self::$validConfigOptions;
-        $configOptions[Config::CONFIG_KEY_OIDC_SHOULD_FETCH_USERINFO_CLAIMS] = false;
+        $configOptions[Config::OPTION_SHOULD_FETCH_USERINFO_CLAIMS] = false;
         $config = new Config($configOptions);
 
         $stateNonceStub = $this->createStub(StateNonce::class);
@@ -721,7 +721,7 @@ class ClientTest extends TestCase
     public function testValidateCacheThrows(): void
     {
         $configStub = $this->createStub(Config::class);
-        $configStub->method('getOidcConfigurationUrl')
+        $configStub->method('getOpConfigurationUrl')
             ->will($this->throwException(new Exception('Sample error')));
 
         $this->expectException(Exception::class);
@@ -774,7 +774,7 @@ class ClientTest extends TestCase
         $cacheStub->method('get')
             ->will($this->onConsecutiveCalls(
                 // for check if the OIDC metadata URL was changed
-                self::$validConfigOptions[Config::CONFIG_KEY_OIDC_CONFIGURATION_URL],
+                self::$validConfigOptions[Config::OPTION_OP_CONFIGURATION_URL],
                 // For Metadata OIDC Configuration fetch
                 null,
                 // For simulating cache error on get JWKS content
