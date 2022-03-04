@@ -35,7 +35,7 @@
     "minimum-stability": "stable",
     "require-dev": {
         "ext-xdebug": "*",
-        "vimeo/psalm": "^3.14",
+        "vimeo/psalm": "^4",
         "squizlabs/php_codesniffer": "^3.5",
         "phpunit/phpunit": "^9.4"
     },
