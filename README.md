@@ -68,8 +68,11 @@ $config = [
     //Config::OPTION_IS_CONFIDENTIAL_CLIENT => true,
     // If public client, set PKCE code challenge method to use
     //Config::OPTION_PKCE_CODE_CHALLENGE_METHOD => 'S256',
+<<<<<<< HEAD
     // Default cache time-to-live in seconds
     //Config::OPTION_DEFAULT_CACHE_TTL => 60 * 60 * 24,
+=======
+>>>>>>> master
 ];
 ```
 Make sure to include 'openid' scope in order to use ID token for user

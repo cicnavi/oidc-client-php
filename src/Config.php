@@ -116,6 +116,7 @@ class Config implements ConfigInterface
             $config,
             Pkce::VALID_PKCE_CODE_CHALLENGE_METHODS
         );
+
         ConfigValidator::isArrayWithValidValues(
             self::OPTION_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS,
             $config,
