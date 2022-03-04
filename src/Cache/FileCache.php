@@ -9,7 +9,6 @@ use Cicnavi\SimpleFileCache\SimpleFileCache;
 
 class FileCache extends SimpleFileCache
 {
-
     /**
      * FileCache constructor.
      * @param string $cacheName

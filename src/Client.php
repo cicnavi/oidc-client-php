@@ -27,6 +27,9 @@ use Psr\SimpleCache\CacheInterface;
 use Psr\SimpleCache\InvalidArgumentException as PsrSimpleCacheInvalidArgumentException;
 use Throwable;
 
+/**
+ * TODO mivanci state and nonce generation based on custom cookie as per spec.
+ */
 class Client
 {
     /**
@@ -421,7 +424,7 @@ class Client
             $this->validateHttpResponseOk($response);
             $jwksUriContent = $this->getDecodedHttpResponseJson($response);
             $this->validateJwksUriContentArary($jwksUriContent);
-            $this->cache->set(self::CACHE_KEY_JWKS_URI_CONTENT, $jwksUriContent);
+            $this->cache->set(self::CACHE_KEY_JWKS_URI_CONTENT, $jwksUriContent, $this->config->getDefaultCacheTtl());
         } catch (Throwable | PsrSimpleCacheInvalidArgumentException $exception) {
             throw new OidcClientException('JWKS URI content request error. ' . $exception->getMessage());
         }

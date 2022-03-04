@@ -16,7 +16,6 @@ use PHPUnit\Framework\TestCase;
  */
 class StateNonceTest extends TestCase
 {
-
     /**
      * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
      */

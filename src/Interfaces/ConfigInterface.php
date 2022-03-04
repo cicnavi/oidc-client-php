@@ -105,4 +105,9 @@ interface ConfigInterface
      * @return bool
      */
     public function shouldFetchUserInfoClaims(): bool;
+
+    /**
+     * @return null|int
+     */
+    public function getDefaultCacheTtl(): ?int;
 }

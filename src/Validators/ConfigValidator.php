@@ -112,6 +112,22 @@ class ConfigValidator
 
     /**
      * @param string $key
+     * @param array $config
+     * @throws OidcClientException
+     */
+    public static function isNullZeroOrPositiveInt(string $key, array $config): void
+    {
+        $configValue = $config[$key];
+
+        if (null !== $configValue) {
+            if (!is_int($configValue) || $configValue < 0) {
+                self::throwValidationException($key, 'can be null or int >= 0');
+            }
+        }
+    }
+
+    /**
+     * @param string $key
      * @param string $helpMessage
      * @throws OidcClientException If config value is not valid
      */

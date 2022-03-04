@@ -68,6 +68,11 @@ $config = [
     //Config::OPTION_IS_CONFIDENTIAL_CLIENT => true,
     // If public client, set PKCE code challenge method to use
     //Config::OPTION_PKCE_CODE_CHALLENGE_METHOD => 'S256',
+<<<<<<< HEAD
+    // Default cache time-to-live in seconds
+    //Config::OPTION_DEFAULT_CACHE_TTL => 60 * 60 * 24,
+=======
+>>>>>>> master
 ];
 ```
 Make sure to include 'openid' scope in order to use ID token for user
@@ -199,6 +204,18 @@ claims that have multiple values, for example:
 ## Note on Caching
 OIDC client uses caching to avoid sending HTTP requests to fetch OIDC configuration content and 
 JWKS content on every client usage.
+
+Default cache TTL (time-to-live) is set in configuration, so you can modify it as needed. 
+If you need to bust cache, use reinitializeCache() client instance before making any 
+authentication calls.
+
+```
+// ... 
+$oidcClient = new Client($oidcConfig);
+$oidcClient->reinitializeCache();
+// ...
+```
+
 By default, OIDC client uses file based caching. This means that it uses a folder on your system
 to store files with cached data. 
 For your convenience, class Cicnavi\Oidc\Cache\FileCache is used to instantiate a Cache instance 

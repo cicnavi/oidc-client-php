@@ -10,7 +10,6 @@ use Psr\Http\Message\RequestInterface;
 
 class RequestFactoryTest extends TestCase
 {
-
     public function testCreateRequest(): void
     {
         $this->assertInstanceOf(

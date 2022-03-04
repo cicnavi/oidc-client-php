@@ -80,6 +80,7 @@ class ConfigTest extends TestCase
             [[Config::OPTION_IS_STATE_CHECK_ENABLED => '']],
             [[Config::OPTION_IS_NONCE_CHECK_ENABLED => '']],
             [[Config::OPTION_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS => ['invalid']]],
+            [[Config::OPTION_DEFAULT_CACHE_TTL => -1]],
         ];
     }
 
@@ -192,5 +193,10 @@ class ConfigTest extends TestCase
     public function testShouldFetchUserInfoClaims(): void
     {
         $this->assertTrue(self::$config->shouldFetchUserInfoClaims());
+    }
+
+    public function testGetDefaultCacheTtl(): void
+    {
+        $this->assertEquals(60 * 60 * 24, self::$config->getDefaultCacheTtl());
     }
 }
