@@ -123,7 +123,7 @@ class Metadata implements MetadataInterface
         $this->validateMetadata($metadata);
 
         try {
-            $this->cache->set(self::OIDC_METADATA_CACHE_KEY, $metadata);
+            $this->cache->set(self::OIDC_METADATA_CACHE_KEY, $metadata, $this->config->getDefaultCacheTtl());
             return $metadata;
         } catch (Throwable | PsrSimpleCacheInvalidArgumentException $exception) {
             throw new OidcClientException('Could not store fetched OIDC configuration to cache.');

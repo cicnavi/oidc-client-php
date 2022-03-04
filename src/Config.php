@@ -34,6 +34,7 @@ class Config implements ConfigInterface
     public const OPTION_IS_STATE_CHECK_ENABLED = 'OIDC_IS_STATE_CHECK_ENABLED';
     public const OPTION_IS_NONCE_CHECK_ENABLED = 'OIDC_IS_NONCE_CHECK_ENABLED';
     public const OPTION_SHOULD_FETCH_USERINFO_CLAIMS = 'OIDC_SHOULD_FETCH_USERINFO_CLAIMS';
+    public const OPTION_DEFAULT_CACHE_TTL = 'OIDC_DEFAULT_CACHE_TTL';
 
     /**
      * @var array<string,mixed> $config
@@ -92,6 +93,8 @@ class Config implements ConfigInterface
             self::OPTION_IS_CONFIDENTIAL_CLIENT => true,
             // If public client, set PKCE code challenge method to use
             self::OPTION_PKCE_CODE_CHALLENGE_METHOD => 'S256',
+            // Default cache time-to-live in seconds
+            self::OPTION_DEFAULT_CACHE_TTL => 60 * 60 * 24,
         ];
     }
 
@@ -129,6 +132,7 @@ class Config implements ConfigInterface
         ConfigValidator::isBool(self::OPTION_IS_STATE_CHECK_ENABLED, $config);
         ConfigValidator::isBool(self::OPTION_IS_NONCE_CHECK_ENABLED, $config);
         ConfigValidator::isBool(self::OPTION_SHOULD_FETCH_USERINFO_CLAIMS, $config);
+        ConfigValidator::isNullZeroOrPositiveInt(self::OPTION_DEFAULT_CACHE_TTL, $config);
     }
 
     /**
@@ -324,6 +328,14 @@ class Config implements ConfigInterface
         ];
 
         return self::getAlgorithmNamesArray($algClasses);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getDefaultCacheTtl(): ?int
+    {
+        return $this->config[self::OPTION_DEFAULT_CACHE_TTL];
     }
 
     /**
