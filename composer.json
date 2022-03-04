@@ -42,7 +42,7 @@
     "scripts": {
         "test": [
             "vendor/bin/phpunit",
-            "vendor/bin/psalm --show-info=true",
+            "vendor/bin/psalm --show-info=true --no-cache",
             "vendor/bin/phpcs -p"
         ]
     }

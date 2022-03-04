@@ -11,7 +11,6 @@ use Psr\Http\Message\UriInterface;
 
 class RequestFactory implements RequestFactoryInterface
 {
-
     /**
      * Create a new request.
      *
