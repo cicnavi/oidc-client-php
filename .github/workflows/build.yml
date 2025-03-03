@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, v3.x ]
   pull_request:
     branches: [ master ]
 
@@ -10,14 +10,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: cicnavi/dap:74
+      image: cicnavi/dap:82
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Validate composer.json and composer.lock
       run: composer validate
     - name: Cache Composer packages
       id: composer-cache
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: vendor
         key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
@@ -27,6 +27,6 @@ jobs:
       if: steps.composer-cache.outputs.cache-hit != 'true'
       run: composer install --prefer-dist --no-progress --no-suggest
     - name: Run test suite
-      run: composer run-script test
+      run: composer run-script pre-commit
     - name: Show PHP version
       run: php -v

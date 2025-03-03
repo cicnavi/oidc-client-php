@@ -49,9 +49,9 @@ class Config implements ConfigInterface
     public function __construct(array $config)
     {
         // Remove config which is not supported.
-        $config = array_intersect_key($config, $this->getDefaultConfig());
+        $config = \array_intersect_key($config, $this->getDefaultConfig());
         // Merge with default values
-        $newConfig = array_merge($this->getDefaultConfig(), $config);
+        $newConfig = \array_merge($this->getDefaultConfig(), $config);
         $this->validateConfig($newConfig);
         $this->config = $newConfig;
     }
