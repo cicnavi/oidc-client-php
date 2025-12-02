@@ -18,9 +18,14 @@ use Throwable;
 class Metadata implements MetadataInterface
 {
     /**
-     * @var ConfigInterface $config
+     * @var string $opConfigurationUrl
      */
-    protected ConfigInterface $config;
+    protected string $opConfigurationUrl;
+
+    /**
+     * @var int|null $defaultCacheTtl
+     */
+    protected ?int $defaultCacheTtl;
 
     /**
      * @var CacheInterface $cache
@@ -62,22 +67,25 @@ class Metadata implements MetadataInterface
 
     /**
      * Metadata constructor.
-     * @param ConfigInterface $config
+     * @param string $opConfigurationUrl
      * @param CacheInterface $cache
      * @param ClientInterface|null $httpClient
      * @param RequestFactoryInterface|null $httpRequestFactory
+     * @param int|null $defaultCacheTtl
      * @throws OidcClientException If OIDC Provider (OP) metadata could not be fetched.
      */
     public function __construct(
-        ConfigInterface $config,
+        string $opConfigurationUrl,
         CacheInterface $cache,
         ?ClientInterface $httpClient = null,
-        ?RequestFactoryInterface $httpRequestFactory = null
+        ?RequestFactoryInterface $httpRequestFactory = null,
+        ?int $defaultCacheTtl = null
     ) {
         $this->httpClient = $httpClient ?? new Client();
         $this->httpRequestFactory = $httpRequestFactory ?? new RequestFactory();
 
-        $this->config = $config;
+        $this->opConfigurationUrl = $opConfigurationUrl;
+        $this->defaultCacheTtl = $defaultCacheTtl;
         $this->cache = $cache;
         try {
             $this->metadata = $cache->get(self::OIDC_METADATA_CACHE_KEY) ?? $this->requestMetadata();
@@ -108,7 +116,7 @@ class Metadata implements MetadataInterface
     {
         try {
             $request = $this->httpRequestFactory
-                ->createRequest('GET', $this->config->getOpConfigurationUrl())
+                ->createRequest('GET', $this->opConfigurationUrl)
                 ->withHeader('Accept', 'application/json');
             $response = $this->httpClient->sendRequest($request);
         } catch (PsrHttpClientClientExceptionInterface $exception) {
@@ -123,7 +131,7 @@ class Metadata implements MetadataInterface
         $this->validateMetadata($metadata);
 
         try {
-            $this->cache->set(self::OIDC_METADATA_CACHE_KEY, $metadata, $this->config->getDefaultCacheTtl());
+            $this->cache->set(self::OIDC_METADATA_CACHE_KEY, $metadata, $this->defaultCacheTtl);
             return $metadata;
         } catch (Throwable | PsrSimpleCacheInvalidArgumentException $exception) {
             throw new OidcClientException('Could not store fetched OIDC configuration to cache.');

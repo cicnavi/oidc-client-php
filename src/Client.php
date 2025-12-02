@@ -33,11 +33,6 @@ use Throwable;
 class Client
 {
     /**
-     * @var ConfigInterface $config Instance which holds all OIDC configuration values.
-     */
-    protected ConfigInterface $config;
-
-    /**
      * @var CacheInterface $cache Cache instance which can be used to fetch existing values instead of
      * sending HTTP requests to auth server each time.
      */
@@ -85,7 +80,22 @@ class Client
 
     /**
      * Client constructor.
-     * @param ConfigInterface $config
+     * @param string $opConfigurationUrl
+     * @param string $clientId
+     * @param string $clientSecret
+     * @param string $redirectUri
+     * @param string $scope
+     * @param bool $isConfidentialClient
+     * @param string $pkceCodeChallengeMethod
+     * @param int $idTokenValidationExpLeeway
+     * @param int $idTokenValidationIatLeeway
+     * @param int $idTokenValidationNbfLeeway
+     * @param bool $isStateCheckEnabled
+     * @param bool $isNonceCheckEnabled
+     * @param bool $shouldFetchUserInfoClaims
+     * @param array|null $idTokenValidationAllowedSignatureAlgs
+     * @param array|null $idTokenValidationAllowedEncryptionAlgs
+     * @param int|null $defaultCacheTtl
      * @param CacheInterface|null $cache
      * @param DataStoreInterface|null $dataStore
      * @param ClientInterface|null $httpClient
@@ -97,7 +107,22 @@ class Client
      * @throws OidcClientException If cache could not be reinitialized.
      */
     public function __construct(
-        ConfigInterface $config,
+        protected string $opConfigurationUrl,
+        protected string $clientId,
+        protected string $clientSecret,
+        protected string $redirectUri,
+        protected string $scope,
+        protected bool $isConfidentialClient = true,
+        protected string $pkceCodeChallengeMethod = 'S256',
+        protected int $idTokenValidationExpLeeway = 0,
+        protected int $idTokenValidationIatLeeway = 0,
+        protected int $idTokenValidationNbfLeeway = 0,
+        protected bool $isStateCheckEnabled = true,
+        protected bool $isNonceCheckEnabled = true,
+        protected bool $shouldFetchUserInfoClaims = true,
+        protected ?array $idTokenValidationAllowedSignatureAlgs = null,
+        protected ?array $idTokenValidationAllowedEncryptionAlgs = null,
+        protected ?int $defaultCacheTtl = 86400,
         ?CacheInterface $cache = null,
         ?DataStoreInterface $dataStore = null,
         ?ClientInterface $httpClient = null,
@@ -106,8 +131,11 @@ class Client
         ?PkceDataHandlerInterface $pkceDataHandler = null,
         ?MetadataInterface $metadata = null
     ) {
-        $this->config = $config;
-        $this->cache = $cache ?? new FileCache('oidc-client-php-cache-' . md5($config->getClientId()));
+        $this->idTokenValidationAllowedSignatureAlgs = $idTokenValidationAllowedSignatureAlgs ??
+            ['RS256', 'RS384', 'RS512', 'HS256', 'HS384', 'HS512', 'ES256', 'ES384', 'ES512'];
+        $this->idTokenValidationAllowedEncryptionAlgs = $idTokenValidationAllowedEncryptionAlgs ?? [];
+
+        $this->cache = $cache ?? new FileCache('oidc-client-php-cache-' . md5($this->clientId));
 
         $this->validateCache();
 
@@ -116,7 +144,7 @@ class Client
         $this->httpRequestFactory = $httpRequestFactory ?? new RequestFactory();
         $this->stateNonceDataHandler = $stateNonceDataHandler ?? new StateNonce($this->dataStore);
         $this->pkceDataHandler = $pkceDataHandler ?? new Pkce($this->dataStore);
-        $this->metadata = $metadata ?? new Metadata($config, $this->cache, $this->httpClient);
+        $this->metadata = $metadata ?? new Metadata($this->opConfigurationUrl, $this->cache, $this->httpClient);
     }
 
     /**
@@ -130,7 +158,7 @@ class Client
     {
         try {
             if (
-                $this->config->getOpConfigurationUrl() !=
+                $this->opConfigurationUrl !=
                 $this->cache->get(self::CACHE_KEY_OP_CONFIGURATION_URL)
             ) {
                 $this->reinitializeCache();
@@ -149,22 +177,22 @@ class Client
     {
         $queryParameters = [
             'response_type' => 'code', // indicate authorization code grant
-            'client_id' => $this->config->getClientId(),
-            'redirect_uri' => $this->config->getRedirectUri(),
-            'scope' => $this->config->getScope(),
+            'client_id' => $this->clientId,
+            'redirect_uri' => $this->redirectUri,
+            'scope' => $this->scope,
         ];
 
-        if ($this->config->isStateCheckEnabled()) {
+        if ($this->isStateCheckEnabled) {
             $queryParameters['state'] = $this->stateNonceDataHandler->get(StateNonce::STATE_KEY);
         }
 
-        if ($this->config->isNonceCheckEnabled()) {
+        if ($this->isNonceCheckEnabled) {
             $queryParameters['nonce'] = $this->stateNonceDataHandler->get(StateNonce::NONCE_KEY);
         }
 
         // Web apps with backend are considered confidential, but left this choice for testing
-        if (! $this->config->isConfidentialClient()) {
-            $codeChallengeMethod = $this->config->getPkceCodeChallengeMethod();
+        if (! $this->isConfidentialClient) {
+            $codeChallengeMethod = $this->pkceCodeChallengeMethod;
 
             $codeChallenge = $this->pkceDataHandler->generateCodeChallengeFromCodeVerifier(
                 $this->pkceDataHandler->getCodeVerifier(),
@@ -196,7 +224,7 @@ class Client
 
         $this->validateTokenDataArray($tokenData);
 
-        if (! $this->config->isConfidentialClient()) {
+        if (! $this->isConfidentialClient) {
             // Since we got tokens, we can remove code verifier (it was validated on auth server).
             $this->pkceDataHandler->removeCodeVerifier();
         }
@@ -220,7 +248,7 @@ class Client
             throw new OidcClientException('Not all required parameters were provided (code).');
         }
 
-        if ($this->config->isStateCheckEnabled()) {
+        if ($this->isStateCheckEnabled) {
             if ((! isset($_GET['state'])) || (! $_GET['state'])) {
                 throw new OidcClientException('Not all required parameters were provided (state).');
             }
@@ -240,9 +268,9 @@ class Client
     {
         $params = [
             'grant_type' => 'authorization_code',
-            'client_id' => $this->config->getClientId(),
+            'client_id' => $this->clientId,
             'code' => $authorizationCode,
-            'redirect_uri' => $this->config->getRedirectUri(),
+            'redirect_uri' => $this->redirectUri,
         ];
 
         $headers = [
@@ -250,9 +278,9 @@ class Client
             'Content-Type' => 'application/x-www-form-urlencoded',
         ];
 
-        if ($this->config->isConfidentialClient()) {
+        if ($this->isConfidentialClient) {
             $headers['Authorization'] = 'Basic ' .
-                base64_encode($this->config->getClientId() . ':' . $this->config->getClientSecret());
+                base64_encode($this->clientId . ':' . $this->clientSecret);
         } else {
             $params['code_verifier'] = $this->pkceDataHandler->getCodeVerifier();
         }
@@ -299,7 +327,7 @@ class Client
             $idTokenClaims = $this->getDataFromIDToken($tokenData['id_token']);
         }
 
-        if ($this->config->shouldFetchUserInfoClaims()) {
+        if ($this->shouldFetchUserInfoClaims) {
             $userInfoClaims = $this->requestUserDataFromUserInfoEndpoint($tokenData['access_token']);
         }
 
@@ -323,19 +351,19 @@ class Client
 
         // TODO mivanci implement JWE support.
         // Differentiate allowed algorithms depending if it is JWS or JWE loader
-//        if ($jwtLoader instanceof Validate) {
-//            $jwtLoader = $jwtLoader->algs($this->config->getIdTokenValidationAllowedSignatureAlgs());
-//        } else {
-//            $jwtLoader = $jwtLoader->algs($this->config->getIdTokenValidationAllowedEncryptionAlgs());
-//        }
+        //        if ($jwtLoader instanceof Validate) {
+        //            $jwtLoader = $jwtLoader->algs($this->config->getIdTokenValidationAllowedSignatureAlgs());
+        //        } else {
+        //            $jwtLoader = $jwtLoader->algs($this->config->getIdTokenValidationAllowedEncryptionAlgs());
+        //        }
 
-        $jwtLoader = $jwtLoader->algs($this->config->getIdTokenValidationAllowedSignatureAlgs());
+        $jwtLoader = $jwtLoader->algs($this->idTokenValidationAllowedSignatureAlgs);
         $jwtLoader = $jwtLoader
             ->mandatory(['iss', 'sub', 'aud', 'exp', 'iat'])
-            ->exp($this->config->getIdTokenValidationExpLeeway()) // Check "exp" claim
-            ->iat($this->config->getIdTokenValidationIatLeeway()) // Check "iat" claim
-            ->nbf($this->config->getIdTokenValidationNbfLeeway()) // Check "nbf" claim
-            ->aud($this->config->getClientId()) // Check allowed audience
+            ->exp($this->idTokenValidationExpLeeway) // Check "exp" claim
+            ->iat($this->idTokenValidationIatLeeway) // Check "iat" claim
+            ->nbf($this->idTokenValidationNbfLeeway) // Check "nbf" claim
+            ->aud($this->clientId) // Check allowed audience
             ->iss($this->metadata->get('issuer')) // Check allowed issuer
             ->keyset($jwkSet); // Set available keys used for token signature validation
 
@@ -355,7 +383,7 @@ class Client
             return $this->getDataFromIDToken($idToken, true);
         }
 
-        if ($this->config->isNonceCheckEnabled()) {
+        if ($this->isNonceCheckEnabled) {
             if (! $jwt->claims->has('nonce')) {
                 throw new OidcClientException('Nonce parameter is not present in ID token.');
             }
@@ -424,7 +452,7 @@ class Client
             $this->validateHttpResponseOk($response);
             $jwksUriContent = $this->getDecodedHttpResponseJson($response);
             $this->validateJwksUriContentArary($jwksUriContent);
-            $this->cache->set(self::CACHE_KEY_JWKS_URI_CONTENT, $jwksUriContent, $this->config->getDefaultCacheTtl());
+            $this->cache->set(self::CACHE_KEY_JWKS_URI_CONTENT, $jwksUriContent, $this->defaultCacheTtl);
         } catch (Throwable | PsrSimpleCacheInvalidArgumentException $exception) {
             throw new OidcClientException('JWKS URI content request error. ' . $exception->getMessage());
         }
@@ -580,7 +608,7 @@ class Client
      */
     protected function validateIdTokenAndUserInfoClaims(array $idTokenClaims, array $userInfoClaims): void
     {
-        if (! $this->config->shouldFetchUserInfoClaims()) {
+        if (! $this->shouldFetchUserInfoClaims) {
             return;
         }
 
@@ -596,6 +624,6 @@ class Client
     public function reinitializeCache(): void
     {
         $this->cache->clear();
-        $this->cache->set(self::CACHE_KEY_OP_CONFIGURATION_URL, $this->config->getOpConfigurationUrl());
+        $this->cache->set(self::CACHE_KEY_OP_CONFIGURATION_URL, $this->opConfigurationUrl);
     }
 }

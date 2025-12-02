@@ -6,7 +6,6 @@ namespace Cicnavi\Tests\Oidc;
 
 use Cicnavi\SimpleFileCache\Exceptions\InvalidArgumentException;
 use Cicnavi\Oidc\Cache\FileCache;
-use Cicnavi\Oidc\Config;
 use Cicnavi\Oidc\Metadata;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
@@ -29,14 +28,14 @@ class MetadataTest extends TestCase
      * @var array<string,mixed>
      */
     protected static array $validConfigOptions = [
-        Config::OPTION_OP_CONFIGURATION_URL => 'https://login.aaiedu.hr/.well-known/openid-configuration',
-        Config::OPTION_CLIENT_ID => 'some-client-id',
-        Config::OPTION_CLIENT_SECRET => 'some-client-secret',
-        Config::OPTION_REDIRECT_URI => 'https://some-redirect-uri.example.org/callback',
-        Config::OPTION_SCOPE => 'openid profile',
+        'opConfigurationUrl' => 'https://login.aaiedu.hr/.well-known/openid-configuration',
+        'clientId' => 'some-client-id',
+        'clientSecret' => 'some-client-secret',
+        'redirectUri' => 'https://some-redirect-uri.example.org/callback',
+        'scope' => 'openid profile',
     ];
 
-    protected static Config $config;
+
 
     protected static string $cachePath;
 
@@ -44,7 +43,6 @@ class MetadataTest extends TestCase
 
     public static function setUpBeforeClass(): void
     {
-        self::$config = new Config(self::$validConfigOptions);
         self::$oidcConfigurationJson = file_get_contents(dirname(__DIR__) . '/data/oidc-config.json');
 
         self::$cachePath = dirname(__DIR__, 2) . '/tmp/cache-test';
@@ -78,7 +76,7 @@ class MetadataTest extends TestCase
         $httpClientStub->method('sendRequest')
             ->willReturn($oidcConfigurationResponse);
 
-        $metadata = new Metadata(self::$config, self::$cache, $httpClientStub);
+        $metadata = new Metadata(self::$validConfigOptions['opConfigurationUrl'], self::$cache, $httpClientStub);
 
         $this->assertSame(json_decode(self::$oidcConfigurationJson, true)['issuer'], $metadata->get('issuer'));
 
@@ -114,7 +112,7 @@ class MetadataTest extends TestCase
             );
 
         $this->expectException(\Exception::class);
-        new Metadata(self::$config, $cacheStub, $httpClientStub);
+        new Metadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub);
     }
 
     /**
@@ -143,7 +141,7 @@ class MetadataTest extends TestCase
             ->willReturn($oidcConfigurationResponse);
 
         $this->expectException(\Exception::class);
-        new Metadata(self::$config, $cacheStub, $httpClientStub);
+        new Metadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub);
     }
 
     /**
@@ -174,7 +172,7 @@ class MetadataTest extends TestCase
             ->willReturn($oidcConfigurationResponse);
 
         $this->expectException(\Exception::class);
-        new Metadata(self::$config, $cacheStub, $httpClientStub);
+        new Metadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub);
     }
 
     /**
@@ -205,7 +203,7 @@ class MetadataTest extends TestCase
             ->willReturn($oidcConfigurationResponse);
 
         $this->expectException(\Exception::class);
-        new Metadata(self::$config, $cacheStub, $httpClientStub);
+        new Metadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub);
     }
 
     /**
@@ -238,7 +236,7 @@ class MetadataTest extends TestCase
             ->willReturn($oidcConfigurationResponse);
 
         $this->expectException(\Exception::class);
-        new Metadata(self::$config, $cacheStub, $httpClientStub);
+        new Metadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub);
     }
 
     /**

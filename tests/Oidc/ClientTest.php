@@ -6,7 +6,6 @@ namespace Cicnavi\Tests\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\Client;
-use Cicnavi\Oidc\Config;
 use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use Exception;
@@ -32,11 +31,11 @@ class ClientTest extends TestCase
      * @var array<string,mixed>
      */
     protected static array $validConfigOptions = [
-        Config::OPTION_OP_CONFIGURATION_URL => 'https://login.example.org/.well-known/openid-configuration',
-        Config::OPTION_CLIENT_ID => '6e55295209782b7b2',
-        Config::OPTION_CLIENT_SECRET => 'ad6dsd63sgj54hd5s',
-        Config::OPTION_REDIRECT_URI => 'https://some-redirect-uri.example.org/callback',
-        Config::OPTION_SCOPE => 'openid profile',
+        'opConfigurationUrl' => 'https://login.example.org/.well-known/openid-configuration',
+        'clientId' => '6e55295209782b7b2',
+        'clientSecret' => 'ad6dsd63sgj54hd5s',
+        'redirectUri' => 'https://some-redirect-uri.example.org/callback',
+        'scope' => 'openid profile',
     ];
 
     protected static array $sampleTokenDataArray = [
@@ -73,14 +72,14 @@ class ClientTest extends TestCase
         'preferred_username' => 'jdoe@example.org',
         'email' => 'john.doe@example.org',
         'hrEduPersonUniqueNumber' =>
-            array (
-                0 => 'LOCAL_NO: 1234',
-                1 => 'OIB: 12345678912',
-                2 => 'JMBAG: 1234567891',
-            ),
+        array(
+            0 => 'LOCAL_NO: 1234',
+            1 => 'OIB: 12345678912',
+            2 => 'JMBAG: 1234567891',
+        ),
     ];
 
-    protected static Config $config;
+
 
     protected static string $cachePath;
 
@@ -111,7 +110,6 @@ class ClientTest extends TestCase
 
     public static function setUpBeforeClass(): void
     {
-        self::$config = new Config(self::$validConfigOptions);
         self::$cachePath = dirname(__DIR__, 2) . '/tmp/cache';
         self::$oidcConfigurationJson = file_get_contents(dirname(__DIR__) . '/data/oidc-config.json');
         self::$privateTestKeyJwkSig = JWKFactory::createFromKeyFile(
@@ -194,9 +192,9 @@ class ClientTest extends TestCase
             $tokenResponse,
             $jwksResponse,
             $userInfoResponse,
-//            new Response(200, ['Content-Type' => 'application/json'], json_encode('test')),
-//            new Response(202, ['Content-Length' => 0]),
-//            new RequestException('Error Communicating with Server', new Request('GET', 'test'))
+            //            new Response(200, ['Content-Type' => 'application/json'], json_encode('test')),
+            //            new Response(202, ['Content-Length' => 0]),
+            //            new RequestException('Error Communicating with Server', new Request('GET', 'test'))
         ];
 
         self::$guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
@@ -227,14 +225,54 @@ class ClientTest extends TestCase
      */
     public function testConstruct(): Client
     {
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
+        );
         $this->assertInstanceOf(Client::class, $client);
         return $client;
     }
 
     public function testGetMetadata(): void
     {
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
+        );
         $this->assertInstanceOf(MetadataInterface::class, $client->getMetadata());
     }
 
@@ -245,7 +283,27 @@ class ClientTest extends TestCase
      */
     public function testAuthorize(): void
     {
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
+        );
         $client->authorize();
         $authorizationEndpoint = json_decode(self::$oidcConfigurationJson, true)['authorization_endpoint'];
 
@@ -272,19 +330,19 @@ class ClientTest extends TestCase
         $this->assertTrue(
             mb_strpos(
                 $redirectUrlParts['query'],
-                'client_id=' . urlencode(self::$validConfigOptions[Config::OPTION_CLIENT_ID])
+                'client_id=' . urlencode(self::$validConfigOptions['clientId'])
             ) !== false
         );
         $this->assertTrue(
             mb_strpos(
                 $redirectUrlParts['query'],
-                'redirect_uri=' . urlencode(self::$validConfigOptions[Config::OPTION_REDIRECT_URI])
+                'redirect_uri=' . urlencode(self::$validConfigOptions['redirectUri'])
             ) !== false
         );
         $this->assertTrue(
             mb_strpos(
                 $redirectUrlParts['query'],
-                'scope=' . urlencode(self::$validConfigOptions[Config::OPTION_SCOPE])
+                'scope=' . urlencode(self::$validConfigOptions['scope'])
             ) !== false
         );
         $this->assertTrue(
@@ -308,14 +366,27 @@ class ClientTest extends TestCase
      */
     public function testAuthorizeForPublicClient(): void
     {
-        $publicClientConfigArray = array_merge(
-            self::$validConfigOptions,
-            [Config::OPTION_IS_CONFIDENTIAL_CLIENT => false]
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            false, // isConfidentialClient
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
         );
-
-        $publicConfig = new Config($publicClientConfigArray);
-
-        $client = new Client($publicConfig, self::$cache, null, self::$guzzleHttpClientStub);
         $client->authorize();
 
         $allHeaders = xdebug_get_headers();
@@ -352,7 +423,27 @@ class ClientTest extends TestCase
 
     public function testAuthenticateMissingCodeThrows(): void
     {
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
+        );
         $this->expectException(Throwable::class);
         $client->getUserData();
     }
@@ -364,7 +455,27 @@ class ClientTest extends TestCase
      */
     public function testGetUserDataErrorThrows(): void
     {
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
+        );
         $this->expectException(Throwable::class);
         global $_GET;
         $_GET['error'] = 'invalid_request';
@@ -376,7 +487,27 @@ class ClientTest extends TestCase
      */
     public function testGetUserDataMissingStateThrows(): void
     {
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
+        );
         $this->expectException(Throwable::class);
         global $_GET;
         $_GET['code'] = 'sample-auth-code';
@@ -391,7 +522,29 @@ class ClientTest extends TestCase
         $stateNonceStub = $this->createStub(StateNonce::class);
         $stateNonceStub->method('verify');
 
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub, null, $stateNonceStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub,
+            null,
+            $stateNonceStub
+        );
 
         global $_GET;
         $_GET['code'] = 'sample-auth-code';
@@ -399,7 +552,7 @@ class ClientTest extends TestCase
 
         $userData = $client->getUserData();
 
-        $this->assertSame(self::$validConfigOptions[Config::OPTION_CLIENT_ID], $userData['aud']);
+        $this->assertSame(self::$validConfigOptions['clientId'], $userData['aud']);
         $this->assertSame(json_decode(self::$oidcConfigurationJson, true)['issuer'], $userData['iss']);
     }
 
@@ -408,17 +561,32 @@ class ClientTest extends TestCase
      */
     public function testGetUserDataForPublicClient(): void
     {
-        $publicClientConfigArray = array_merge(
-            self::$validConfigOptions,
-            [Config::OPTION_IS_CONFIDENTIAL_CLIENT => false]
-        );
-
-        $publicConfig = new Config($publicClientConfigArray);
-
         $stateNonceStub = $this->createStub(StateNonce::class);
         $stateNonceStub->method('verify');
 
-        $client = new Client($publicConfig, self::$cache, null, self::$guzzleHttpClientStub, null, $stateNonceStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            false, // isConfidentialClient
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub,
+            null,
+            $stateNonceStub
+        );
 
         global $_GET;
         $_GET['code'] = 'sample-auth-code';
@@ -426,7 +594,7 @@ class ClientTest extends TestCase
 
         $userData = $client->getUserData();
 
-        $this->assertSame(self::$validConfigOptions[Config::OPTION_CLIENT_ID], $userData['aud']);
+        $this->assertSame(self::$validConfigOptions['clientId'], $userData['aud']);
         $this->assertSame(json_decode(self::$oidcConfigurationJson, true)['issuer'], $userData['iss']);
     }
 
@@ -435,7 +603,27 @@ class ClientTest extends TestCase
         $tokenData = self::$sampleTokenDataArray;
         unset($tokenData['access_token']);
         $this->expectException(Exception::class);
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
+        );
         $client->validateTokenDataArray($tokenData);
     }
 
@@ -444,20 +632,58 @@ class ClientTest extends TestCase
         $tokenData = self::$sampleTokenDataArray;
         unset($tokenData['token_type']);
         $this->expectException(Exception::class);
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
+        );
         $client->validateTokenDataArray($tokenData);
     }
 
     public function testUserDataFetchFromUserinfoEndpointIsNotPerformed(): void
     {
-        $configOptions = self::$validConfigOptions;
-        $configOptions[Config::OPTION_SHOULD_FETCH_USERINFO_CLAIMS] = false;
-        $config = new Config($configOptions);
-
         $stateNonceStub = $this->createStub(StateNonce::class);
         $stateNonceStub->method('verify');
 
-        $client = new Client($config, self::$cache, null, self::$guzzleHttpClientStub, null, $stateNonceStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            false, // shouldFetchUserInfoClaims
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub,
+            null,
+            $stateNonceStub
+        );
 
         $userData = $client->getUserData();
 
@@ -478,7 +704,27 @@ class ClientTest extends TestCase
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub([$oidcConfigurationResponse]);
 
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            $guzzleHttpClientStub
+        );
 
         $this->expectException(Exception::class);
 
@@ -518,7 +764,27 @@ class ClientTest extends TestCase
             ]
         );
 
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            $guzzleHttpClientStub
+        );
 
         $this->expectException(Exception::class);
 
@@ -559,7 +825,29 @@ class ClientTest extends TestCase
         $stateNonceStub = $this->createStub(StateNonce::class);
         $stateNonceStub->method('verify');
 
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub, null, $stateNonceStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            $guzzleHttpClientStub,
+            null,
+            $stateNonceStub
+        );
 
         $this->expectException(Exception::class);
 
@@ -568,7 +856,27 @@ class ClientTest extends TestCase
 
     public function testGetDataFromIdTokenThrowsForInvalidIdTokenFormat(): void
     {
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
+        );
         $this->expectException(Exception::class);
         $client->getDataFromIDToken('invalid-token');
     }
@@ -590,7 +898,27 @@ class ClientTest extends TestCase
         ];
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            $guzzleHttpClientStub
+        );
 
         $this->expectException(Exception::class);
         $client->getDataFromIDToken(self::generateSampleIdTokenJws(false));
@@ -598,7 +926,27 @@ class ClientTest extends TestCase
 
     public function testGetDataFromIdTokenThrowsForInvalidJson(): void
     {
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
+        );
         $this->expectException(Exception::class);
         $client->getDataFromIDToken('invalid.token.json');
     }
@@ -623,7 +971,27 @@ class ClientTest extends TestCase
         ];
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            $guzzleHttpClientStub
+        );
 
         $this->expectException(Exception::class);
 
@@ -651,7 +1019,27 @@ class ClientTest extends TestCase
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
 
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            $guzzleHttpClientStub
+        );
 
         $this->expectException(Exception::class);
         $client->getDataFromIDToken($idToken);
@@ -678,7 +1066,27 @@ class ClientTest extends TestCase
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
 
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            $guzzleHttpClientStub
+        );
 
         $this->expectException(Exception::class);
         $client->getDataFromIDToken($idToken);
@@ -689,7 +1097,27 @@ class ClientTest extends TestCase
         $jwksUriContentArray = self::$sampleJwksArray;
         $jwksUriContentArray['keys'] = [];
 
-        $client = new Client(self::$config, self::$cache, null, self::$guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            self::$guzzleHttpClientStub
+        );
         $this->expectException(Exception::class);
         $client->validateJwksUriContentArary($jwksUriContentArray);
     }
@@ -710,7 +1138,27 @@ class ClientTest extends TestCase
         ];
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            $guzzleHttpClientStub
+        );
 
         $jwksUriContent = $client->getJwksUriContent();
         $this->assertArrayHasKey('keys', $jwksUriContent);
@@ -720,12 +1168,26 @@ class ClientTest extends TestCase
 
     public function testValidateCacheThrows(): void
     {
-        $configStub = $this->createStub(Config::class);
-        $configStub->method('getOpConfigurationUrl')
-            ->will($this->throwException(new Exception('Sample error')));
-
         $this->expectException(Exception::class);
-        new Client($configStub, self::$cache);
+        new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache
+        );
     }
 
     /**
@@ -748,7 +1210,27 @@ class ClientTest extends TestCase
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
 
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            $guzzleHttpClientStub
+        );
         $this->expectException(Exception::class);
         $client->requestTokenData('sample-auth-code');
     }
@@ -774,14 +1256,34 @@ class ClientTest extends TestCase
         $cacheStub->method('get')
             ->will($this->onConsecutiveCalls(
                 // for check if the OIDC metadata URL was changed
-                self::$validConfigOptions[Config::OPTION_OP_CONFIGURATION_URL],
+                self::$validConfigOptions['opConfigurationUrl'],
                 // For Metadata OIDC Configuration fetch
                 null,
                 // For simulating cache error on get JWKS content
                 $this->throwException(new Exception('Sample cache error.'))
             ));
 
-        $client = new Client(self::$config, $cacheStub, null, $guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            $cacheStub,
+            null,
+            $guzzleHttpClientStub
+        );
         $this->expectException(Exception::class);
         $client->getJwksUriContent();
     }
@@ -802,7 +1304,27 @@ class ClientTest extends TestCase
         ];
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            $guzzleHttpClientStub
+        );
 
         $this->expectException(Exception::class);
         $client->getJwksUriContent();
@@ -825,7 +1347,27 @@ class ClientTest extends TestCase
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
 
-        $client = new Client(self::$config, self::$cache, null, $guzzleHttpClientStub);
+        $client = new Client(
+            self::$validConfigOptions['opConfigurationUrl'],
+            self::$validConfigOptions['clientId'],
+            self::$validConfigOptions['clientSecret'],
+            self::$validConfigOptions['redirectUri'],
+            self::$validConfigOptions['scope'],
+            true,
+            'S256',
+            0,
+            0,
+            0,
+            true,
+            true,
+            true,
+            null,
+            null,
+            86400,
+            self::$cache,
+            null,
+            $guzzleHttpClientStub
+        );
         $this->expectException(Exception::class);
         $client->getJwksUriContent();
     }

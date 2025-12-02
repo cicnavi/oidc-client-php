@@ -25,66 +25,49 @@ composer require cicnavi/oidc-client-php
 ```
 
 ## Client instantiation
-To instantiate a client you will have to prepare a Config instance.
-First, prepare an array with the following OIDC configuration values,
-for example:
-```
-use Cicnavi\Oidc\Config;
+To instantiate a client, you need to provide configuration parameters directly to the `Client` constructor.
+Here's a basic example with required parameters:
+```php
 use Cicnavi\Oidc\Client;
 
-$config = [
-    // Mandatory config items
-    // OpenID Provider (OP) well-known configuration URL
-    Config::OPTION_OP_CONFIGURATION_URL => 'https://example.org/oidc/.well-known/openid-configuration',
-    // Client ID - obtained durign client registration at OP
-    Config::OPTION_CLIENT_ID => 'some-client-id',
-    // Client Secret - obtained durign client registration at OP
-    Config::OPTION_CLIENT_SECRET => 'some-client-secret',
-    // Redirect URI to which the authorization server will return auth code
-    Config::OPTION_REDIRECT_URI => 'https://your-example.org/callback',
-    // Scopes
-    Config::OPTION_SCOPE => 'openid profile',
-    
-    // Optional config items with default values (override them as necessary)
-    // Additional time for which the claim 'exp' is considered valid. If false, the check will be skipped.
-    //Config::OPTION_ID_TOKEN_VALIDATION_EXP_LEEWAY => 0,
-    // Additional time for which the claim 'iat' is considered valid. If false, the check will be skipped.
-    //Config::OPTION_ID_TOKEN_VALIDATION_IAT_LEEWAY => 0,
-    // Additional time for which the claim 'nbf' is considered valid. If false, the check will be skipped.
-    //Config::OPTION_ID_TOKEN_VALIDATION_NBF_LEEWAY => 0,
-    // Enable or disable State check
-    //Config::OPTION_IS_STATE_CHECK_ENABLED => true,
-    // Enable or disable Nonce check
-    //Config::OPTION_IS_NONCE_CHECK_ENABLED => true,
-    // Set allowed signature algorithms
-    //Config::OPTION_ID_TOKEN_VALIDATION_ALLOWED_SIGNATURE_ALGS =>
-    //    Config::getIdTokenValidationSupportedSignatureAlgs(), // Or set your own like ['RS256', 'RS512',]
-    // Set allowed encryption algorithms
-    //Config::OPTION_ID_TOKEN_VALIDATION_ALLOWED_ENCRYPTION_ALGS =>
-    //    Config::getIdTokenValidationSupportedEncryptionAlgs(),
-    // Should client fetch userinfo claims
-    //Config::OPTION_SHOULD_FETCH_USERINFO_CLAIMS => true,
-    // Choose if client should act as confidential client or public client
-    //Config::OPTION_IS_CONFIDENTIAL_CLIENT => true,
-    // If public client, set PKCE code challenge method to use
-    //Config::OPTION_PKCE_CODE_CHALLENGE_METHOD => 'S256',
-    // Default cache time-to-live in seconds
-    //Config::OPTION_DEFAULT_CACHE_TTL => 60 * 60 * 24,
-];
+// Create client with required parameters
+$oidcClient = new Client(
+    opConfigurationUrl: 'https://example.org/oidc/.well-known/openid-configuration',
+    clientId: 'some-client-id',
+    clientSecret: 'some-client-secret',
+    redirectUri: 'https://your-example.org/callback',
+    scope: 'openid profile'
+);
 ```
+
 Make sure to include 'openid' scope in order to use ID token for user
 claims extraction. Other scopes are optional 
 (refer to the documentation for your OpenID Provider).
 
-Next, create a Cicnavi\Oidc\Config instance using the previously 
-prepared config array:
-```
-$oidcConfig = new Config($config);
-```
+### Optional Parameters
 
-OIDC client can now be instantiated using config instance as parameter:
-```
-$oidcClient = new Client($oidcConfig);
+You can also customize the client behavior with optional parameters:
+```php
+$oidcClient = new Client(
+    // Required parameters
+    opConfigurationUrl: 'https://example.org/oidc/.well-known/openid-configuration',
+    clientId: 'some-client-id',
+    clientSecret: 'some-client-secret',
+    redirectUri: 'https://your-example.org/callback',
+    scope: 'openid profile',
+    
+    // Optional parameters (showing defaults)
+    isConfidentialClient: true,  // Set to false for public clients
+    pkceCodeChallengeMethod: 'S256',  // PKCE method for public clients
+    idTokenValidationExpLeeway: 0,  // Additional time for 'exp' claim validation
+    idTokenValidationIatLeeway: 0,  // Additional time for 'iat' claim validation
+    idTokenValidationNbfLeeway: 0,  // Additional time for 'nbf' claim validation
+    isStateCheckEnabled: true,  // Enable/disable state check
+    isNonceCheckEnabled: true,  // Enable/disable nonce check
+    shouldFetchUserInfoClaims: true,  // Fetch claims from userinfo endpoint
+    idTokenValidationAllowedSignatureAlgs: null,  // Custom signature algorithms (defaults to standard set)
+    idTokenValidationAllowedEncryptionAlgs: null,  // Custom encryption algorithms
+    defaultCacheTtl: 86400  // Cache TTL in seconds (24 hours)
 ```
 
 ## Client usage
@@ -206,9 +189,15 @@ Default cache TTL (time-to-live) is set in configuration, so you can modify it a
 If you need to bust cache, use reinitializeCache() client instance before making any 
 authentication calls.
 
-```
+```php
 // ... 
-$oidcClient = new Client($oidcConfig);
+$oidcClient = new Client(
+    opConfigurationUrl: 'https://example.org/oidc/.well-known/openid-configuration',
+    clientId: 'some-client-id',
+    clientSecret: 'some-client-secret',
+    redirectUri: 'https://your-example.org/callback',
+    scope: 'openid profile'
+);
 $oidcClient->reinitializeCache();
 // ...
 ```
@@ -233,10 +222,15 @@ use Cicnavi\Oidc\Cache\FileCache;
 $storagePath = __DIR__ . '/../storage';
 $oidcCache = new FileCache($storagePath);
 
-// ... prepare $oidcConfig
-
-// Create client instance using config and cache instances.
-$oidcClient = new Client($oidcConfig, $oidcCache);
+// Create client instance with custom cache
+$oidcClient = new Client(
+    opConfigurationUrl: 'https://example.org/oidc/.well-known/openid-configuration',
+    clientId: 'some-client-id',
+    clientSecret: 'some-client-secret',
+    redirectUri: 'https://your-example.org/callback',
+    scope: 'openid profile',
+    cache: $oidcCache  // Pass custom cache instance
+);
 ```
 
 ## Note on SameSite Cookie Attribute
