@@ -19,5 +19,5 @@ interface MetadataInterface
      * @throws OidcClientException If key does not exist.
      * @return mixed Metadata value
      */
-    public function get(string $key);
+    public function get(string $key): mixed;
 }

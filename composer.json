@@ -4,17 +4,14 @@
     "type": "library",
     "require": {
         "php": "^8.2",
-
         "ext-gmp": "*",
         "ext-json": "*",
         "ext-openssl": "*",
-        
         "psr/http-client": "^1",
         "psr/http-factory": "^1",
         "psr/http-message": "^2",
         "psr/log": "^3",
         "psr/simple-cache": "^3",
-
         "cicnavi/simple-file-cache-php": "^3",
         "guzzlehttp/guzzle": "^7.8",
         "simplesamlphp/openid": "^0"
@@ -39,7 +36,6 @@
     "minimum-stability": "stable",
     "require-dev": {
         "ext-xdebug": "*",
-        
         "phpstan/phpstan": "^2",
         "phpunit/phpunit": "^11",
         "rector/rector": "^2",

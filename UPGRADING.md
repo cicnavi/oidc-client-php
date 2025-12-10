@@ -4,14 +4,31 @@
 
 Major release with breaking changes to the client instantiation API.
 
+### Added
+
+
 ### Changed 
-- **Breaking**: Class `Cicnavi\Oidc\Client` (`src/Client.php`) now accepts configuration options as direct constructor parameters using PHP 8.2's property promotion, instead of accepting a `Cicnavi\Oidc\Config` instance.
-- **Breaking**: Class `Cicnavi\Oidc\Metadata` (`src/Metadata.php`) now accepts configuration parameters directly instead of a `ConfigInterface` instance.
+- **Breaking**: Class `Cicnavi\Oidc\Client` (`src/Client.php`) now accepts
+configuration options as direct constructor parameters using PHP 8.2's property
+promotion, instead of accepting a `Cicnavi\Oidc\Config` instance.
+- **Breaking**: Class `Cicnavi\Oidc\Metadata` (`src/Metadata.php`) now accepts
+configuration parameters directly instead of a `ConfigInterface` instance.
+- Instead of optional options `idTokenValidationAllowedSignatureAlgs` and 
+`idTokenValidationAllowedEncryptionAlgs`, you can now designate supported 
+algorithms by instantiating `\SimpleSAML\OpenID\SupportedAlgorithms` and
+passing it to the client.
+- Instead of optional options `idTokenValidationExpLeeway`,
+`idTokenValidationIatLeeway` and `idTokenValidationNbfLeeway`, you can now 
+designate validation leeway for timestamps using `timestampValidationLeeway`
+configuration option, which is `DateInterval` instance.
 
 ### Removed 
 - **Breaking**: Class `Cicnavi\Oidc\Config` (`src/Config.php`) has been removed.
-- **Breaking**: Interface `Cicnavi\Oidc\Interfaces\ConfigInterface` (`src/Interfaces/ConfigInterface.php`) has been removed.
+- **Breaking**: Interface `Cicnavi\Oidc\Interfaces\ConfigInterface`
+(`src/Interfaces/ConfigInterface.php`) has been removed.
 - All `Config::OPTION_*` constants are no longer available.
+- Configuration option used to designate if the client is confidential or not
+has been removed. Client is now always considered confidential.
 
 ### Migration Guide
 
@@ -34,6 +51,7 @@ $client = new Client($config);
 ```
 
 #### After (v3.0):
+
 ```php
 use Cicnavi\Oidc\Client;
 
@@ -43,7 +61,7 @@ $client = new Client(
     clientSecret: 'client-secret',
     redirectUri: 'https://your-app.org/callback',
     scope: 'openid profile',
-    isConfidentialClient: true,
+    shouldUsePkce: true,
     defaultCacheTtl: 3600
 );
 ```

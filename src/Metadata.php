@@ -8,7 +8,7 @@ use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Http\RequestFactory;
 use Psr\Http\Client\ClientExceptionInterface as PsrHttpClientClientExceptionInterface;
 use Psr\SimpleCache\CacheInterface;
-use Cicnavi\Oidc\Interfaces\{ConfigInterface, MetadataInterface};
+use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use GuzzleHttp\Client;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Client\ClientInterface;
@@ -97,7 +97,7 @@ class Metadata implements MetadataInterface
     /**
      * @inheritDoc
      */
-    public function get(string $key)
+    public function get(string $key): mixed
     {
         if (! isset($this->metadata[$key])) {
             throw new OidcClientException(sprintf('OIDC metadata parameter not supported (%s)', $key));
