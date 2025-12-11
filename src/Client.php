@@ -32,19 +32,18 @@ use SimpleSAML\OpenID\SupportedAlgorithms;
 use SimpleSAML\OpenID\SupportedSerializers;
 use Throwable;
 
-/**
- * TODO mivanci state and nonce generation based on custom cookie as per spec.
- */
 class Client
 {
     /**
-     * @var CacheInterface $cache Cache instance which can be used to fetch existing values instead of
-     * sending HTTP requests to auth server each time.
+     * @var CacheInterface $cache Cache instance, which can be used to fetch
+     * existing values instead of sending HTTP requests to the auth server
+     * each time.
      */
     protected CacheInterface $cache;
 
     /**
-     * @var MetadataInterface $metadata OIDC Provider (OP) metadata. Contains items from OIDC configuration URL.
+     * @var MetadataInterface $metadata OIDC Provider (OP) metadata. Contains
+     * items from OIDC configuration URL.
      */
     protected MetadataInterface $metadata;
 
@@ -80,7 +79,7 @@ class Client
      * @param bool $shouldUsePkce Determines if PKCE should be used in authorization flow. True by default.
      * @param string $pkceCodeChallengeMethod If PKCE is used, which Code Challenge Method should be used.
      * Default is 'S256'.
-     * @param DateInterval $timestampValidationLeeway Leeway used in timestamp (exp, iat, nbf...) validation.
+     * @param DateInterval $timestampValidationLeeway Leeway used for timestamp (exp, iat, nbf...) validation.
      * Default is 'PT1M' (1 minute).
      * @param bool $isStateCheckEnabled
      * @param bool $isNonceCheckEnabled
