@@ -10,9 +10,6 @@ use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
 
 abstract class AbstractDataHandler implements DataHandlerInterface
 {
-    /**
-     * @var DataStoreInterface
-     */
     protected DataStoreInterface $store;
 
     public function __construct(?DataStoreInterface $store = null)

@@ -29,7 +29,6 @@ interface StateNonceDataHandlerInterface
 
     /**
      * Remove current value for given key from data store.
-     * @param string $key
      * @throws OidcClientException If the given key is not valid.
      */
     public function remove(string $key): void;

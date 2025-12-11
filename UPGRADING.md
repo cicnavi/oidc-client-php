@@ -13,7 +13,9 @@ renamed to `Cicnavi\Oidc\PreRegisteredClient` (`src/PreRegisteredClient.php`).
 - **Breaking**: Class `Cicnavi\Oidc\PreRegisteredClient` now accepts
 configuration options as direct constructor parameters using PHP 8.2's property
 promotion, instead of accepting a `Cicnavi\Oidc\Config` instance.
-- **Breaking**: Class `Cicnavi\Oidc\Metadata` (`src/Metadata.php`) now accepts
+- **Breaking**: Class `Cicnavi\Oidc\Metadata` (`src/Metadata.php`) has been
+renamed to `Cicnavi\Oidc\OpMetadata` (`src/OpMetadata.php`)
+- **Breaking**: Class `Cicnavi\Oidc\OpMetadata` now accepts
 configuration parameters directly instead of a `ConfigInterface` instance.
 - Instead of optional options `idTokenValidationAllowedSignatureAlgs` and 
 `idTokenValidationAllowedEncryptionAlgs`, you can now designate supported 

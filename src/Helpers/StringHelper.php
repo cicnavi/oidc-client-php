@@ -13,11 +13,11 @@ class StringHelper
      * Get random string with desired length.
      *
      * @param int $length desired length of random string
-     * @param string $randomBytesFunc Optional function to use to generate random bytes. Default is random_bytes.
+     * @param string $randomBytesFunc Optional function to use to generate random bytes. The default is random_bytes.
      * @return string Random string
      * @throws OidcClientException If random bytes generation fails.
      */
-    public static function random(int $length = 16, $randomBytesFunc = 'random_bytes'): string
+    public static function random(int $length = 16, string $randomBytesFunc = 'random_bytes'): string
     {
         if (! is_callable($randomBytesFunc)) {
             throw new OidcClientException('Provided random bytes function is not callable.');
@@ -27,11 +27,14 @@ class StringHelper
         try {
             while (($len = strlen($string)) < $length) {
                 $size = $length - $len;
-                $bytes = call_user_func($randomBytesFunc, $size);
+                if (!is_string($bytes = call_user_func($randomBytesFunc, $size))) {
+                    throw new OidcClientException('Could not generate random bytes.');
+                }
+
                 $string .= substr(str_replace(['/', '+', '='], '', base64_encode($bytes)), 0, $size);
             }
-        } catch (Throwable $exception) {
-            throw new OidcClientException($exception->getMessage());
+        } catch (Throwable $throwable) {
+            throw new OidcClientException($throwable->getMessage());
         }
 
         return $string;

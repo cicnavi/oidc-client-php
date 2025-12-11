@@ -35,7 +35,7 @@ class StateNonce extends AbstractDataHandler implements StateNonceDataHandlerInt
     {
         $this->validateParameterKey($key);
 
-        if (($value = $this->store->get($key)) !== null) {
+        if (is_string($value = $this->store->get($key))) {
             return $value;
         }
 
@@ -61,9 +61,10 @@ class StateNonce extends AbstractDataHandler implements StateNonceDataHandlerInt
             throw new OidcClientException(sprintf('Parameter not valid (%s)', $key));
         }
 
-        // It is verified, so we can safely delete it, and in future requests use another.
-        // For state parameter this will also prevent users to use the 'back' button in browsers and request
-        // another token with the same auth code (saves a request to auth server).
+        // It is verified, so we can safely delete it, and in future requests
+        // use another. For state parameter this will also prevent users from
+        // using the 'back' button in browsers and request another token with
+        // the same auth code (saves a request to auth server).
         $this->remove($key);
     }
 
@@ -78,7 +79,6 @@ class StateNonce extends AbstractDataHandler implements StateNonceDataHandlerInt
     }
 
     /**
-     * @param string $key
      * @throws OidcClientException If the given key is not valid.
      */
     protected function validateParameterKey(string $key): void

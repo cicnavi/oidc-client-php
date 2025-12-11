@@ -1,11 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Cicnavi\Tests\Oidc\Helpers;
 
 use Cicnavi\Oidc\Helpers\HttpHelper;
 use PHPUnit\Framework\TestCase;
 
-class HttpHelperTest extends TestCase
+final class HttpHelperTest extends TestCase
 {
     /**
      * @var false|resource

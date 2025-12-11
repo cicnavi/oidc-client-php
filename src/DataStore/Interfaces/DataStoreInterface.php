@@ -15,25 +15,23 @@ interface DataStoreInterface
     public function exists(string $key): bool;
 
     /**
-     * Get value from data store for provided key.
+     * Get value from the data store for a provided key.
      *
      * @param string $key Key which was used to store the value.
      * @return mixed|null value of the item or null if the value was never saved
      */
-    public function get(string $key);
+    public function get(string $key): mixed;
 
     /**
-     * Put a value in data store for the provided key.
+     * Put a value in the data store for the provided key.
      *
      * @param string $key Key under which the value will be available.
-     * @param mixed $value The value to store in cache
+     * @param mixed $value The value to store in a cache
      */
-    public function put(string $key, $value): void;
+    public function put(string $key, mixed $value): void;
 
     /**
-     * Delete the value from data store for provided key.
-     *
-     * @param string $key
+     * Delete the value from the data store for a provided key.
      */
     public function delete(string $key): void;
 }

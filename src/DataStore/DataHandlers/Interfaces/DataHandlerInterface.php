@@ -8,8 +8,5 @@ use Cicnavi\Oidc\DataStore\Interfaces\DataStoreInterface;
 
 interface DataHandlerInterface
 {
-    /**
-     * @param DataStoreInterface $store
-     */
     public function setStore(DataStoreInterface $store): void;
 }

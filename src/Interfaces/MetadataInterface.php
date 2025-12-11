@@ -13,11 +13,11 @@ use Cicnavi\Oidc\Exceptions\OidcClientException;
 interface MetadataInterface
 {
     /**
-     * Get a metadata value for provided key.
+     * Get a metadata value for a provided key.
      *
-     * @param string $key Metadata key.
-     * @throws OidcClientException If key does not exist.
-     * @return mixed Metadata value
+     * @param string $key OpMetadata key.
+     * @throws OidcClientException If the key does not exist.
+     * @return mixed OpMetadata value
      */
     public function get(string $key): mixed;
 }

@@ -57,14 +57,8 @@ class PreRegisteredClient
      */
     protected const CACHE_KEY_OP_CONFIGURATION_URL = 'OIDC_OP_CONFIGURATION_URL';
 
-    /**
-     * @var PkceDataHandlerInterface $pkceDataHandler
-     */
     protected PkceDataHandlerInterface $pkceDataHandler;
 
-    /**
-     * @var StateNonceDataHandlerInterface $stateNonceDataHandler
-     */
     protected StateNonceDataHandlerInterface $stateNonceDataHandler;
 
     protected Core $core;
@@ -81,21 +75,12 @@ class PreRegisteredClient
      * Default is 'S256'.
      * @param DateInterval $timestampValidationLeeway Leeway used for timestamp (exp, iat, nbf...) validation.
      * Default is 'PT1M' (1 minute).
-     * @param bool $isStateCheckEnabled
-     * @param bool $isNonceCheckEnabled
-     * @param bool $shouldFetchUserInfoClaims
-     * @param int|null $defaultCacheTtl
      * @param SupportedAlgorithms $supportedAlgorithms Algorithms that the client will support. Default for
      * signatures are: EdDSA, ES256, ES384, ES512, PS256, PS384, PS512, RS256, RS384, RS512.
-     * @param SupportedSerializers $supportedSerializers
-     * @param LoggerInterface|null $logger
      * @param CacheInterface|null $cache Cache instance to use for caching. Default is simple file-based cache.
      * @param DataStoreInterface $dataStore Data store for State, Nonce, and PKCE parameter handling.
      * @param ClientInterface $httpClient Helper HTTP client instance used to easily send HTTP requests.
      * @param RequestFactoryInterface $httpRequestFactory Used to prepare HTTP requests
-     * @param StateNonceDataHandlerInterface|null $stateNonceDataHandler
-     * @param PkceDataHandlerInterface|null $pkceDataHandler
-     * @param MetadataInterface|null $metadata
      * @param Core|null $core Core library instance. If not provided, new one will be built using provided options.
      * @throws CacheException If cache could not be initialized.
      * @throws OidcClientException If cache could not be reinitialized.
@@ -144,7 +129,7 @@ class PreRegisteredClient
 
         $this->stateNonceDataHandler = $stateNonceDataHandler ?? new StateNonce($this->dataStore);
         $this->pkceDataHandler = $pkceDataHandler ?? new Pkce($this->dataStore);
-        $this->metadata = $metadata ?? new Metadata($this->opConfigurationUrl, $this->cache, $this->httpClient);
+        $this->metadata = $metadata ?? new OpMetadata($this->opConfigurationUrl, $this->cache, $this->httpClient);
 
         $this->core = $core ?? new Core(
             $this->supportedAlgorithms,
@@ -170,8 +155,8 @@ class PreRegisteredClient
             ) {
                 $this->reinitializeCache();
             }
-        } catch (Throwable | PsrSimpleCacheInvalidArgumentException $exception) {
-            $error = 'Cache validation error. ' . $exception->getMessage();
+        } catch (Throwable $throwable) {
+            $error = 'Cache validation error. ' . $throwable->getMessage();
             $this->logger?->error($error);
             throw new OidcClientException($error);
         }
@@ -211,11 +196,13 @@ class PreRegisteredClient
             $queryParameters['code_challenge_method'] = $codeChallengeMethod;
         }
 
-        $this->logger?->debug('Authorization request', $queryParameters);
+        $this->logger?->debug('Authorization request parameters', $queryParameters);
 
-        $redirectUri = $this->metadata->get('authorization_endpoint') .
-            '?' .
-            http_build_query($queryParameters);
+        if (!is_string($authorizationEndpoint = $this->metadata->get('authorization_endpoint'))) {
+            throw new OidcClientException('Authorization endpoint not found in OP metadata.');
+        }
+
+        $redirectUri = $authorizationEndpoint . '?' . http_build_query($queryParameters);
 
         header('Location: ' . $redirectUri);
     }
@@ -224,7 +211,7 @@ class PreRegisteredClient
      * Get user data by performing HTTP requests to token endpoint first and
      * then using tokens to get user data.
      *
-     * @return array User data.
+     * @return mixed[] User data.
      * @throws InvalidValueException
      * @throws JwsException
      * @throws OidcClientException
@@ -233,12 +220,16 @@ class PreRegisteredClient
     {
         $this->validateAuthorizationResponse();
 
-        $tokenData = $this->requestTokenData($_GET['code']);
+        if (!is_string($code = $_GET['code'])) {
+            throw new OidcClientException('Code parameter not found in query string.');
+        }
+
+        $tokenData = $this->requestTokenData($code);
 
         $this->validateTokenDataArray($tokenData);
 
         if ($this->shouldUsePkce) {
-            // Since we got tokens, we can remove code verifier (it was validated on auth server).
+            // Since we got tokens, we can remove the code verifier (it was validated on auth server).
             $this->pkceDataHandler->removeCodeVerifier();
         }
 
@@ -250,10 +241,14 @@ class PreRegisteredClient
      */
     protected function validateAuthorizationResponse(): void
     {
-        if (isset($_GET['error'])) {
-            $description = $_GET['error_description'] ?? '(description not provided)';
-            $hint = isset($_GET['hint']) ? ' (' . $_GET['hint'] . ').' : '.';
-            $message = sprintf('Authorization server returned error "%s" - %s%s', $_GET['error'], $description, $hint);
+        $error = $_GET['error'] ?? null;
+        $errorDescription = $_GET['error_description'] ?? null;
+        $hint = $_GET['hint'] ?? null;
+
+        if (is_string($error)) {
+            $description = is_string($errorDescription) ? $errorDescription : '(description not provided)';
+            $hint = is_string($hint) ? ' (' . $hint . ').' : '.';
+            $message = sprintf('Authorization server returned error "%s" - %s%s', $error, $description, $hint);
             throw new OidcClientException($message);
         }
 
@@ -262,19 +257,19 @@ class PreRegisteredClient
         }
 
         if ($this->isStateCheckEnabled) {
-            if ((! isset($_GET['state'])) || (! $_GET['state'])) {
+            $state = $_GET['state'] ?? null;
+            if (!is_string($state)) {
                 throw new OidcClientException('Not all required parameters were provided (state).');
             }
 
-            $this->stateNonceDataHandler->verify(StateNonce::STATE_KEY, $_GET['state']);
+            $this->stateNonceDataHandler->verify(StateNonce::STATE_KEY, $state);
         }
     }
 
     /**
      * Send request to token endpoint using provided authorization code, to receive tokens.
      *
-     * @param string $authorizationCode
-     * @return array Token data (access token, [ID token], refresh token...)
+     * @return mixed[] Token data (access token, [ID token], refresh token...)
      * @throws OidcClientException
      */
     public function requestTokenData(string $authorizationCode): array
@@ -292,7 +287,7 @@ class PreRegisteredClient
         ];
 
         $headers['Authorization'] = 'Basic ' .
-            base64_encode($this->clientId . ':' . $this->clientSecret);
+        base64_encode($this->clientId . ':' . $this->clientSecret);
 
         if ($this->shouldUsePkce) {
             $params['code_verifier'] = $this->pkceDataHandler->getCodeVerifier();
@@ -300,9 +295,12 @@ class PreRegisteredClient
 
         try {
             $bodyStream = Utils::streamFor(http_build_query($params));
+            if (!is_string($tokenEndpoint = $this->metadata->get('token_endpoint'))) {
+                throw new OidcClientException('Token endpoint not found in OP metadata.');
+            }
 
             $tokenRequest = $this->httpRequestFactory
-                ->createRequest('POST', $this->metadata->get('token_endpoint'))
+                ->createRequest('POST', $tokenEndpoint)
                 ->withBody($bodyStream);
 
             foreach ($headers as $key => $value) {
@@ -313,21 +311,22 @@ class PreRegisteredClient
             $this->validateHttpResponseOk($response);
 
             return $this->getDecodedHttpResponseJson($response);
-        } catch (Throwable $exception) {
-            throw new OidcClientException('Token data request error. ' . $exception->getMessage());
+        } catch (Throwable $throwable) {
+            throw new OidcClientException('Token data request error. ' . $throwable->getMessage());
         }
     }
 
     /**
      * Get claims from ID token (if available) and user data 'userinfo' endpoint.
      *
-     * If 'openid' scope was present in authorization request, token endpoint will return ID token.
-     * In that case the claims will be extracted from ID token and combined with user claims fetched from 'userinfo'
-     * endpoint. To get claims from 'userinfo' endpoint another HTTP request will be made using
-     * access token for authentication.
+     * If the 'openid' scope was present in the authorization request, the token
+     * endpoint will return ID token. In that case the claims will be extracted
+     * from ID token and combined with user claims fetched from the 'userinfo'
+     * endpoint. To get claims from the 'userinfo' endpoint, another HTTP
+     * request will be made using an access token for authentication.
      *
-     * @param array $tokenData Array containing at least access_token, and optionally id_token.
-     * @return array User data extracted from ID token (if available) or fetched from 'userinfo' endpoint.
+     * @param mixed[] $tokenData Array containing at least access_token and optionally id_token.
+     * @return mixed[] User data extracted from ID token (if available) or fetched from the 'userinfo' endpoint.
      * @throws InvalidValueException
      * @throws JwsException
      * @throws OidcClientException
@@ -335,6 +334,8 @@ class PreRegisteredClient
     public function getClaims(array $tokenData): array
     {
         $this->validateTokenDataArray($tokenData);
+
+        /** @var array{id_token?: string, access_token: string} $tokenData, */
 
         $idTokenClaims = [];
         $userInfoClaims = [];
@@ -355,8 +356,7 @@ class PreRegisteredClient
      * Validate provided ID token and get claims from it.
      *
      * @param string $idToken ID token received from token endpoint.
-     * @param bool $refreshCache
-     * @return array Claims from ID token
+     * @return mixed[] Claims from ID token
      * @throws JwsException
      * @throws OidcClientException
      * @throws InvalidValueException
@@ -367,19 +367,19 @@ class PreRegisteredClient
 
         try {
             $idTokenJws = $this->core->idTokenFactory()->fromToken($idToken);
-        } catch (JwsException $e) {
-            $error = 'Error building ID Token: ' . $e->getMessage();
+        } catch (JwsException $jwsException) {
+            $error = 'Error building ID Token: ' . $jwsException->getMessage();
             $this->logger?->error($error, ['idToken' => $idToken]);
             throw new OidcClientException($error);
         }
 
         try {
             $idTokenJws->verifyWithKeySet($jwks);
-        } catch (Throwable $exception) {
+        } catch (Throwable $throwable) {
             // If we have already refreshed our cache (we have fresh JWKS), throw...
             if ($refreshCache) {
-                $this->logger?->error('ID token is not valid. ' . $exception->getMessage());
-                throw new OidcClientException('ID token is not valid. ' . $exception->getMessage());
+                $this->logger?->error('ID token is not valid. ' . $throwable->getMessage());
+                throw new OidcClientException('ID token is not valid. ' . $throwable->getMessage());
             }
 
             $this->logger?->warning('ID Token signature verification failed, but trying once more with JWKS refresh.');
@@ -401,7 +401,7 @@ class PreRegisteredClient
     }
 
     /**
-     * @param array $jwksUriContent
+     * @param mixed[] $jwksUriContent
      * @throws OidcClientException If JWKS URI does not contain keys
      */
     public function validateJwksUriContentArary(array $jwksUriContent): void
@@ -409,17 +409,17 @@ class PreRegisteredClient
         if (
             (! isset($jwksUriContent['keys'])) ||
             (! is_array($jwksUriContent['keys'])) ||
-            (count($jwksUriContent['keys']) === 0)
+            ($jwksUriContent['keys'] === [])
         ) {
             throw new OidcClientException('JWKS URI does not contain any keys.');
         }
     }
 
     /**
-     * Get the JWKS URI content from cache, or by fetching it from JWKS URI (making an HTTP request).
+     * Get the JWKS URI content from cache or by fetching it from JWKS URI (making an HTTP request).
      *
      * @param bool $refreshCache Indicate if the JWKS cache value should be refreshed.
-     * @return array JWKS URI content
+     * @return mixed[] JWKS URI content
      * @throws OidcClientException
      */
     public function getJwksUriContent(bool $refreshCache = false): array
@@ -430,27 +430,31 @@ class PreRegisteredClient
 
         try {
             $jwksURIContent = $this->cache->get(self::CACHE_KEY_JWKS_URI_CONTENT);
-        } catch (Throwable | PsrSimpleCacheInvalidArgumentException $exception) {
-            throw new OidcClientException('JWKS URI content cache error. ' . $exception->getMessage());
+        } catch (Throwable $throwable) {
+            throw new OidcClientException('JWKS URI content cache error. ' . $throwable->getMessage());
         }
 
-        if (! $jwksURIContent) {
-            return $this->requestJwksUriContent();
+        if (is_array($jwksURIContent)) {
+            return $jwksURIContent;
         }
 
-        return $jwksURIContent;
+        return $this->requestJwksUriContent();
     }
 
     /**
      * Get content from JWKS URI and store it in cache for future use.
      *
-     * @return array JWKS URI content
+     * @return mixed[] JWKS URI content
      * @throws OidcClientException
      */
     protected function requestJwksUriContent(): array
     {
+        if (!is_string($jwksUri = $this->metadata->get('jwks_uri'))) {
+            throw new OidcClientException('JWKS URI not found in OP metadata.');
+        }
+
         $jwksRequest = $this->httpRequestFactory
-            ->createRequest('GET', $this->metadata->get('jwks_uri'))
+            ->createRequest('GET', $jwksUri)
             ->withHeader('Accept', 'application/json');
         try {
             $response = $this->httpClient->sendRequest($jwksRequest);
@@ -458,8 +462,8 @@ class PreRegisteredClient
             $jwksUriContent = $this->getDecodedHttpResponseJson($response);
             $this->validateJwksUriContentArary($jwksUriContent);
             $this->cache->set(self::CACHE_KEY_JWKS_URI_CONTENT, $jwksUriContent, $this->defaultCacheTtl);
-        } catch (Throwable | PsrSimpleCacheInvalidArgumentException $exception) {
-            throw new OidcClientException('JWKS URI content request error. ' . $exception->getMessage());
+        } catch (Throwable $throwable) {
+            throw new OidcClientException('JWKS URI content request error. ' . $throwable->getMessage());
         }
 
         return $jwksUriContent;
@@ -469,13 +473,15 @@ class PreRegisteredClient
      * Get user data from 'userinfo' endpoint.
      *
      * @param string $accessToken Access token used to authenticate on 'userinfo' endpoint.
-     * @return array User data
+     * @return mixed[] User data
      * @throws OidcClientException
      */
     public function requestUserDataFromUserInfoEndpoint(string $accessToken): array
     {
         try {
-            $userInfoEndpoint = $this->metadata->get('userinfo_endpoint');
+            if (!is_string($userInfoEndpoint = $this->metadata->get('userinfo_endpoint'))) {
+                throw new OidcClientException('User info endpoint not found in OP metadata.');
+            }
 
             $userInfoRequest = $this->httpRequestFactory
                 ->createRequest('GET', $userInfoEndpoint)
@@ -490,8 +496,8 @@ class PreRegisteredClient
             $this->validateUserInfoClaims($claims);
 
             return $claims;
-        } catch (Throwable $exception) {
-            throw new OidcClientException('UserInfo endpoint error. ' . $exception->getMessage());
+        } catch (Throwable $throwable) {
+            throw new OidcClientException('UserInfo endpoint error. ' . $throwable->getMessage());
         }
     }
 
@@ -506,7 +512,7 @@ class PreRegisteredClient
     /**
      * Validate $tokenData array.
      *
-     * @param array $tokenData Array containing token data (access token, refresh token, ID token...).
+     * @param mixed[] $tokenData Array containing token data (access token, refresh token, ID token...).
      * @throws OidcClientException
      */
     public function validateTokenDataArray(array $tokenData): void
@@ -526,12 +532,18 @@ class PreRegisteredClient
         ) {
             throw new OidcClientException('Token data does not contain token type.');
         }
+
+        if (
+            isset($tokenData['id_token']) &&
+            ((!is_string($tokenData['id_token'])) || ($tokenData['id_token'] === ''))
+        ) {
+            throw new OidcClientException('Token data contains invalid ID token value.');
+        }
     }
 
     /**
      * Ensure that HTTP response is 200 OK
      *
-     * @param ResponseInterface $response
      * @throws OidcClientException If response is not 200 OK
      */
     protected function validateHttpResponseOk(ResponseInterface $response): void
@@ -546,8 +558,7 @@ class PreRegisteredClient
 
     /**
      * Get decoded JSON from the HTTP response body.
-     * @param ResponseInterface $response
-     * @return array Decoded JSON
+     * @return mixed[] Decoded JSON
      * @throws OidcClientException If the response is not valid JSON.
      */
     protected function getDecodedHttpResponseJson(ResponseInterface $response): array
@@ -555,10 +566,11 @@ class PreRegisteredClient
         try {
             $responseBody = (string) $response->getBody();
             return $this->decodeJsonOrThrow($responseBody);
-        } catch (Throwable $exception) {
+        } catch (Throwable $throwable) {
             $this->logger?->error(
-                'JSON response body decode error: ' . $exception->getMessage(),
-                ['responseBody' => $responseBody ?? null]);
+                'JSON response body decode error: ' . $throwable->getMessage(),
+                ['responseBody' => $responseBody ?? null]
+            );
             throw new OidcClientException(
                 'HTTP request JSON response is not valid.'
             );
@@ -566,20 +578,25 @@ class PreRegisteredClient
     }
 
     /**
+     * @return mixed[] Decoded JSON from the provided string.
      * @throws OidcClientException
      */
     protected function decodeJsonOrThrow(string $json): array
     {
         try {
-            return json_decode($json, true, 512, JSON_THROW_ON_ERROR);
-        } catch (Throwable $exception) {
-            $this->logger?->error('JSON decode error: ' . $exception->getMessage(), ['json' => $json]);
+            if (!is_array($decodedJson = json_decode($json, true, 512, JSON_THROW_ON_ERROR))) {
+                throw new OidcClientException('JSON decode error.');
+            }
+
+            return $decodedJson;
+        } catch (Throwable $throwable) {
+            $this->logger?->error('JSON decode error: ' . $throwable->getMessage(), ['json' => $json]);
             throw new OidcClientException('JSON decode error.');
         }
     }
 
     /**
-     * @param array $claims
+     * @param mixed[] $claims
      * @throws OidcClientException
      */
     protected function validateUserInfoClaims(array $claims): void
@@ -590,8 +607,8 @@ class PreRegisteredClient
     }
 
     /**
-     * @param array $idTokenClaims
-     * @param array $userInfoClaims
+     * @param mixed[] $idTokenClaims
+     * @param mixed[] $userInfoClaims
      * @throws OidcClientException
      */
     protected function validateIdTokenAndUserInfoClaims(array $idTokenClaims, array $userInfoClaims): void

@@ -8,14 +8,15 @@ use Cicnavi\Oidc\DataStore\Interfaces\DataStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
 use PHPUnit\Framework\TestCase;
 
-class PhpSessionDataStoreTest extends TestCase
+final class PhpSessionDataStoreTest extends TestCase
 {
     protected DataStoreInterface $store;
 
     protected string $testKey = 'testKey';
+
     protected string $testValue = 'testValue';
 
-    public function setUp(): void
+    protected function setUp(): void
     {
         $this->store = new PhpSessionDataStore();
     }

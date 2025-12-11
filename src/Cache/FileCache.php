@@ -11,7 +11,6 @@ class FileCache extends SimpleFileCache
 {
     /**
      * FileCache constructor.
-     * @param string $cacheName
      * @param string|null $storagePath
      * @throws CacheException
      */

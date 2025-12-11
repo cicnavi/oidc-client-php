@@ -16,10 +16,11 @@ use PHPUnit\Framework\TestCase;
  *
  * @covers \Cicnavi\Oidc\DataStore\DataHandlers\Pkce
  */
-class PkceTest extends TestCase
+final class PkceTest extends TestCase
 {
     protected string $testCodeVerifier = 'mV3hZ7E7iWzljYMPqcjNHCdT32lVsZ6tI8ssdHyilSr48lLosV7soxlPEh8SekHejJElY3vj' .
-        'Ap2MeLxjd9hP0MJrlS8L99TV5A49aSIVm2z7JD032BWA8AvGYDuEWjLw';
+    'Ap2MeLxjd9hP0MJrlS8L99TV5A49aSIVm2z7JD032BWA8AvGYDuEWjLw';
+
     protected string $testCodeChallenge = '3e8R0tTilJlPsoRSooW-To9J2hzvAeKImTmBb5XMztY';
 
     /**

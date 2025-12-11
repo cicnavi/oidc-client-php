@@ -6,10 +6,19 @@
 
     <!-- Reference: https://raw.githubusercontent.com/squizlabs/PHP_CodeSniffer/master/phpcs.xml.dist -->
 
+    <config name="show_progress" value="1"/>
+    <config name="ignore_warnings_on_exit" value="0"/>
+
     <file>src</file>
     <file>tests</file>
 
     <rule ref="PSR12"/>
+    <rule ref="Generic.WhiteSpace.ScopeIndent">
+        <properties>
+            <property name="exact" value="true" />
+        </properties>
+    </rule>
+    <rule ref="Squiz.NamingConventions.ValidVariableName.NotCamelCaps"/>
 
     <!-- Show progress -->
     <arg value="p"/>

@@ -11,7 +11,6 @@ interface PkceDataHandlerInterface
     /**
      * Get existing code verifier from store or generate new one and store it.
      *
-     * @return string
      * @throws OidcClientException If code verifier could not be generated.
      */
     public function getCodeVerifier(): string;
@@ -19,8 +18,6 @@ interface PkceDataHandlerInterface
     /**
      * Generate code challenge for provided code verifier using the desired method.
      *
-     * @param string $codeVerifier
-     * @param string $method
      * @return string Code challenge.
      * @throws OidcClientException If code verifier is not valid or method is not valid.
      */
@@ -32,7 +29,6 @@ interface PkceDataHandlerInterface
     public function removeCodeVerifier(): void;
 
     /**
-     * @param string $pkceCodeChallengeMethod
      * @throws OidcClientException If code challenge method is not valid
      */
     public function validatePkceCodeChallengeMethod(string $pkceCodeChallengeMethod): void;

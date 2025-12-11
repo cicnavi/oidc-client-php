@@ -15,23 +15,25 @@ use Cicnavi\Tests\Oidc\Tools;
  *
  * @covers \Cicnavi\Oidc\Cache\FileCache
  */
-class FileCacheTest extends TestCase
+final class FileCacheTest extends TestCase
 {
     protected static string $testCachePath;
 
     protected static string $testKey = 'testKey';
+
     protected static string $testValue = 'testValue';
+
     protected static string $testCacheName = 'oidc-cache';
 
     protected static array $testItemArray;
 
-    public function setUp(): void
+    protected function setUp(): void
     {
         self::$testCachePath = dirname(__DIR__, 3) . '/tmp/cache-test';
         mkdir(self::$testCachePath, 0764, true);
     }
 
-    public function tearDown(): void
+    protected function tearDown(): void
     {
         Tools::rmdirRecursive(self::$testCachePath);
     }
@@ -40,14 +42,14 @@ class FileCacheTest extends TestCase
     {
         $cache = new FileCache();
         $this->assertIsString($cache->getCacheName(), $cache->getCacheName());
-        $this->assertTrue(is_dir($cache->getCachePath()));
+        $this->assertDirectoryExists($cache->getCachePath());
     }
 
     public function testConstructWithCustomCacheNameAndPath(): void
     {
         $cache = new FileCache(self::$testCacheName, self::$testCachePath);
         $this->assertSame(self::$testCacheName, $cache->getCacheName());
-        $this->assertTrue(is_dir($cache->getCachePath()));
+        $this->assertDirectoryExists($cache->getCachePath());
     }
 
     public function testSetHasGet(): void

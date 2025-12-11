@@ -30,7 +30,7 @@ class PhpSessionDataStore implements DataStoreInterface
             return;
         }
 
-        if (session_status() == PHP_SESSION_ACTIVE) {
+        if (session_status() === PHP_SESSION_ACTIVE) {
             return;
         }
 
@@ -38,6 +38,7 @@ class PhpSessionDataStore implements DataStoreInterface
 
         $cookieParams = HttpHelper::normalizeSessionCookieParams(session_get_cookie_params());
 
+        /** @phpstan-ignore argument.type */
         if (! session_set_cookie_params($cookieParams)) {
             throw new OidcClientException('Could not set session cookie params.');
         }
@@ -56,7 +57,7 @@ class PhpSessionDataStore implements DataStoreInterface
             throw new OidcClientException('Session start error - headers already sent.');
         }
 
-        if (session_status() == PHP_SESSION_DISABLED) {
+        if (session_status() === PHP_SESSION_DISABLED) {
             throw new OidcClientException('Can not use PHP Session since PHP sessions are disabled.');
         }
     }
@@ -64,7 +65,7 @@ class PhpSessionDataStore implements DataStoreInterface
     /**
      * @inheritDoc
      */
-    public function get(string $key)
+    public function get(string $key): mixed
     {
         if ($this->exists($key)) {
             return $_SESSION[$key];
@@ -84,7 +85,7 @@ class PhpSessionDataStore implements DataStoreInterface
     /**
      * @inheritDoc
      */
-    public function put(string $key, $value): void
+    public function put(string $key, mixed $value): void
     {
         $_SESSION[$key] = $value;
     }

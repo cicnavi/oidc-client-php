@@ -14,13 +14,18 @@ class Tools
     public static function rmdirRecursive(string $dir): void
     {
         foreach (scandir($dir) as $file) {
-            if ('.' === $file || '..' === $file) {
+            if ('.' === $file) {
                 continue;
             }
-            if (is_dir("$dir/$file")) {
-                self::rmdirRecursive("$dir/$file");
+
+            if ('..' === $file) {
+                continue;
+            }
+
+            if (is_dir(sprintf('%s/%s', $dir, $file))) {
+                self::rmdirRecursive(sprintf('%s/%s', $dir, $file));
             } else {
-                unlink("$dir/$file");
+                unlink(sprintf('%s/%s', $dir, $file));
             }
         }
 

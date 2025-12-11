@@ -1,0 +1,6 @@
+
+parameters:
+	level: 3
+	paths:
+		- tests
+	tmpDir: build/phpstan/dev

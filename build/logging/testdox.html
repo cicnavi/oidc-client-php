@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8"/>
+        <title>Test Documentation</title>
+        <style>
+            body {
+                text-rendering: optimizeLegibility;
+                font-family: Source SansSerif Pro, Arial, sans-serif;
+                font-variant-ligatures: common-ligatures;
+                font-kerning: normal;
+                margin-left: 2rem;
+                background-color: #fff;
+                color: #000;
+            }
+
+            body > ul > li {
+                font-size: larger;
+            }
+
+            h2 {
+                font-size: larger;
+                text-decoration-line: underline;
+                text-decoration-thickness: 2px;
+                margin: 0;
+                padding: 0.5rem 0;
+            }
+
+            ul {
+                list-style: none;
+                margin: 0 0 2rem;
+                padding: 0 0 0 1rem;
+                text-indent: -1rem;
+            }
+
+            .success:before {
+                color: #4e9a06;
+                content: '✓';
+                padding-right: 0.5rem;
+            }
+
+            .defect {
+                color: #a40000;
+            }
+
+            .defect:before {
+                color: #a40000;
+                content: '✗';
+                padding-right: 0.5rem;
+            }
+        </style>
+    </head>
+    <body>
+        <h2>File Cache (Cicnavi\Tests\Oidc\Cache\FileCache)</h2>
+        <ul>
+            <li class="success">Construct</li>
+            <li class="success">Construct with custom cache name and path</li>
+            <li class="success">Set has get</li>
+        </ul>
+        <h2>Client (Cicnavi\Tests\Oidc\Client)</h2>
+        <ul>
+            <li class="success">Construct</li>
+            <li class="success">Get metadata</li>
+            <li class="success">Authorize</li>
+            <li class="success">Authorize for public client</li>
+            <li class="success">Authenticate missing code throws</li>
+            <li class="success">Get user data error throws</li>
+            <li class="success">Get user data missing state throws</li>
+            <li class="success">Get user data</li>
+            <li class="success">Get user data for public client</li>
+            <li class="success">Validate token data array throws if no access token</li>
+            <li class="success">Validate token data array throws if no token type</li>
+            <li class="success">User data fetch from userinfo endpoint is not performed</li>
+            <li class="success">Request user data from user info endpoint throws when not supported</li>
+            <li class="success">Get data from user info endpoint throws for missing sub claim</li>
+            <li class="success">Get claims throws for invalid sub claim</li>
+            <li class="success">Get data from id token throws for invalid id token format</li>
+            <li class="success">Get data from id token throws for invalid id token</li>
+            <li class="success">Get data from id token throws for invalid json</li>
+            <li class="success">Get data from id token throws for signature key error</li>
+            <li class="success">Get data from id token throws for missing nonce</li>
+            <li class="success">Get data from id token throws for missing jwe support</li>
+            <li class="success">Validate jwks uri content array throws if no keys</li>
+            <li class="success">Get jwks uri content</li>
+            <li class="success">Validate cache throws</li>
+            <li class="success">Request token data throws</li>
+            <li class="success">Get jwks uri content throws for cache error</li>
+            <li class="success">Get jwks uri content throws for request error</li>
+            <li class="success">Get decoded http response json throws for invalid json</li>
+        </ul>
+        <h2>Pkce (Cicnavi\Tests\Oidc\DataStore\DataHandlers\Pkce)</h2>
+        <ul>
+            <li class="success">Validate pkce code challenge method</li>
+            <li class="success">Generate code challenge from code verifier validation</li>
+            <li class="success">Generate code challenge from code verifier</li>
+            <li class="success">Remove code verifier parameter</li>
+            <li class="success">Get existing code verifier</li>
+            <li class="success">New code verifier</li>
+            <li class="success">Construct without arguments</li>
+            <li class="success">Construct with arguments</li>
+            <li class="success">Set store</li>
+        </ul>
+        <h2>State Nonce (Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonce)</h2>
+        <ul>
+            <li class="success">Verify invalid key throws</li>
+            <li class="success">Verify invalid value throws</li>
+            <li class="success">Verify non existant key throws</li>
+            <li class="success">Verify</li>
+            <li class="success">Get invalid key throws</li>
+            <li class="success">Get existing value</li>
+            <li class="success">Get new value</li>
+        </ul>
+        <h2>Php Session Data Store (Cicnavi\Tests\Oidc\DataStore\PhpSessionDataStore)</h2>
+        <ul>
+            <li class="success">Put</li>
+            <li class="success">Delete</li>
+            <li class="success">Exists</li>
+            <li class="success">Construct</li>
+            <li class="success">Get</li>
+        </ul>
+        <h2>Http Helper (Cicnavi\Tests\Oidc\Helpers\HttpHelper)</h2>
+        <ul>
+            <li class="success">Is request http secure</li>
+            <li class="success">Normalize session cookie params</li>
+        </ul>
+        <h2>String Helper (Cicnavi\Tests\Oidc\Helpers\StringHelper)</h2>
+        <ul>
+            <li class="success">Random</li>
+            <li class="success">Random throws</li>
+            <li class="success">Random throws for invalid callback</li>
+        </ul>
+        <h2>Request Factory (Cicnavi\Tests\Oidc\Http\RequestFactory)</h2>
+        <ul>
+            <li class="success">Create request</li>
+        </ul>
+        <h2>Metadata (Cicnavi\Tests\Oidc\Metadata)</h2>
+        <ul>
+            <li class="success">Construct</li>
+            <li class="success">Construct throws on request exception</li>
+            <li class="success">Construct throws on wrong respose code</li>
+            <li class="success">Construct throws on cache set exception</li>
+            <li class="success">Metadata validation not array</li>
+            <li class="success">Metadata validation missing properties</li>
+            <li class="success">Get using invalid key throws</li>
+            <li class="success">All get methods</li>
+        </ul>
+    </body>
+</html>

@@ -8,7 +8,7 @@ use Cicnavi\Oidc\Http\RequestFactory;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
 
-class RequestFactoryTest extends TestCase
+final class RequestFactoryTest extends TestCase
 {
     public function testCreateRequest(): void
     {

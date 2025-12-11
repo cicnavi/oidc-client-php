@@ -1,0 +1,306 @@
+
+##teamcity[testCount count='66' flowId='21687']
+
+##teamcity[testSuiteStarted name='Unit tests' flowId='21687']
+
+##teamcity[testSuiteStarted name='Cicnavi\Tests\Oidc\Cache\FileCacheTest' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Cache/FileCacheTest.php::\Cicnavi\Tests\Oidc\Cache\FileCacheTest' flowId='21687']
+
+##teamcity[testStarted name='testConstruct' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Cache/FileCacheTest.php::\Cicnavi\Tests\Oidc\Cache\FileCacheTest::testConstruct' flowId='21687']
+
+##teamcity[testFinished name='testConstruct' duration='3' flowId='21687']
+
+##teamcity[testStarted name='testConstructWithCustomCacheNameAndPath' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Cache/FileCacheTest.php::\Cicnavi\Tests\Oidc\Cache\FileCacheTest::testConstructWithCustomCacheNameAndPath' flowId='21687']
+
+##teamcity[testFinished name='testConstructWithCustomCacheNameAndPath' duration='1' flowId='21687']
+
+##teamcity[testStarted name='testSetHasGet' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Cache/FileCacheTest.php::\Cicnavi\Tests\Oidc\Cache\FileCacheTest::testSetHasGet' flowId='21687']
+
+##teamcity[testFinished name='testSetHasGet' duration='3' flowId='21687']
+
+##teamcity[testSuiteFinished name='Cicnavi\Tests\Oidc\Cache\FileCacheTest' flowId='21687']
+
+##teamcity[testSuiteStarted name='Cicnavi\Tests\Oidc\ClientTest' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest' flowId='21687']
+
+##teamcity[testStarted name='testConstruct' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testConstruct' flowId='21687']
+
+##teamcity[testFinished name='testConstruct' duration='55' flowId='21687']
+
+##teamcity[testStarted name='testGetMetadata' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetMetadata' flowId='21687']
+
+##teamcity[testFinished name='testGetMetadata' duration='33' flowId='21687']
+
+##teamcity[testStarted name='testAuthorize' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testAuthorize' flowId='21687']
+
+##teamcity[testFinished name='testAuthorize' duration='45' flowId='21687']
+
+##teamcity[testStarted name='testAuthorizeForPublicClient' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testAuthorizeForPublicClient' flowId='21687']
+
+##teamcity[testFinished name='testAuthorizeForPublicClient' duration='54' flowId='21687']
+
+##teamcity[testStarted name='testAuthenticateMissingCodeThrows' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testAuthenticateMissingCodeThrows' flowId='21687']
+
+##teamcity[testFinished name='testAuthenticateMissingCodeThrows' duration='39' flowId='21687']
+
+##teamcity[testStarted name='testGetUserDataErrorThrows' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetUserDataErrorThrows' flowId='21687']
+
+##teamcity[testFinished name='testGetUserDataErrorThrows' duration='40' flowId='21687']
+
+##teamcity[testStarted name='testGetUserDataMissingStateThrows' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetUserDataMissingStateThrows' flowId='21687']
+
+##teamcity[testFinished name='testGetUserDataMissingStateThrows' duration='32' flowId='21687']
+
+##teamcity[testStarted name='testGetUserData' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetUserData' flowId='21687']
+
+##teamcity[testFinished name='testGetUserData' duration='54' flowId='21687']
+
+##teamcity[testStarted name='testGetUserDataForPublicClient' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetUserDataForPublicClient' flowId='21687']
+
+##teamcity[testFinished name='testGetUserDataForPublicClient' duration='48' flowId='21687']
+
+##teamcity[testStarted name='testValidateTokenDataArrayThrowsIfNoAccessToken' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testValidateTokenDataArrayThrowsIfNoAccessToken' flowId='21687']
+
+##teamcity[testFinished name='testValidateTokenDataArrayThrowsIfNoAccessToken' duration='37' flowId='21687']
+
+##teamcity[testStarted name='testValidateTokenDataArrayThrowsIfNoTokenType' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testValidateTokenDataArrayThrowsIfNoTokenType' flowId='21687']
+
+##teamcity[testFinished name='testValidateTokenDataArrayThrowsIfNoTokenType' duration='38' flowId='21687']
+
+##teamcity[testStarted name='testUserDataFetchFromUserinfoEndpointIsNotPerformed' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testUserDataFetchFromUserinfoEndpointIsNotPerformed' flowId='21687']
+
+##teamcity[testFinished name='testUserDataFetchFromUserinfoEndpointIsNotPerformed' duration='50' flowId='21687']
+
+##teamcity[testStarted name='testRequestUserDataFromUserInfoEndpointThrowsWhenNotSupported' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testRequestUserDataFromUserInfoEndpointThrowsWhenNotSupported' flowId='21687']
+
+##teamcity[testFinished name='testRequestUserDataFromUserInfoEndpointThrowsWhenNotSupported' duration='34' flowId='21687']
+
+##teamcity[testStarted name='testGetDataFromUserInfoEndpointThrowsForMissingSubClaim' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetDataFromUserInfoEndpointThrowsForMissingSubClaim' flowId='21687']
+
+##teamcity[testFinished name='testGetDataFromUserInfoEndpointThrowsForMissingSubClaim' duration='69' flowId='21687']
+
+##teamcity[testStarted name='testGetClaimsThrowsForInvalidSubClaim' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetClaimsThrowsForInvalidSubClaim' flowId='21687']
+
+##teamcity[testFinished name='testGetClaimsThrowsForInvalidSubClaim' duration='86' flowId='21687']
+
+##teamcity[testStarted name='testGetDataFromIdTokenThrowsForInvalidIdTokenFormat' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetDataFromIdTokenThrowsForInvalidIdTokenFormat' flowId='21687']
+
+##teamcity[testFinished name='testGetDataFromIdTokenThrowsForInvalidIdTokenFormat' duration='33' flowId='21687']
+
+##teamcity[testStarted name='testGetDataFromIdTokenThrowsForInvalidIdToken' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetDataFromIdTokenThrowsForInvalidIdToken' flowId='21687']
+
+##teamcity[testFinished name='testGetDataFromIdTokenThrowsForInvalidIdToken' duration='108' flowId='21687']
+
+##teamcity[testStarted name='testGetDataFromIdTokenThrowsForInvalidJson' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetDataFromIdTokenThrowsForInvalidJson' flowId='21687']
+
+##teamcity[testFinished name='testGetDataFromIdTokenThrowsForInvalidJson' duration='53' flowId='21687']
+
+##teamcity[testStarted name='testGetDataFromIdTokenThrowsForSignatureKeyError' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetDataFromIdTokenThrowsForSignatureKeyError' flowId='21687']
+
+##teamcity[testFinished name='testGetDataFromIdTokenThrowsForSignatureKeyError' duration='87' flowId='21687']
+
+##teamcity[testStarted name='testGetDataFromIdTokenThrowsForMissingNonce' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetDataFromIdTokenThrowsForMissingNonce' flowId='21687']
+
+##teamcity[testFinished name='testGetDataFromIdTokenThrowsForMissingNonce' duration='75' flowId='21687']
+
+##teamcity[testStarted name='testGetDataFromIdTokenThrowsForMissingJweSupport' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetDataFromIdTokenThrowsForMissingJweSupport' flowId='21687']
+
+##teamcity[testFinished name='testGetDataFromIdTokenThrowsForMissingJweSupport' duration='73' flowId='21687']
+
+##teamcity[testStarted name='testValidateJwksUriContentArrayThrowsIfNoKeys' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testValidateJwksUriContentArrayThrowsIfNoKeys' flowId='21687']
+
+##teamcity[testFinished name='testValidateJwksUriContentArrayThrowsIfNoKeys' duration='35' flowId='21687']
+
+##teamcity[testStarted name='testGetJwksUriContent' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetJwksUriContent' flowId='21687']
+
+##teamcity[testFinished name='testGetJwksUriContent' duration='36' flowId='21687']
+
+##teamcity[testStarted name='testValidateCacheThrows' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testValidateCacheThrows' flowId='21687']
+
+##teamcity[testFinished name='testValidateCacheThrows' duration='66' flowId='21687']
+
+##teamcity[testStarted name='testRequestTokenDataThrows' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testRequestTokenDataThrows' flowId='21687']
+
+##teamcity[testFinished name='testRequestTokenDataThrows' duration='40' flowId='21687']
+
+##teamcity[testStarted name='testGetJwksUriContentThrowsForCacheError' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetJwksUriContentThrowsForCacheError' flowId='21687']
+
+##teamcity[testFinished name='testGetJwksUriContentThrowsForCacheError' duration='36' flowId='21687']
+
+##teamcity[testStarted name='testGetJwksUriContentThrowsForRequestError' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetJwksUriContentThrowsForRequestError' flowId='21687']
+
+##teamcity[testFinished name='testGetJwksUriContentThrowsForRequestError' duration='40' flowId='21687']
+
+##teamcity[testStarted name='testGetDecodedHttpResponseJsonThrowsForInvalidJson' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/ClientTest.php::\Cicnavi\Tests\Oidc\ClientTest::testGetDecodedHttpResponseJsonThrowsForInvalidJson' flowId='21687']
+
+##teamcity[testFinished name='testGetDecodedHttpResponseJsonThrowsForInvalidJson' duration='38' flowId='21687']
+
+##teamcity[testSuiteFinished name='Cicnavi\Tests\Oidc\ClientTest' flowId='21687']
+
+##teamcity[testSuiteStarted name='Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/PkceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest' flowId='21687']
+
+##teamcity[testStarted name='testValidatePkceCodeChallengeMethod' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/PkceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest::testValidatePkceCodeChallengeMethod' flowId='21687']
+
+##teamcity[testFinished name='testValidatePkceCodeChallengeMethod' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testGenerateCodeChallengeFromCodeVerifierValidation' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/PkceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest::testGenerateCodeChallengeFromCodeVerifierValidation' flowId='21687']
+
+##teamcity[testFinished name='testGenerateCodeChallengeFromCodeVerifierValidation' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testGenerateCodeChallengeFromCodeVerifier' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/PkceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest::testGenerateCodeChallengeFromCodeVerifier' flowId='21687']
+
+##teamcity[testFinished name='testGenerateCodeChallengeFromCodeVerifier' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testRemoveCodeVerifierParameter' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/PkceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest::testRemoveCodeVerifierParameter' flowId='21687']
+
+##teamcity[testFinished name='testRemoveCodeVerifierParameter' duration='1' flowId='21687']
+
+##teamcity[testStarted name='testGetExistingCodeVerifier' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/PkceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest::testGetExistingCodeVerifier' flowId='21687']
+
+##teamcity[testFinished name='testGetExistingCodeVerifier' duration='1' flowId='21687']
+
+##teamcity[testStarted name='testNewCodeVerifier' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/PkceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest::testNewCodeVerifier' flowId='21687']
+
+##teamcity[testFinished name='testNewCodeVerifier' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testConstructWithoutArguments' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/PkceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest::testConstructWithoutArguments' flowId='21687']
+
+##teamcity[testFinished name='testConstructWithoutArguments' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testConstructWithArguments' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/PkceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest::testConstructWithArguments' flowId='21687']
+
+##teamcity[testFinished name='testConstructWithArguments' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testSetStore' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/PkceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest::testSetStore' flowId='21687']
+
+##teamcity[testFinished name='testSetStore' duration='0' flowId='21687']
+
+##teamcity[testSuiteFinished name='Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest' flowId='21687']
+
+##teamcity[testSuiteStarted name='Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonceTest' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/StateNonceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonceTest' flowId='21687']
+
+##teamcity[testStarted name='testVerifyInvalidKeyThrows' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/StateNonceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonceTest::testVerifyInvalidKeyThrows' flowId='21687']
+
+##teamcity[testFinished name='testVerifyInvalidKeyThrows' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testVerifyInvalidValueThrows' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/StateNonceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonceTest::testVerifyInvalidValueThrows' flowId='21687']
+
+##teamcity[testFinished name='testVerifyInvalidValueThrows' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testVerifyNonExistantKeyThrows' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/StateNonceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonceTest::testVerifyNonExistantKeyThrows' flowId='21687']
+
+##teamcity[testFinished name='testVerifyNonExistantKeyThrows' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testVerify' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/StateNonceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonceTest::testVerify' flowId='21687']
+
+##teamcity[testFinished name='testVerify' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testGetInvalidKeyThrows' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/StateNonceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonceTest::testGetInvalidKeyThrows' flowId='21687']
+
+##teamcity[testFinished name='testGetInvalidKeyThrows' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testGetExistingValue' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/StateNonceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonceTest::testGetExistingValue' flowId='21687']
+
+##teamcity[testFinished name='testGetExistingValue' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testGetNewValue' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/DataHandlers/StateNonceTest.php::\Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonceTest::testGetNewValue' flowId='21687']
+
+##teamcity[testFinished name='testGetNewValue' duration='0' flowId='21687']
+
+##teamcity[testSuiteFinished name='Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonceTest' flowId='21687']
+
+##teamcity[testSuiteStarted name='Cicnavi\Tests\Oidc\DataStore\PhpSessionDataStoreTest' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/PhpSessionDataStoreTest.php::\Cicnavi\Tests\Oidc\DataStore\PhpSessionDataStoreTest' flowId='21687']
+
+##teamcity[testStarted name='testPut' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/PhpSessionDataStoreTest.php::\Cicnavi\Tests\Oidc\DataStore\PhpSessionDataStoreTest::testPut' flowId='21687']
+
+##teamcity[testFinished name='testPut' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testDelete' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/PhpSessionDataStoreTest.php::\Cicnavi\Tests\Oidc\DataStore\PhpSessionDataStoreTest::testDelete' flowId='21687']
+
+##teamcity[testFinished name='testDelete' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testExists' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/PhpSessionDataStoreTest.php::\Cicnavi\Tests\Oidc\DataStore\PhpSessionDataStoreTest::testExists' flowId='21687']
+
+##teamcity[testFinished name='testExists' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testConstruct' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/PhpSessionDataStoreTest.php::\Cicnavi\Tests\Oidc\DataStore\PhpSessionDataStoreTest::testConstruct' flowId='21687']
+
+##teamcity[testFinished name='testConstruct' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testGet' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/DataStore/PhpSessionDataStoreTest.php::\Cicnavi\Tests\Oidc\DataStore\PhpSessionDataStoreTest::testGet' flowId='21687']
+
+##teamcity[testFinished name='testGet' duration='0' flowId='21687']
+
+##teamcity[testSuiteFinished name='Cicnavi\Tests\Oidc\DataStore\PhpSessionDataStoreTest' flowId='21687']
+
+##teamcity[testSuiteStarted name='Cicnavi\Tests\Oidc\Helpers\HttpHelperTest' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Helpers/HttpHelperTest.php::\Cicnavi\Tests\Oidc\Helpers\HttpHelperTest' flowId='21687']
+
+##teamcity[testStarted name='testIsRequestHttpSecure' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Helpers/HttpHelperTest.php::\Cicnavi\Tests\Oidc\Helpers\HttpHelperTest::testIsRequestHttpSecure' flowId='21687']
+
+##teamcity[testFinished name='testIsRequestHttpSecure' duration='1' flowId='21687']
+
+##teamcity[testStarted name='testNormalizeSessionCookieParams' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Helpers/HttpHelperTest.php::\Cicnavi\Tests\Oidc\Helpers\HttpHelperTest::testNormalizeSessionCookieParams' flowId='21687']
+
+##teamcity[testFinished name='testNormalizeSessionCookieParams' duration='0' flowId='21687']
+
+##teamcity[testSuiteFinished name='Cicnavi\Tests\Oidc\Helpers\HttpHelperTest' flowId='21687']
+
+##teamcity[testSuiteStarted name='Cicnavi\Tests\Oidc\Helpers\StringHelperTest' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Helpers/StringHelperTest.php::\Cicnavi\Tests\Oidc\Helpers\StringHelperTest' flowId='21687']
+
+##teamcity[testStarted name='testRandom' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Helpers/StringHelperTest.php::\Cicnavi\Tests\Oidc\Helpers\StringHelperTest::testRandom' flowId='21687']
+
+##teamcity[testFinished name='testRandom' duration='1' flowId='21687']
+
+##teamcity[testStarted name='testRandomThrows' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Helpers/StringHelperTest.php::\Cicnavi\Tests\Oidc\Helpers\StringHelperTest::testRandomThrows' flowId='21687']
+
+##teamcity[testFinished name='testRandomThrows' duration='1' flowId='21687']
+
+##teamcity[testStarted name='testRandomThrowsForInvalidCallback' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Helpers/StringHelperTest.php::\Cicnavi\Tests\Oidc\Helpers\StringHelperTest::testRandomThrowsForInvalidCallback' flowId='21687']
+
+##teamcity[testFinished name='testRandomThrowsForInvalidCallback' duration='1' flowId='21687']
+
+##teamcity[testSuiteFinished name='Cicnavi\Tests\Oidc\Helpers\StringHelperTest' flowId='21687']
+
+##teamcity[testSuiteStarted name='Cicnavi\Tests\Oidc\Http\RequestFactoryTest' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Http/RequestFactoryTest.php::\Cicnavi\Tests\Oidc\Http\RequestFactoryTest' flowId='21687']
+
+##teamcity[testStarted name='testCreateRequest' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/Http/RequestFactoryTest.php::\Cicnavi\Tests\Oidc\Http\RequestFactoryTest::testCreateRequest' flowId='21687']
+
+##teamcity[testFinished name='testCreateRequest' duration='0' flowId='21687']
+
+##teamcity[testSuiteFinished name='Cicnavi\Tests\Oidc\Http\RequestFactoryTest' flowId='21687']
+
+##teamcity[testSuiteStarted name='Cicnavi\Tests\Oidc\MetadataTest' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/MetadataTest.php::\Cicnavi\Tests\Oidc\MetadataTest' flowId='21687']
+
+##teamcity[testStarted name='testConstruct' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/MetadataTest.php::\Cicnavi\Tests\Oidc\MetadataTest::testConstruct' flowId='21687']
+
+##teamcity[testFinished name='testConstruct' duration='3' flowId='21687']
+
+##teamcity[testStarted name='testConstructThrowsOnRequestException' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/MetadataTest.php::\Cicnavi\Tests\Oidc\MetadataTest::testConstructThrowsOnRequestException' flowId='21687']
+
+##teamcity[testFinished name='testConstructThrowsOnRequestException' duration='2' flowId='21687']
+
+##teamcity[testStarted name='testConstructThrowsOnWrongResposeCode' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/MetadataTest.php::\Cicnavi\Tests\Oidc\MetadataTest::testConstructThrowsOnWrongResposeCode' flowId='21687']
+
+##teamcity[testFinished name='testConstructThrowsOnWrongResposeCode' duration='1' flowId='21687']
+
+##teamcity[testStarted name='testConstructThrowsOnCacheSetException' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/MetadataTest.php::\Cicnavi\Tests\Oidc\MetadataTest::testConstructThrowsOnCacheSetException' flowId='21687']
+
+##teamcity[testFinished name='testConstructThrowsOnCacheSetException' duration='2' flowId='21687']
+
+##teamcity[testStarted name='testMetadataValidationNotArray' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/MetadataTest.php::\Cicnavi\Tests\Oidc\MetadataTest::testMetadataValidationNotArray' flowId='21687']
+
+##teamcity[testFinished name='testMetadataValidationNotArray' duration='1' flowId='21687']
+
+##teamcity[testStarted name='testMetadataValidationMissingProperties' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/MetadataTest.php::\Cicnavi\Tests\Oidc\MetadataTest::testMetadataValidationMissingProperties' flowId='21687']
+
+##teamcity[testFinished name='testMetadataValidationMissingProperties' duration='1' flowId='21687']
+
+##teamcity[testStarted name='testGetUsingInvalidKeyThrows' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/MetadataTest.php::\Cicnavi\Tests\Oidc\MetadataTest::testGetUsingInvalidKeyThrows' flowId='21687']
+
+##teamcity[testFinished name='testGetUsingInvalidKeyThrows' duration='0' flowId='21687']
+
+##teamcity[testStarted name='testAllGetMethods' locationHint='php_qn:///home/mivanci/projects/personal/oidc-client-php/tests/Oidc/MetadataTest.php::\Cicnavi\Tests\Oidc\MetadataTest::testAllGetMethods' flowId='21687']
+
+##teamcity[testFinished name='testAllGetMethods' duration='0' flowId='21687']
+
+##teamcity[testSuiteFinished name='Cicnavi\Tests\Oidc\MetadataTest' flowId='21687']
+
+##teamcity[testSuiteFinished name='Unit tests' flowId='21687']

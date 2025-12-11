@@ -18,7 +18,7 @@ class Pkce extends AbstractDataHandler implements PkceDataHandlerInterface
     public const CODE_VERIFIER_SESSION_KEY = 'OIDC_CODE_VERIFIER_PARAMETER';
 
     /**
-     * @var array
+     * @var string[]
      */
     public const VALID_PKCE_CODE_CHALLENGE_METHODS = ['plain', 'S256'];
 
@@ -27,7 +27,7 @@ class Pkce extends AbstractDataHandler implements PkceDataHandlerInterface
      */
     public function getCodeVerifier(): string
     {
-        if (($codeVerifier = $this->store->get(self::CODE_VERIFIER_SESSION_KEY)) !== null) {
+        if (is_string($codeVerifier = $this->store->get(self::CODE_VERIFIER_SESSION_KEY))) {
             return $codeVerifier;
         }
 
