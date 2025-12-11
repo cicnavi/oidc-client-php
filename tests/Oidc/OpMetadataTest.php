@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Cicnavi\Tests\Oidc;
 
+use Cicnavi\Oidc\Http\RequestFactory;
 use Cicnavi\SimpleFileCache\Exceptions\InvalidArgumentException;
 use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\OpMetadata;
@@ -11,15 +12,15 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\Depends;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use Psr\SimpleCache\CacheInterface;
 
-/**
- * Class OpMetadataTest
- * @package Cicnavi\Tests
- *
- * @covers \Cicnavi\Oidc\OpMetadata
- */
+#[CoversClass(OpMetadata::class)]
+#[UsesClass(FileCache::class)]
+#[UsesClass(RequestFactory::class)]
 final class OpMetadataTest extends TestCase
 {
     protected static string $oidcConfigurationJson;
@@ -57,10 +58,6 @@ final class OpMetadataTest extends TestCase
 
     /**
      * @throws \Exception
-     *
-     * @uses \Cicnavi\Oidc\Cache\FileCache
-     * @uses \Cicnavi\Oidc\Http\RequestFactory
-     * @uses \Cicnavi\Oidc\Config
      */
     public function testConstruct(): OpMetadata
     {
@@ -85,10 +82,6 @@ final class OpMetadataTest extends TestCase
 
     /**
      * @throws \Exception
-     *
-     * @uses \Cicnavi\Oidc\Cache\FileCache
-     * @uses \Cicnavi\Oidc\Http\RequestFactory
-     * @uses \Cicnavi\Oidc\Config
      */
     public function testConstructThrowsOnRequestException(): void
     {
@@ -115,10 +108,6 @@ final class OpMetadataTest extends TestCase
 
     /**
      * @throws \Exception
-     *
-     * @uses \Cicnavi\Oidc\Cache\FileCache
-     * @uses \Cicnavi\Oidc\Http\RequestFactory
-     * @uses \Cicnavi\Oidc\Config
      */
     public function testConstructThrowsOnWrongResposeCode(): void
     {
@@ -144,10 +133,6 @@ final class OpMetadataTest extends TestCase
 
     /**
      * @throws \Exception
-     *
-     * @uses \Cicnavi\Oidc\Cache\FileCache
-     * @uses \Cicnavi\Oidc\Http\RequestFactory
-     * @uses \Cicnavi\Oidc\Config
      */
     public function testConstructThrowsOnCacheSetException(): void
     {
@@ -175,10 +160,6 @@ final class OpMetadataTest extends TestCase
 
     /**
      * @throws \Exception
-     *
-     * @uses \Cicnavi\Oidc\Cache\FileCache
-     * @uses \Cicnavi\Oidc\Http\RequestFactory
-     * @uses \Cicnavi\Oidc\Config
      */
     public function testMetadataValidationNotArray(): void
     {
@@ -206,10 +187,6 @@ final class OpMetadataTest extends TestCase
 
     /**
      * @throws \Exception
-     *
-     * @uses \Cicnavi\Oidc\Cache\FileCache
-     * @uses \Cicnavi\Oidc\Http\RequestFactory
-     * @uses \Cicnavi\Oidc\Config
      */
     public function testMetadataValidationMissingProperties(): void
     {
@@ -238,9 +215,9 @@ final class OpMetadataTest extends TestCase
     }
 
     /**
-     * @depends testConstruct
      * @throws \Exception
      */
+    #[Depends('testConstruct')]
     public function testGetUsingInvalidKeyThrows(OpMetadata $metadata): void
     {
         $this->expectException(\Exception::class);
@@ -249,9 +226,9 @@ final class OpMetadataTest extends TestCase
     }
 
     /**
-     * @depends testConstruct
      * @throws \Exception
      */
+    #[Depends('testConstruct')]
     public function testAllGetMethods(OpMetadata $metadata): void
     {
         $oidcConfigurationArray = json_decode(self::$oidcConfigurationJson, true);

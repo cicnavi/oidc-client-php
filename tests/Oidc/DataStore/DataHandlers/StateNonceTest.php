@@ -6,19 +6,16 @@ namespace Cicnavi\Tests\Oidc\DataStore\DataHandlers;
 
 use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
 use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
+use Cicnavi\Oidc\Helpers\StringHelper;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Class StateNonceTest
- * @package Cicnavi\Tests\Store\DataHandlers
- *
- * @covers \Cicnavi\Oidc\DataStore\DataHandlers\StateNonce
- */
+#[CoversClass(StateNonce::class)]
+#[UsesClass(PhpSessionDataStore::class)]
+#[UsesClass(StringHelper::class)]
 final class StateNonceTest extends TestCase
 {
-    /**
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
-     */
     public function testVerifyInvalidKeyThrows(): void
     {
         $stateNonce = new StateNonce();
@@ -26,9 +23,6 @@ final class StateNonceTest extends TestCase
         $stateNonce->verify('invalid', 'invalid');
     }
 
-    /**
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
-     */
     public function testVerifyInvalidValueThrows(): void
     {
         $stateNonce = new StateNonce();
@@ -37,9 +31,6 @@ final class StateNonceTest extends TestCase
         $stateNonce->verify(StateNonce::STATE_KEY, 'invalid');
     }
 
-    /**
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
-     */
     public function testVerifyNonExistantKeyThrows(): void
     {
         $stateNonce = new StateNonce();
@@ -48,9 +39,6 @@ final class StateNonceTest extends TestCase
         $stateNonce->verify(StateNonce::STATE_KEY, 'invalid');
     }
 
-    /**
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
-     */
     public function testVerify(): void
     {
         $stateNonce = new StateNonce();
@@ -62,9 +50,6 @@ final class StateNonceTest extends TestCase
         $this->assertNotSame($value, $stateNonce->get(StateNonce::STATE_KEY));
     }
 
-    /**
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
-     */
     public function testGetInvalidKeyThrows(): void
     {
         $this->expectException(\Exception::class);
@@ -86,10 +71,6 @@ final class StateNonceTest extends TestCase
         $this->assertSame($testValue, $stateNonce->get(StateNonce::STATE_KEY));
     }
 
-    /**
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
-     * @uses \Cicnavi\Oidc\Helpers\StringHelper
-     */
     public function testGetNewValue(): void
     {
         $stateNonce = new StateNonce();

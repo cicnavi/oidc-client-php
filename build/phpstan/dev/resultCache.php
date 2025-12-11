@@ -709,56 +709,56 @@ return [
 	'dependencies' => array (
   '/app/tests/Oidc/Cache/FileCacheTest.php' => 
   array (
-    'fileHash' => '6d922d699e9c19feba1b1b78436dca1128157007',
+    'fileHash' => '3a9265e4c85b6790ecc20b0f55d237154b86a3b0',
     'dependentFiles' => 
     array (
     ),
   ),
   '/app/tests/Oidc/DataStore/DataHandlers/PkceTest.php' => 
   array (
-    'fileHash' => 'b93e458ef616912e4d6187887436d244d9705991',
+    'fileHash' => '06a8642955e228e7aa3435fc9716e00586ea00b7',
     'dependentFiles' => 
     array (
     ),
   ),
   '/app/tests/Oidc/DataStore/DataHandlers/StateNonceTest.php' => 
   array (
-    'fileHash' => 'a26cc50f7133ff46919525dd0bc9bf00d2211ffb',
+    'fileHash' => '9610bc1fa037c826fe49bc8e17e6ec9a037b657f',
     'dependentFiles' => 
     array (
     ),
   ),
   '/app/tests/Oidc/DataStore/PhpSessionDataStoreTest.php' => 
   array (
-    'fileHash' => '64572970f44144a99a290fb11cb25feb0e3bc3d6',
+    'fileHash' => 'f4d865a844d6fe2844735110d46e733e3caf5c95',
     'dependentFiles' => 
     array (
     ),
   ),
   '/app/tests/Oidc/Helpers/HttpHelperTest.php' => 
   array (
-    'fileHash' => 'a61f6e3b8863b4f282a224b6701ee03814b0530e',
+    'fileHash' => 'ee6667b2e937b579eeb5d2fb81c76a44ae2cce70',
     'dependentFiles' => 
     array (
     ),
   ),
   '/app/tests/Oidc/Helpers/StringHelperTest.php' => 
   array (
-    'fileHash' => '7c8004114406842312c1ada66c1b6348403f2115',
+    'fileHash' => '63487ef0d178e0a1537c8f8e0f0e706db4f32fe5',
     'dependentFiles' => 
     array (
     ),
   ),
   '/app/tests/Oidc/Http/RequestFactoryTest.php' => 
   array (
-    'fileHash' => 'f0c6c2e154b2f23ee78cf5ac067cd9b12da9f31d',
+    'fileHash' => '1b14b6cfcdb7861e0e7b214c33b580f666dbfa19',
     'dependentFiles' => 
     array (
     ),
   ),
   '/app/tests/Oidc/OpMetadataTest.php' => 
   array (
-    'fileHash' => '3efe79edc4c56cddfdc0b2d99bcd9d155a64922d',
+    'fileHash' => '5245e6921faec843895b62c04e84ba7412af8569',
     'dependentFiles' => 
     array (
     ),
@@ -780,26 +780,7 @@ return [
     0 => 
     \PHPStan\Dependency\ExportedNode\ExportedClassNode::__set_state(array(
        'name' => 'Cicnavi\\Tests\\Oidc\\Cache\\FileCacheTest',
-       'phpDoc' => 
-      \PHPStan\Dependency\ExportedNode\ExportedPhpDocNode::__set_state(array(
-         'phpDocString' => '/**
- * Class FileCacheTest
- * @package Cicnavi\\Tests\\Cache
- *
- * @covers \\Cicnavi\\Oidc\\Cache\\FileCache
- */',
-         'namespace' => 'Cicnavi\\Tests\\Oidc\\Cache',
-         'uses' => 
-        array (
-          'filecache' => 'Cicnavi\\Oidc\\Cache\\FileCache',
-          'exception' => 'Exception',
-          'testcase' => 'PHPUnit\\Framework\\TestCase',
-          'tools' => 'Cicnavi\\Tests\\Oidc\\Tools',
-        ),
-         'constUses' => 
-        array (
-        ),
-      )),
+       'phpDoc' => NULL,
        'abstract' => false,
        'final' => true,
        'extends' => 'PHPUnit\\Framework\\TestCase',
@@ -1032,6 +1013,14 @@ return [
       ),
        'attributes' => 
       array (
+        0 => 
+        \PHPStan\Dependency\ExportedNode\ExportedAttributeNode::__set_state(array(
+           'name' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
+           'args' => 
+          array (
+            0 => '\\Cicnavi\\Oidc\\Cache\\FileCache::class',
+          ),
+        )),
       ),
     )),
   ),
@@ -1040,27 +1029,7 @@ return [
     0 => 
     \PHPStan\Dependency\ExportedNode\ExportedClassNode::__set_state(array(
        'name' => 'Cicnavi\\Tests\\Oidc\\DataStore\\DataHandlers\\PkceTest',
-       'phpDoc' => 
-      \PHPStan\Dependency\ExportedNode\ExportedPhpDocNode::__set_state(array(
-         'phpDocString' => '/**
- * Class PkceTest
- * @package Cicnavi\\Tests\\Store\\DataHandlers
- *
- * @covers \\Cicnavi\\Oidc\\DataStore\\DataHandlers\\Pkce
- */',
-         'namespace' => 'Cicnavi\\Tests\\Oidc\\DataStore\\DataHandlers',
-         'uses' => 
-        array (
-          'datahandlerinterface' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\Interfaces\\DataHandlerInterface',
-          'pkce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\Pkce',
-          'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
-          'exception' => 'Exception',
-          'testcase' => 'PHPUnit\\Framework\\TestCase',
-        ),
-         'constUses' => 
-        array (
-        ),
-      )),
+       'phpDoc' => NULL,
        'abstract' => false,
        'final' => true,
        'extends' => 'PHPUnit\\Framework\\TestCase',
@@ -1141,6 +1110,7 @@ return [
               'pkce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\Pkce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
               'exception' => 'Exception',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1177,6 +1147,7 @@ return [
               'pkce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\Pkce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
               'exception' => 'Exception',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1213,6 +1184,7 @@ return [
               'pkce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\Pkce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
               'exception' => 'Exception',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1248,6 +1220,7 @@ return [
               'pkce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\Pkce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
               'exception' => 'Exception',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1303,6 +1276,7 @@ return [
               'pkce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\Pkce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
               'exception' => 'Exception',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1339,6 +1313,7 @@ return [
               'pkce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\Pkce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
               'exception' => 'Exception',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1375,6 +1350,7 @@ return [
               'pkce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\Pkce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
               'exception' => 'Exception',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1411,6 +1387,7 @@ return [
               'pkce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\Pkce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
               'exception' => 'Exception',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1434,6 +1411,14 @@ return [
       ),
        'attributes' => 
       array (
+        0 => 
+        \PHPStan\Dependency\ExportedNode\ExportedAttributeNode::__set_state(array(
+           'name' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
+           'args' => 
+          array (
+            0 => '\\Cicnavi\\Oidc\\DataStore\\DataHandlers\\Pkce::class',
+          ),
+        )),
       ),
     )),
   ),
@@ -1442,25 +1427,7 @@ return [
     0 => 
     \PHPStan\Dependency\ExportedNode\ExportedClassNode::__set_state(array(
        'name' => 'Cicnavi\\Tests\\Oidc\\DataStore\\DataHandlers\\StateNonceTest',
-       'phpDoc' => 
-      \PHPStan\Dependency\ExportedNode\ExportedPhpDocNode::__set_state(array(
-         'phpDocString' => '/**
- * Class StateNonceTest
- * @package Cicnavi\\Tests\\Store\\DataHandlers
- *
- * @covers \\Cicnavi\\Oidc\\DataStore\\DataHandlers\\StateNonce
- */',
-         'namespace' => 'Cicnavi\\Tests\\Oidc\\DataStore\\DataHandlers',
-         'uses' => 
-        array (
-          'statenonce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\StateNonce',
-          'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
-          'testcase' => 'PHPUnit\\Framework\\TestCase',
-        ),
-         'constUses' => 
-        array (
-        ),
-      )),
+       'phpDoc' => NULL,
        'abstract' => false,
        'final' => true,
        'extends' => 'PHPUnit\\Framework\\TestCase',
@@ -1488,6 +1455,7 @@ return [
             array (
               'statenonce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\StateNonce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1521,6 +1489,7 @@ return [
             array (
               'statenonce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\StateNonce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1554,6 +1523,7 @@ return [
             array (
               'statenonce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\StateNonce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1587,6 +1557,7 @@ return [
             array (
               'statenonce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\StateNonce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1620,6 +1591,7 @@ return [
             array (
               'statenonce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\StateNonce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1672,6 +1644,7 @@ return [
             array (
               'statenonce' => 'Cicnavi\\Oidc\\DataStore\\DataHandlers\\StateNonce',
               'phpsessiondatastore' => 'Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1695,6 +1668,14 @@ return [
       ),
        'attributes' => 
       array (
+        0 => 
+        \PHPStan\Dependency\ExportedNode\ExportedAttributeNode::__set_state(array(
+           'name' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
+           'args' => 
+          array (
+            0 => '\\Cicnavi\\Oidc\\DataStore\\DataHandlers\\StateNonce::class',
+          ),
+        )),
       ),
     )),
   ),
@@ -1904,6 +1885,14 @@ return [
       ),
        'attributes' => 
       array (
+        0 => 
+        \PHPStan\Dependency\ExportedNode\ExportedAttributeNode::__set_state(array(
+           'name' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
+           'args' => 
+          array (
+            0 => '\\Cicnavi\\Oidc\\DataStore\\PhpSessionDataStore::class',
+          ),
+        )),
       ),
     )),
   ),
@@ -1942,6 +1931,7 @@ return [
              'uses' => 
             array (
               'httphelper' => 'Cicnavi\\Oidc\\Helpers\\HttpHelper',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -1981,6 +1971,7 @@ return [
              'uses' => 
             array (
               'httphelper' => 'Cicnavi\\Oidc\\Helpers\\HttpHelper',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -2053,6 +2044,7 @@ return [
              'uses' => 
             array (
               'httphelper' => 'Cicnavi\\Oidc\\Helpers\\HttpHelper',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -2085,6 +2077,7 @@ return [
              'uses' => 
             array (
               'httphelper' => 'Cicnavi\\Oidc\\Helpers\\HttpHelper',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -2108,6 +2101,14 @@ return [
       ),
        'attributes' => 
       array (
+        0 => 
+        \PHPStan\Dependency\ExportedNode\ExportedAttributeNode::__set_state(array(
+           'name' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
+           'args' => 
+          array (
+            0 => '\\Cicnavi\\Oidc\\Helpers\\HttpHelper::class',
+          ),
+        )),
       ),
     )),
   ),
@@ -2200,6 +2201,7 @@ return [
             array (
               'stringhelper' => 'Cicnavi\\Oidc\\Helpers\\StringHelper',
               'exception' => 'Exception',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
             ),
              'constUses' => 
@@ -2234,6 +2236,14 @@ return [
       ),
        'attributes' => 
       array (
+        0 => 
+        \PHPStan\Dependency\ExportedNode\ExportedAttributeNode::__set_state(array(
+           'name' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
+           'args' => 
+          array (
+            0 => '\\Cicnavi\\Oidc\\Helpers\\StringHelper::class',
+          ),
+        )),
       ),
     )),
   ),
@@ -2278,6 +2288,14 @@ return [
       ),
        'attributes' => 
       array (
+        0 => 
+        \PHPStan\Dependency\ExportedNode\ExportedAttributeNode::__set_state(array(
+           'name' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
+           'args' => 
+          array (
+            0 => '\\Cicnavi\\Oidc\\Http\\RequestFactory::class',
+          ),
+        )),
       ),
     )),
   ),
@@ -2286,31 +2304,7 @@ return [
     0 => 
     \PHPStan\Dependency\ExportedNode\ExportedClassNode::__set_state(array(
        'name' => 'Cicnavi\\Tests\\Oidc\\OpMetadataTest',
-       'phpDoc' => 
-      \PHPStan\Dependency\ExportedNode\ExportedPhpDocNode::__set_state(array(
-         'phpDocString' => '/**
- * Class OpMetadataTest
- * @package Cicnavi\\Tests
- *
- * @covers \\Cicnavi\\Oidc\\OpMetadata
- */',
-         'namespace' => 'Cicnavi\\Tests\\Oidc',
-         'uses' => 
-        array (
-          'invalidargumentexception' => 'Cicnavi\\SimpleFileCache\\Exceptions\\InvalidArgumentException',
-          'filecache' => 'Cicnavi\\Oidc\\Cache\\FileCache',
-          'opmetadata' => 'Cicnavi\\Oidc\\OpMetadata',
-          'client' => 'GuzzleHttp\\Client',
-          'requestexception' => 'GuzzleHttp\\Exception\\RequestException',
-          'request' => 'GuzzleHttp\\Psr7\\Request',
-          'response' => 'GuzzleHttp\\Psr7\\Response',
-          'testcase' => 'PHPUnit\\Framework\\TestCase',
-          'cacheinterface' => 'Psr\\SimpleCache\\CacheInterface',
-        ),
-         'constUses' => 
-        array (
-        ),
-      )),
+       'phpDoc' => NULL,
        'abstract' => false,
        'final' => true,
        'extends' => 'PHPUnit\\Framework\\TestCase',
@@ -2371,6 +2365,7 @@ return [
               'requestexception' => 'GuzzleHttp\\Exception\\RequestException',
               'request' => 'GuzzleHttp\\Psr7\\Request',
               'response' => 'GuzzleHttp\\Psr7\\Response',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
               'cacheinterface' => 'Psr\\SimpleCache\\CacheInterface',
             ),
@@ -2504,6 +2499,7 @@ return [
               'requestexception' => 'GuzzleHttp\\Exception\\RequestException',
               'request' => 'GuzzleHttp\\Psr7\\Request',
               'response' => 'GuzzleHttp\\Psr7\\Response',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
               'cacheinterface' => 'Psr\\SimpleCache\\CacheInterface',
             ),
@@ -2547,6 +2543,7 @@ return [
               'requestexception' => 'GuzzleHttp\\Exception\\RequestException',
               'request' => 'GuzzleHttp\\Psr7\\Request',
               'response' => 'GuzzleHttp\\Psr7\\Response',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
               'cacheinterface' => 'Psr\\SimpleCache\\CacheInterface',
             ),
@@ -2590,6 +2587,7 @@ return [
               'requestexception' => 'GuzzleHttp\\Exception\\RequestException',
               'request' => 'GuzzleHttp\\Psr7\\Request',
               'response' => 'GuzzleHttp\\Psr7\\Response',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
               'cacheinterface' => 'Psr\\SimpleCache\\CacheInterface',
             ),
@@ -2633,6 +2631,7 @@ return [
               'requestexception' => 'GuzzleHttp\\Exception\\RequestException',
               'request' => 'GuzzleHttp\\Psr7\\Request',
               'response' => 'GuzzleHttp\\Psr7\\Response',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
               'cacheinterface' => 'Psr\\SimpleCache\\CacheInterface',
             ),
@@ -2676,6 +2675,7 @@ return [
               'requestexception' => 'GuzzleHttp\\Exception\\RequestException',
               'request' => 'GuzzleHttp\\Psr7\\Request',
               'response' => 'GuzzleHttp\\Psr7\\Response',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
               'cacheinterface' => 'Psr\\SimpleCache\\CacheInterface',
             ),
@@ -2719,6 +2719,7 @@ return [
               'requestexception' => 'GuzzleHttp\\Exception\\RequestException',
               'request' => 'GuzzleHttp\\Psr7\\Request',
               'response' => 'GuzzleHttp\\Psr7\\Response',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
               'cacheinterface' => 'Psr\\SimpleCache\\CacheInterface',
             ),
@@ -2759,6 +2760,7 @@ return [
               'requestexception' => 'GuzzleHttp\\Exception\\RequestException',
               'request' => 'GuzzleHttp\\Psr7\\Request',
               'response' => 'GuzzleHttp\\Psr7\\Response',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
               'cacheinterface' => 'Psr\\SimpleCache\\CacheInterface',
             ),
@@ -2810,6 +2812,7 @@ return [
               'requestexception' => 'GuzzleHttp\\Exception\\RequestException',
               'request' => 'GuzzleHttp\\Psr7\\Request',
               'response' => 'GuzzleHttp\\Psr7\\Response',
+              'coversclass' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
               'testcase' => 'PHPUnit\\Framework\\TestCase',
               'cacheinterface' => 'Psr\\SimpleCache\\CacheInterface',
             ),
@@ -2845,6 +2848,14 @@ return [
       ),
        'attributes' => 
       array (
+        0 => 
+        \PHPStan\Dependency\ExportedNode\ExportedAttributeNode::__set_state(array(
+           'name' => 'PHPUnit\\Framework\\Attributes\\CoversClass',
+           'args' => 
+          array (
+            0 => '\\Cicnavi\\Oidc\\OpMetadata::class',
+          ),
+        )),
       ),
     )),
   ),

@@ -6,15 +6,11 @@ namespace Cicnavi\Tests\Oidc\Cache;
 
 use Cicnavi\Oidc\Cache\FileCache;
 use Exception;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Cicnavi\Tests\Oidc\Tools;
 
-/**
- * Class FileCacheTest
- * @package Cicnavi\Tests\Cache
- *
- * @covers \Cicnavi\Oidc\Cache\FileCache
- */
+#[CoversClass(FileCache::class)]
 final class FileCacheTest extends TestCase
 {
     protected static string $testCachePath;

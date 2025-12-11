@@ -6,8 +6,10 @@ namespace Cicnavi\Tests\Oidc\Helpers;
 
 use Cicnavi\Oidc\Helpers\StringHelper;
 use Exception;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
+#[CoversClass(StringHelper::class)]
 final class StringHelperTest extends TestCase
 {
     public function testRandom(): void

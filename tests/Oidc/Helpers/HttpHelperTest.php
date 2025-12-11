@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Cicnavi\Tests\Oidc\Helpers;
 
 use Cicnavi\Oidc\Helpers\HttpHelper;
+use PHPUnit\Framework\Attributes\BackupGlobals;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
+#[CoversClass(HttpHelper::class)]
 final class HttpHelperTest extends TestCase
 {
     /**
@@ -36,9 +39,7 @@ final class HttpHelperTest extends TestCase
         }
     }
 
-    /**
-     * @backupGlobals enabled
-     */
+    #[BackupGlobals(true)]
     public function testIsRequestHttpSecure(): void
     {
         global $_SERVER;
@@ -82,9 +83,7 @@ final class HttpHelperTest extends TestCase
         unset($_SERVER['HTTP_X_FORWARDED_PORT']);
     }
 
-    /**
-     * @backupGlobals enabled
-     */
+    #[BackupGlobals(true)]
     public function testNormalizeSessionCookieParams(): void
     {
         global $_SERVER;

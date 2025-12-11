@@ -7,15 +7,15 @@ namespace Cicnavi\Tests\Oidc\DataStore\DataHandlers;
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\DataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Pkce;
 use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
+use Cicnavi\Oidc\Helpers\StringHelper;
 use Exception;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Class PkceTest
- * @package Cicnavi\Tests\Store\DataHandlers
- *
- * @covers \Cicnavi\Oidc\DataStore\DataHandlers\Pkce
- */
+#[CoversClass(Pkce::class)]
+#[UsesClass(PhpSessionDataStore::class)]
+#[UsesClass(StringHelper::class)]
 final class PkceTest extends TestCase
 {
     protected string $testCodeVerifier = 'mV3hZ7E7iWzljYMPqcjNHCdT32lVsZ6tI8ssdHyilSr48lLosV7soxlPEh8SekHejJElY3vj' .
@@ -25,7 +25,6 @@ final class PkceTest extends TestCase
 
     /**
      * @throws Exception
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
      */
     public function testValidatePkceCodeChallengeMethod(): void
     {
@@ -39,7 +38,6 @@ final class PkceTest extends TestCase
 
     /**
      * @throws Exception
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
      */
     public function testGenerateCodeChallengeFromCodeVerifierValidation(): void
     {
@@ -50,7 +48,6 @@ final class PkceTest extends TestCase
 
     /**
      * @throws Exception
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
      */
     public function testGenerateCodeChallengeFromCodeVerifier(): void
     {
@@ -65,9 +62,6 @@ final class PkceTest extends TestCase
         );
     }
 
-    /**
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
-     */
     public function testRemoveCodeVerifierParameter(): void
     {
         $pkce = new Pkce();
@@ -96,8 +90,6 @@ final class PkceTest extends TestCase
 
     /**
      * @throws Exception
-     *
-     * @uses \Cicnavi\Oidc\Helpers\StringHelper
      */
     public function testNewCodeVerifier(): void
     {
@@ -113,29 +105,17 @@ final class PkceTest extends TestCase
         $this->assertNotSame($testCodeVerifierValue, $codeVerifier);
     }
 
-    /**
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
-     * @covers \Cicnavi\Oidc\DataStore\DataHandlers\AbstractDataHandler
-     */
     public function testConstructWithoutArguments(): void
     {
         $this->assertInstanceOf(DataHandlerInterface::class, new Pkce());
     }
 
-    /**
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
-     * @covers \Cicnavi\Oidc\DataStore\DataHandlers\AbstractDataHandler
-     */
     public function testConstructWithArguments(): void
     {
         $store = new PhpSessionDataStore();
         $this->assertInstanceOf(DataHandlerInterface::class, new Pkce($store));
     }
 
-    /**
-     * @uses \Cicnavi\Oidc\DataStore\PhpSessionDataStore
-     * @covers \Cicnavi\Oidc\DataStore\DataHandlers\AbstractDataHandler
-     */
     public function testSetStore(): void
     {
         $store = new PhpSessionDataStore();

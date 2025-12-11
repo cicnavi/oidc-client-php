@@ -6,8 +6,10 @@ namespace Cicnavi\Tests\Oidc\DataStore;
 
 use Cicnavi\Oidc\DataStore\Interfaces\DataStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
+#[CoversClass(PhpSessionDataStore::class)]
 final class PhpSessionDataStoreTest extends TestCase
 {
     protected DataStoreInterface $store;
