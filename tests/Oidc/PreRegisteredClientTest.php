@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Cicnavi\Tests\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
-use Cicnavi\Oidc\Client;
+use Cicnavi\Oidc\PreRegisteredClient;
 use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use Exception;
@@ -14,18 +14,15 @@ use GuzzleHttp\Client as GuzzleHttpClient;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
-use Jose\Component\KeyManagement\JWKFactory;
-use Jose\Component\Core\JWK;
-use Jose\Easy\Build;
 use Throwable;
 
 /**
  * Class ClientTest
  * @package Cicnavi\Tests
  *
- * @covers \Cicnavi\Oidc\Client
+ * @covers \Cicnavi\Oidc\PreRegisteredClient
  */
-class ClientTest extends TestCase
+class PreRegisteredClientTest extends TestCase
 {
     /**
      * @var array<string,mixed>
@@ -72,11 +69,11 @@ class ClientTest extends TestCase
         'preferred_username' => 'jdoe@example.org',
         'email' => 'john.doe@example.org',
         'hrEduPersonUniqueNumber' =>
-        array(
+        [
             0 => 'LOCAL_NO: 1234',
             1 => 'OIB: 12345678912',
             2 => 'JMBAG: 1234567891',
-        ),
+        ],
     ];
 
 
@@ -90,10 +87,6 @@ class ClientTest extends TestCase
     protected static GuzzleHttpClient $guzzleHttpClientStub;
 
     protected static string $oidcConfigurationJson;
-
-    protected static JWK $privateTestKeyJwkSig;
-
-    protected static JWK $publicTestKeyJwkSig;
 
     protected static array $sampleJwksArray = [
         'keys' => [
@@ -218,14 +211,14 @@ class ClientTest extends TestCase
      */
 
     /**
-     * @return Client
+     * @return PreRegisteredClient
      * @throws \Cicnavi\Oidc\Exceptions\OidcClientException
      *
      * @psalm-suppress RedundantCondition
      */
-    public function testConstruct(): Client
+    public function testConstruct(): PreRegisteredClient
     {
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -246,13 +239,13 @@ class ClientTest extends TestCase
             null,
             self::$guzzleHttpClientStub
         );
-        $this->assertInstanceOf(Client::class, $client);
+        $this->assertInstanceOf(PreRegisteredClient::class, $client);
         return $client;
     }
 
     public function testGetMetadata(): void
     {
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -283,7 +276,7 @@ class ClientTest extends TestCase
      */
     public function testAuthorize(): void
     {
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -366,7 +359,7 @@ class ClientTest extends TestCase
      */
     public function testAuthorizeForPublicClient(): void
     {
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -423,7 +416,7 @@ class ClientTest extends TestCase
 
     public function testAuthenticateMissingCodeThrows(): void
     {
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -455,7 +448,7 @@ class ClientTest extends TestCase
      */
     public function testGetUserDataErrorThrows(): void
     {
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -487,7 +480,7 @@ class ClientTest extends TestCase
      */
     public function testGetUserDataMissingStateThrows(): void
     {
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -522,7 +515,7 @@ class ClientTest extends TestCase
         $stateNonceStub = $this->createStub(StateNonce::class);
         $stateNonceStub->method('verify');
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -564,7 +557,7 @@ class ClientTest extends TestCase
         $stateNonceStub = $this->createStub(StateNonce::class);
         $stateNonceStub->method('verify');
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -603,7 +596,7 @@ class ClientTest extends TestCase
         $tokenData = self::$sampleTokenDataArray;
         unset($tokenData['access_token']);
         $this->expectException(Exception::class);
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -632,7 +625,7 @@ class ClientTest extends TestCase
         $tokenData = self::$sampleTokenDataArray;
         unset($tokenData['token_type']);
         $this->expectException(Exception::class);
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -661,7 +654,7 @@ class ClientTest extends TestCase
         $stateNonceStub = $this->createStub(StateNonce::class);
         $stateNonceStub->method('verify');
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -704,7 +697,7 @@ class ClientTest extends TestCase
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub([$oidcConfigurationResponse]);
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -764,7 +757,7 @@ class ClientTest extends TestCase
             ]
         );
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -825,7 +818,7 @@ class ClientTest extends TestCase
         $stateNonceStub = $this->createStub(StateNonce::class);
         $stateNonceStub->method('verify');
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -856,7 +849,7 @@ class ClientTest extends TestCase
 
     public function testGetDataFromIdTokenThrowsForInvalidIdTokenFormat(): void
     {
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -898,7 +891,7 @@ class ClientTest extends TestCase
         ];
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -926,7 +919,7 @@ class ClientTest extends TestCase
 
     public function testGetDataFromIdTokenThrowsForInvalidJson(): void
     {
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -971,7 +964,7 @@ class ClientTest extends TestCase
         ];
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -1019,7 +1012,7 @@ class ClientTest extends TestCase
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -1066,7 +1059,7 @@ class ClientTest extends TestCase
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -1097,7 +1090,7 @@ class ClientTest extends TestCase
         $jwksUriContentArray = self::$sampleJwksArray;
         $jwksUriContentArray['keys'] = [];
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -1138,7 +1131,7 @@ class ClientTest extends TestCase
         ];
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -1169,7 +1162,7 @@ class ClientTest extends TestCase
     public function testValidateCacheThrows(): void
     {
         $this->expectException(Exception::class);
-        new Client(
+        new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -1210,7 +1203,7 @@ class ClientTest extends TestCase
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -1263,7 +1256,7 @@ class ClientTest extends TestCase
                 $this->throwException(new Exception('Sample cache error.'))
             ));
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -1304,7 +1297,7 @@ class ClientTest extends TestCase
         ];
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],
@@ -1347,7 +1340,7 @@ class ClientTest extends TestCase
 
         $guzzleHttpClientStub = $this->prepareGuzzleHttpClientStub($responses);
 
-        $client = new Client(
+        $client = new PreRegisteredClient(
             self::$validConfigOptions['opConfigurationUrl'],
             self::$validConfigOptions['clientId'],
             self::$validConfigOptions['clientSecret'],

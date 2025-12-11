@@ -8,7 +8,9 @@ Major release with breaking changes to the client instantiation API.
 
 
 ### Changed 
-- **Breaking**: Class `Cicnavi\Oidc\Client` (`src/Client.php`) now accepts
+- **Breaking**: Class `Cicnavi\Oidc\Client` (`src/Client.php`) has been
+renamed to `Cicnavi\Oidc\PreRegisteredClient` (`src/PreRegisteredClient.php`).
+- **Breaking**: Class `Cicnavi\Oidc\PreRegisteredClient` now accepts
 configuration options as direct constructor parameters using PHP 8.2's property
 promotion, instead of accepting a `Cicnavi\Oidc\Config` instance.
 - **Breaking**: Class `Cicnavi\Oidc\Metadata` (`src/Metadata.php`) now accepts
@@ -21,6 +23,8 @@ passing it to the client.
 `idTokenValidationIatLeeway` and `idTokenValidationNbfLeeway`, you can now 
 designate validation leeway for timestamps using `timestampValidationLeeway`
 configuration option, which is `DateInterval` instance.
+- `PreRegisteredClient` will now use PKCE by default. This can be disabled by
+setting `shouldUsePkce` to `false`.
 
 ### Removed 
 - **Breaking**: Class `Cicnavi\Oidc\Config` (`src/Config.php`) has been removed.
@@ -33,9 +37,9 @@ has been removed. Client is now always considered confidential.
 ### Migration Guide
 
 #### Before (v2.x):
+
 ```php
 use Cicnavi\Oidc\Config;
-use Cicnavi\Oidc\Client;
 
 $config = new Config([
     Config::OPTION_OP_CONFIGURATION_URL => 'https://example.org/.well-known/openid-configuration',
@@ -53,9 +57,9 @@ $client = new Client($config);
 #### After (v3.0):
 
 ```php
-use Cicnavi\Oidc\Client;
+use Cicnavi\Oidc\PreRegisteredClient;
 
-$client = new Client(
+$client = new PreRegisteredClient(
     opConfigurationUrl: 'https://example.org/.well-known/openid-configuration',
     clientId: 'client-id',
     clientSecret: 'client-secret',
@@ -75,8 +79,11 @@ $client = new Client($config, $cache);
 
 #### With Custom Cache (After):
 ```php
+use Cicnavi\Oidc\PreRegisteredClient;
+use SimpleSAML\Cache\FileCache;
+
 $cache = new FileCache('custom-cache-path');
-$client = new Client(
+$client = new PreRegisteredClient(
     opConfigurationUrl: '...',
     clientId: '...',
     clientSecret: '...',
@@ -85,14 +92,3 @@ $client = new Client(
     cache: $cache
 );
 ```
-
-### Benefits
-- **Type Safety**: All configuration options are now strongly typed
-- **Better IDE Support**: Named parameters provide autocomplete and inline documentation
-- **Simplified API**: No need to create a separate Config object
-- **Modern PHP**: Leverages PHP 8.2's property promotion feature
-
-Check the [README](README.md) for complete usage examples.
-
-### Added
-### Fixed

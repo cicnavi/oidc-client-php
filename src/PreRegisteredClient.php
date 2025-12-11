@@ -32,7 +32,7 @@ use SimpleSAML\OpenID\SupportedAlgorithms;
 use SimpleSAML\OpenID\SupportedSerializers;
 use Throwable;
 
-class Client
+class PreRegisteredClient
 {
     /**
      * @var CacheInterface $cache Cache instance, which can be used to fetch

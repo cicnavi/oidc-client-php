@@ -33,10 +33,10 @@ To instantiate a client, provide configuration parameters to the
 parameters:
 
 ```php
-use Cicnavi\Oidc\Client;
+use Cicnavi\Oidc\PreRegisteredClient;
 
 // Create a client with required parameters
-$oidcClient = new Client(
+$oidcClient = new PreRegisteredClient(
     opConfigurationUrl: 'https://example.org/oidc/.well-known/openid-configuration',
     clientId: 'some-client-id',
     clientSecret: 'some-client-secret',
@@ -52,10 +52,11 @@ your OpenID Provider).
 ### Optional Parameters
 
 You can also customize the client behavior with optional parameters:
-```php
-use Cicnavi\Oidc\Client;
 
-$oidcClient = new Client(
+```php
+use Cicnavi\Oidc\PreRegisteredClient;
+
+$oidcClient = new PreRegisteredClient(
     // Required parameters
     opConfigurationUrl: 'https://example.org/oidc/.well-known/openid-configuration',
     clientId: 'some-client-id',
@@ -108,8 +109,8 @@ scope was used in client configuration), and will fetch user data from
 `userinfo` endpoint using access token for authentication.
 
 ```php
-use Cicnavi\Oidc\Client;
-/** @var Client $oidcClient */
+use Cicnavi\Oidc\PreRegisteredClient;
+/** @var PreRegisteredClient $oidcClient */
 
 // File: callback.php
 try {
@@ -203,10 +204,10 @@ it as needed. If you need to bust cache, use `reinitializeCache()` client
 instance before making any authentication calls.
 
 ```php
-use Cicnavi\Oidc\Client;
+use Cicnavi\Oidc\PreRegisteredClient;
 
 // ... 
-$oidcClient = new Client(
+$oidcClient = new PreRegisteredClient(
     opConfigurationUrl: 'https://example.org/oidc/.well-known/openid-configuration',
     clientId: 'some-client-id',
     clientSecret: 'some-client-secret',
