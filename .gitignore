@@ -1,6 +1,6 @@
 /vendor/
 .env
-/buil/
+/build/
 composer.lock
 /.idea/
 /.scannerwork/
