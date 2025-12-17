@@ -123,7 +123,7 @@ class PreRegisteredClient
         ?MetadataInterface $metadata = null,
         ?Core $core = null,
     ) {
-        $this->cache = $cache ?? new FileCache('oidc-client-php-cache-' . md5($this->clientId));
+        $this->cache = $cache ?? new FileCache('oprcpc-' . md5($this->clientId));
 
         $this->validateCache();
 
