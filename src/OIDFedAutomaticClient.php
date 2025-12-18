@@ -11,6 +11,8 @@ use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmBag;
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmEnum;
+use SimpleSAML\OpenID\Codebooks\TrustMarkStatusEndpointUsagePolicyEnum;
+use SimpleSAML\OpenID\Federation;
 use SimpleSAML\OpenID\SupportedAlgorithms;
 use SimpleSAML\OpenID\SupportedSerializers;
 
@@ -36,6 +38,8 @@ class OIDFedAutomaticClient
      * public key used to verify the JWTs.
      * @param SignatureAlgorithmEnum $signatureAlgorithm Signature algorithm
      * to use for signing JWTs. Defaults to RS256.
+     * @param string[] $keywords Keywords associated with this entity.
+     * @param string[] $contacts Contacts associated with this entity.
      * @param string[] $staticTrustMarks Array of Trust Mark token strings
      * (signed JWTs), each representing a Trust Mark issued for this entity.
      * This option is intended for long-lasting or non-expiring tokens, so it
@@ -54,6 +58,8 @@ class OIDFedAutomaticClient
      * directory.
      * @param \DateInterval $maxCacheDuration Maximum duration for which fetched
      * artifacts will be cached. Defaults to 6 hours.
+     * @param \DateInterval $timestampValidationLeeway Leeway used for timestamp
+     * validation. Defaults to 1 minute.
      *
      * @throws CacheException
      */
@@ -67,12 +73,19 @@ class OIDFedAutomaticClient
         protected readonly SignatureAlgorithmEnum $signatureAlgorithm = SignatureAlgorithmEnum::RS256,
         protected readonly ?string $organizationName = null,
         protected readonly ?string $displayName = null,
+        protected readonly ?string $description = null,
+        protected readonly array $keywords = [],
+        protected readonly array $contacts = [],
+        protected readonly ?string $logoUri = null,
+        protected readonly ?string $policyUri = null,
+        protected readonly ?string $informationUri = null,
+        protected readonly ?string $organizationUri = null,
         protected readonly array $staticTrustMarks = [],
         protected readonly array $dynamicTrustMarks = [],
-        \DateInterval $entityStatementDuration = new \DateInterval('P1D'),
+        protected readonly \DateInterval $entityStatementDuration = new \DateInterval('P1D'),
         ?CacheInterface $cache = null,
-        \DateInterval $maxCacheDuration = new \DateInterval('PT6H'),
-        \DateInterval $timestampValidationLeeway = new \DateInterval('PT1M'),
+        protected readonly \DateInterval $maxCacheDuration = new \DateInterval('PT6H'),
+        protected readonly \DateInterval $timestampValidationLeeway = new \DateInterval('PT1M'),
         protected readonly SupportedAlgorithms $supportedAlgorithms = new SupportedAlgorithms(
             new SignatureAlgorithmBag(
                 SignatureAlgorithmEnum::EdDSA,
@@ -91,7 +104,22 @@ class OIDFedAutomaticClient
         protected readonly ?LoggerInterface $logger = null,
         protected readonly int $maxTrustChainDepth = 9,
         protected readonly ?Client $client = null,
+        // phpcs:ignore
+        protected readonly TrustMarkStatusEndpointUsagePolicyEnum $defaultTrustMarkStatusEndpointUsagePolicyEnum = TrustMarkStatusEndpointUsagePolicyEnum::NotUsed,
+        protected ?Federation $federation = null,
     ) {
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityId));
+
+        $this->federation = $federation ?? new Federation(
+            $this->supportedAlgorithms,
+            $this->supportedSerializers,
+            $this->maxCacheDuration,
+            $this->timestampValidationLeeway,
+            $this->maxTrustChainDepth,
+            $this->cache,
+            $this->logger,
+            $this->client,
+            $this->defaultTrustMarkStatusEndpointUsagePolicyEnum,
+        );
     }
 }
