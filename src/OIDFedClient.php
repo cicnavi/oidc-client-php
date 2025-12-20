@@ -19,8 +19,14 @@ use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmBag;
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmEnum;
+use SimpleSAML\OpenID\Codebooks\ApplicationTypesEnum;
 use SimpleSAML\OpenID\Codebooks\ClaimsEnum;
+use SimpleSAML\OpenID\Codebooks\ClientRegistrationTypesEnum;
+use SimpleSAML\OpenID\Codebooks\EntityTypesEnum;
+use SimpleSAML\OpenID\Codebooks\GrantTypesEnum;
 use SimpleSAML\OpenID\Codebooks\HashAlgorithmsEnum;
+use SimpleSAML\OpenID\Codebooks\ResponseTypesEnum;
+use SimpleSAML\OpenID\Codebooks\TokenEndpointAuthMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\TrustMarkStatusEndpointUsagePolicyEnum;
 use SimpleSAML\OpenID\Federation;
 use SimpleSAML\OpenID\Federation\EntityStatement;
@@ -41,11 +47,17 @@ class OIDFedClient
 
     protected readonly SignatureKeyPairBagFactory $signatureKeyPairBagFactory;
 
-    protected readonly SignatureKeyPairBag $federationAdditionalSignatureKeyPairs;
+    protected readonly SignatureKeyPairBag $federationAdditionalSignatureKeyPairBag;
 
     protected readonly Federation $federation;
 
     protected JwksDecorator $federationJwks;
+
+    protected SignatureKeyPair $rpDefaultSignatureKeyPair;
+
+    protected SignatureKeyPairBag $rpAdditionalSignatureKeyPairBag;
+
+    protected JwksDecorator $rpJwks;
 
     /**
      * TODO mivanci Federation participation limit by Trust Marks.
@@ -115,18 +127,34 @@ class OIDFedClient
         );
 
         $this->federationDefaultSignatureKeyPair = $this->signatureKeyPairFactory->fromConfig(
-            $this->entityConfig->getDefaultSignatureKeyPair(),
+            $this->entityConfig->getDefaultSignatureKeyPairConfig(),
         );
 
-        $this->federationAdditionalSignatureKeyPairs = $this->signatureKeyPairBagFactory->fromConfig(
-            $this->entityConfig->getAdditionalSignatureKeyPairs(),
+        $this->federationAdditionalSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
+            $this->entityConfig->getAdditionalSignatureKeyPairConfigBag(),
         );
 
         $this->federationJwks = $this->jwksDecoratorFactory->fromJwkDecorators(
             $this->federationDefaultSignatureKeyPair->getKeyPair()->getPublicKey(),
             ...array_map(
                 fn(SignatureKeyPair $signatureKeyPair): JwkDecorator => $signatureKeyPair->getKeyPair()->getPublicKey(),
-                $this->federationAdditionalSignatureKeyPairs->getAll()
+                $this->federationAdditionalSignatureKeyPairBag->getAll()
+            ),
+        );
+
+        $this->rpDefaultSignatureKeyPair = $this->signatureKeyPairFactory->fromConfig(
+            $this->entityConfig->getRpConfig()->getDefaultSignatureKeyPairConfig(),
+        );
+
+        $this->rpAdditionalSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
+            $this->entityConfig->getRpConfig()->getAdditionalSignatureKeyPairBag(),
+        );
+
+        $this->rpJwks = $this->jwksDecoratorFactory->fromJwkDecorators(
+            $this->rpDefaultSignatureKeyPair->getKeyPair()->getPublicKey(),
+            ...array_map(
+                fn(SignatureKeyPair $signatureKeyPair): JwkDecorator => $signatureKeyPair->getKeyPair()->getPublicKey(),
+                $this->rpAdditionalSignatureKeyPairBag->getAll()
             ),
         );
     }
@@ -145,7 +173,7 @@ class OIDFedClient
     {
         $issuedAt = $this->federation->helpers()->dateTime()->getUtc();
 
-        $payload = $this->entityConfig->getAdditionalClaims()->getAll();
+        $payload = $this->entityConfig->getAdditionalClaimBag()->getAll();
         $payload[ClaimsEnum::Iss->value] = $this->entityConfig->getEntityId();
         $payload[ClaimsEnum::Sub->value] = $this->entityConfig->getEntityId();
         $payload[ClaimsEnum::Iat->value] = $issuedAt->getTimestamp();
@@ -153,7 +181,39 @@ class OIDFedClient
         $payload[ClaimsEnum::Jti->value] = $this->federation->helpers()->random()->string();
         $payload[ClaimsEnum::Jwks->value] = $this->federationJwks->jsonSerialize();
 
-        $this->entityConfig->getRpConfig()->getAdditionalClaims()->getAll();
+        $rpMetadata = $this->entityConfig->getRpConfig()->getAdditionalClaimBag()->getAll();
+        $rpMetadata[ClaimsEnum::ApplicationType->value] = ApplicationTypesEnum::Web->value;
+        $rpMetadata[ClaimsEnum::GrantTypes->value] = [GrantTypesEnum::AuthorizationCode->value];
+        $rpMetadata[ClaimsEnum::RedirectUris->value] = $this->entityConfig->getRpConfig()->getRedirectUriBag()
+            ->getAll();
+        $rpMetadata[ClaimsEnum::TokenEndpointAuthMethod->value] = TokenEndpointAuthMethodsEnum::PrivateKeyJwt->value;
+        $rpMetadata[ClaimsEnum::ResponseTypes->value] = [ResponseTypesEnum::Code->value];
+        $rpMetadata[ClaimsEnum::ClientRegistrationTypes->value] = [
+            ClientRegistrationTypesEnum::Automatic->value,
+        ];
+        $rpMetadata[ClaimsEnum::IdTokenSigningAlgValuesSupported->value] = array_map(
+            fn(SignatureAlgorithmEnum $signatureAlgorithmEnum): string => $signatureAlgorithmEnum->value,
+            $this->supportedAlgorithms->getSignatureAlgorithmBag()->getAll(),
+        );
+        $rpMetadata[ClaimsEnum::RequestObjectSigningAlgValuesSupported->value] = [
+            $this->rpDefaultSignatureKeyPair->getSignatureAlgorithm()->value,
+            ...array_map(
+                fn(SignatureKeyPair $signatureKeyPair): string => $signatureKeyPair->getSignatureAlgorithm()->value,
+                $this->rpAdditionalSignatureKeyPairBag->getAll(),
+            )
+        ];
+        $rpMetadata[ClaimsEnum::SoftwareId->value] = 'https://github.com/cicnavi/oidc-client-php';
+
+
+        $metadata = [
+            ClaimsEnum::Metadata->value => [
+                EntityTypesEnum::OpenIdRelyingParty->value => $rpMetadata,
+            ]
+        ];
+
+        /** @var array<non-empty-string,mixed> $payload */
+        $payload = array_merge_recursive($payload, $metadata);
+
 
         $header = [];
         return $this->federation->entityStatementFactory()->fromData(
