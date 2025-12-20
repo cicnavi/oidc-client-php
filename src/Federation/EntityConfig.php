@@ -80,4 +80,9 @@ class EntityConfig
     {
         return $this->additionalClaims;
     }
+
+    public function getRpConfig(): RpConfig
+    {
+        return $this->rpConfig;
+    }
 }

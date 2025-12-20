@@ -8,7 +8,10 @@ use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\Entities\KeyPair;
 use Cicnavi\Oidc\Entities\KeyPairConfig;
 use Cicnavi\Oidc\Entities\SignatureKeyPair;
+use Cicnavi\Oidc\Entities\SignatureKeyPairBag;
 use Cicnavi\Oidc\Entities\SignatureKeyPairConfig;
+use Cicnavi\Oidc\Factories\SignatureKeyPairBagFactory;
+use Cicnavi\Oidc\Factories\SignatureKeyPairFactory;
 use Cicnavi\Oidc\Federation\EntityConfig;
 use Cicnavi\SimpleFileCache\Exceptions\CacheException;
 use GuzzleHttp\Client;
@@ -16,20 +19,33 @@ use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmBag;
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmEnum;
+use SimpleSAML\OpenID\Codebooks\ClaimsEnum;
 use SimpleSAML\OpenID\Codebooks\HashAlgorithmsEnum;
 use SimpleSAML\OpenID\Codebooks\TrustMarkStatusEndpointUsagePolicyEnum;
 use SimpleSAML\OpenID\Federation;
 use SimpleSAML\OpenID\Federation\EntityStatement;
 use SimpleSAML\OpenID\Jwk;
 use SimpleSAML\OpenID\Jwk\JwkDecorator;
+use SimpleSAML\OpenID\Jwks\Factories\JwksDecoratorFactory;
+use SimpleSAML\OpenID\Jwks\JwksDecorator;
 use SimpleSAML\OpenID\SupportedAlgorithms;
 use SimpleSAML\OpenID\SupportedSerializers;
 
 class OIDFedClient
 {
-    protected CacheInterface $cache;
+    protected readonly CacheInterface $cache;
 
-    protected SignatureKeyPair $federationDefaultSigningKeyPair;
+    protected readonly SignatureKeyPair $federationDefaultSignatureKeyPair;
+
+    protected readonly SignatureKeyPairFactory $signatureKeyPairFactory;
+
+    protected readonly SignatureKeyPairBagFactory $signatureKeyPairBagFactory;
+
+    protected readonly SignatureKeyPairBag $federationAdditionalSignatureKeyPairs;
+
+    protected readonly Federation $federation;
+
+    protected JwksDecorator $federationJwks;
 
     /**
      * TODO mivanci Federation participation limit by Trust Marks.
@@ -73,11 +89,18 @@ class OIDFedClient
         protected readonly ?Client $client = null,
         // phpcs:ignore
         protected readonly TrustMarkStatusEndpointUsagePolicyEnum $defaultTrustMarkStatusEndpointUsagePolicyEnum = TrustMarkStatusEndpointUsagePolicyEnum::NotUsed,
-        protected ?Federation $federation = null,
+        ?Federation $federation = null,
         protected Jwk $jwk = new Jwk(),
         protected readonly HashAlgorithmsEnum $jwkThumbprintHashAlgo = HashAlgorithmsEnum::SHA_256,
+        SignatureKeyPairFactory $signatureKeyPairFactory = null,
+        SignatureKeyPairBagFactory $signatureKeyPairBagFactory = null,
+        protected readonly JwksDecoratorFactory $jwksDecoratorFactory = new JwksDecoratorFactory(),
     ) {
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
+        $this->signatureKeyPairFactory = $signatureKeyPairFactory ?? new SignatureKeyPairFactory($this->jwk);
+        $this->signatureKeyPairBagFactory = $signatureKeyPairBagFactory ?? new SignatureKeyPairBagFactory(
+            $this->signatureKeyPairFactory,
+        );
 
         $this->federation = $federation ?? new Federation(
             $this->supportedAlgorithms,
@@ -91,27 +114,20 @@ class OIDFedClient
             $this->defaultTrustMarkStatusEndpointUsagePolicyEnum,
         );
 
-        $this->federationDefaultSigningKeyPair = $this->createSignatureKeyPair(
-            $this->entityConfig->getDefaultSignatureKeyPair()
+        $this->federationDefaultSignatureKeyPair = $this->signatureKeyPairFactory->fromConfig(
+            $this->entityConfig->getDefaultSignatureKeyPair(),
         );
-    }
 
-    public function createSignatureKeyPair(SignatureKeyPairConfig $signatureKeyPairConfig): SignatureKeyPair
-    {
-        $publicKeyJwkDecorator = $this->jwk->jwkDecoratorFactory()->fromPkcs1Or8KeyFile(
-            $signatureKeyPairConfig->getKeyPairConfig()->getPublicKeyFilename(),
+        $this->federationAdditionalSignatureKeyPairs = $this->signatureKeyPairBagFactory->fromConfig(
+            $this->entityConfig->getAdditionalSignatureKeyPairs(),
         );
-        return new SignatureKeyPair(
-            $signatureKeyPairConfig->getSignatureAlgorithm(),
-            new KeyPair(
-                $this->jwk->jwkDecoratorFactory()->fromPkcs1Or8KeyFile(
-                    $signatureKeyPairConfig->getKeyPairConfig()->getPrivateKeyFilename(),
-                ),
-                $publicKeyJwkDecorator,
-                $signatureKeyPairConfig->getKeyPairConfig()->getKeyId() ??
-                $publicKeyJwkDecorator->jwk()->thumbprint($this->jwkThumbprintHashAlgo->phpName()),
-                $signatureKeyPairConfig->getKeyPairConfig()->getPrivateKeyPassword(),
-            )
+
+        $this->federationJwks = $this->jwksDecoratorFactory->fromJwkDecorators(
+            $this->federationDefaultSignatureKeyPair->getKeyPair()->getPublicKey(),
+            ...array_map(
+                fn(SignatureKeyPair $signatureKeyPair): JwkDecorator => $signatureKeyPair->getKeyPair()->getPublicKey(),
+                $this->federationAdditionalSignatureKeyPairs->getAll()
+            ),
         );
     }
 
@@ -125,9 +141,26 @@ class OIDFedClient
         }
     }
 
-//    public function getEntityConfiguration(): EntityStatement
-//    {
-//        // TODO mivanci get from cache or generate new one.
-//
-//    }
+    public function getEntityConfiguration(): EntityStatement
+    {
+        $issuedAt = $this->federation->helpers()->dateTime()->getUtc();
+
+        $payload = $this->entityConfig->getAdditionalClaims()->getAll();
+        $payload[ClaimsEnum::Iss->value] = $this->entityConfig->getEntityId();
+        $payload[ClaimsEnum::Sub->value] = $this->entityConfig->getEntityId();
+        $payload[ClaimsEnum::Iat->value] = $issuedAt->getTimestamp();
+        $payload[ClaimsEnum::Exp->value] = $issuedAt->add($this->entityStatementDuration)->getTimestamp();
+        $payload[ClaimsEnum::Jti->value] = $this->federation->helpers()->random()->string();
+        $payload[ClaimsEnum::Jwks->value] = $this->federationJwks->jsonSerialize();
+
+        $this->entityConfig->getRpConfig()->getAdditionalClaims()->getAll();
+
+        $header = [];
+        return $this->federation->entityStatementFactory()->fromData(
+            $this->federationDefaultSignatureKeyPair->getKeyPair()->getPrivateKey(),
+            $this->federationDefaultSignatureKeyPair->getSignatureAlgorithm(),
+            $payload,
+            $header,
+        );
+    }
 }
