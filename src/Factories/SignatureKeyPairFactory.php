@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Cicnavi\Oidc\Factories;
 
-use Cicnavi\Oidc\Entities\KeyPair;
-use Cicnavi\Oidc\Entities\SignatureKeyPair;
-use Cicnavi\Oidc\Entities\SignatureKeyPairConfig;
+use Cicnavi\Oidc\ValueAbstracts\KeyPair;
+use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPair;
+use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfig;
 use SimpleSAML\OpenID\Codebooks\ClaimsEnum;
 use SimpleSAML\OpenID\Codebooks\HashAlgorithmsEnum;
 use SimpleSAML\OpenID\Codebooks\PublicKeyUseEnum;

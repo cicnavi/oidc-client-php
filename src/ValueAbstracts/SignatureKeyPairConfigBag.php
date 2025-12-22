@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Cicnavi\Oidc\Entities;
+namespace Cicnavi\Oidc\ValueAbstracts;
 
 class SignatureKeyPairConfigBag
 {

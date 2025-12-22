@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Cicnavi\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
-use Cicnavi\Oidc\Entities\KeyPair;
-use Cicnavi\Oidc\Entities\KeyPairConfig;
-use Cicnavi\Oidc\Entities\SignatureKeyPair;
-use Cicnavi\Oidc\Entities\SignatureKeyPairBag;
-use Cicnavi\Oidc\Entities\SignatureKeyPairConfig;
+use Cicnavi\Oidc\ValueAbstracts\KeyPair;
+use Cicnavi\Oidc\ValueAbstracts\KeyPairConfig;
+use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPair;
+use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairBag;
+use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfig;
 use Cicnavi\Oidc\Factories\SignatureKeyPairBagFactory;
 use Cicnavi\Oidc\Factories\SignatureKeyPairFactory;
 use Cicnavi\Oidc\Federation\EntityConfig;

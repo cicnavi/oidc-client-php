@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Cicnavi\Oidc\Factories;
 
-use Cicnavi\Oidc\Entities\SignatureKeyPair;
-use Cicnavi\Oidc\Entities\SignatureKeyPairBag;
-use Cicnavi\Oidc\Entities\SignatureKeyPairConfig;
-use Cicnavi\Oidc\Entities\SignatureKeyPairConfigBag;
+use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPair;
+use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairBag;
+use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfig;
+use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfigBag;
 
 class SignatureKeyPairBagFactory
 {

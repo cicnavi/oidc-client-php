@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Cicnavi\Oidc\Federation;
 
-use Cicnavi\Oidc\Entities\ClaimBag;
-use Cicnavi\Oidc\Entities\KeyedStringBag;
-use Cicnavi\Oidc\Entities\KeyPairConfig;
-use Cicnavi\Oidc\Entities\SignatureKeyPairConfig;
-use Cicnavi\Oidc\Entities\SignatureKeyPairConfigBag;
-use Cicnavi\Oidc\Entities\UniqueStringBag;
+use Cicnavi\Oidc\ValueAbstracts\ClaimBag;
+use Cicnavi\Oidc\ValueAbstracts\KeyedStringBag;
+use Cicnavi\Oidc\ValueAbstracts\KeyPairConfig;
+use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfig;
+use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfigBag;
+use Cicnavi\Oidc\ValueAbstracts\UniqueStringBag;
 
 class EntityConfig
 {
