@@ -6,7 +6,7 @@ namespace Cicnavi\Oidc\Federation;
 
 use Cicnavi\Oidc\ValueAbstracts\ClaimBag;
 use Cicnavi\Oidc\ValueAbstracts\KeyedStringBag;
-use Cicnavi\Oidc\ValueAbstracts\KeyPairConfig;
+use Cicnavi\Oidc\ValueAbstracts\KeyPairFilenameConfig;
 use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfig;
 use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfigBag;
 use Cicnavi\Oidc\ValueAbstracts\UniqueStringBag;
@@ -65,6 +65,16 @@ class EntityConfig
     public function getEntityId(): string
     {
         return $this->entityId;
+    }
+
+    public function getTrustAnchorBag(): TrustAnchorConfigBag
+    {
+        return $this->trustAnchorBag;
+    }
+
+    public function getAuthorityHintBag(): UniqueStringBag
+    {
+        return $this->authorityHintBag;
     }
 
     public function getDefaultSignatureKeyPairConfig(): SignatureKeyPairConfig

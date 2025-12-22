@@ -23,8 +23,8 @@ class SignatureKeyPairFactory
         SignatureKeyPairConfig $signatureKeyPairConfig,
         HashAlgorithmsEnum $jwkThumbprintHashAlgo = HashAlgorithmsEnum::SHA_256,
     ): SignatureKeyPair {
-        $publicKeyJwkDecorator = $this->jwk->jwkDecoratorFactory()->fromPkcs1Or8KeyFile(
-            $signatureKeyPairConfig->getKeyPairConfig()->getPublicKeyFilename(),
+        $publicKeyJwkDecorator = $this->jwk->jwkDecoratorFactory()->fromPkcs1Or8Key(
+            $signatureKeyPairConfig->getKeyPairConfig()->getPublicKeyString(),
             additionalData: [
                 ClaimsEnum::Use->value => PublicKeyUseEnum::Signature->value,
                 ClaimsEnum::Alg->value => $signatureKeyPairConfig->getSignatureAlgorithm()->value,
@@ -39,8 +39,8 @@ class SignatureKeyPairFactory
         return new SignatureKeyPair(
             $signatureKeyPairConfig->getSignatureAlgorithm(),
             new KeyPair(
-                $this->jwk->jwkDecoratorFactory()->fromPkcs1Or8KeyFile(
-                    $signatureKeyPairConfig->getKeyPairConfig()->getPrivateKeyFilename(),
+                $this->jwk->jwkDecoratorFactory()->fromPkcs1Or8Key(
+                    $signatureKeyPairConfig->getKeyPairConfig()->getPrivateKeyString(),
                 ),
                 $publicKeyJwkDecorator,
                 $keyId,

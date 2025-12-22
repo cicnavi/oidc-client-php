@@ -6,7 +6,7 @@ namespace Cicnavi\Oidc\ValueAbstracts;
 
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmEnum;
 
-class KeyPairConfig
+class KeyPairFilenameConfig implements KeyPairConfigInterface
 {
     /**
      * @param non-empty-string $privateKeyFilename Path to the PEM file containing the
@@ -42,19 +42,60 @@ class KeyPairConfig
         return $this->publicKeyFilename;
     }
 
+
     /**
-     * @return non-empty-string|null
+     * @inheritDoc
      */
     public function getPrivateKeyPassword(): ?string
     {
         return $this->privateKeyPassword;
     }
 
+
     /**
-     * @return non-empty-string|null
+     * @inheritDoc
      */
     public function getKeyId(): ?string
     {
         return $this->keyId;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getPrivateKeyString(): string
+    {
+        return $this->getFileContent($this->privateKeyFilename);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getPublicKeyString(): string
+    {
+        return $this->getFileContent($this->publicKeyFilename);
+    }
+
+    /**
+     * @param non-empty-string $filename
+     * @return non-empty-string
+     */
+    protected function getFileContent(string $filename): string
+    {
+        if (!file_exists($filename)) {
+            throw new \RuntimeException(sprintf('File %s does not exist.', $filename));
+        }
+
+        $fileContents = file_get_contents($filename);
+
+        if ($fileContents === false) {
+            throw new \RuntimeException(sprintf('Could not read file %s.', $filename));
+        }
+
+        if ($fileContents === '') {
+            throw new \RuntimeException(sprintf('File %s is empty.', $filename));
+        }
+
+        return $fileContents;
     }
 }

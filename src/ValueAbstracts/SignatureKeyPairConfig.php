@@ -11,12 +11,12 @@ class SignatureKeyPairConfig
     /**
      * @param SignatureAlgorithmEnum $signatureAlgorithm Signature algorithm
      * to use for signing JWTs.
-     * @param KeyPairConfig $keyPairConfig Key pair configuration to use for
+     * @param KeyPairFilenameConfig $keyPairConfig Key pair configuration to use for
      * signing JWTs.
      */
     public function __construct(
         protected readonly SignatureAlgorithmEnum $signatureAlgorithm,
-        protected readonly KeyPairConfig $keyPairConfig,
+        protected readonly KeyPairConfigInterface $keyPairConfig,
     ) {
     }
 
@@ -25,7 +25,7 @@ class SignatureKeyPairConfig
         return $this->signatureAlgorithm;
     }
 
-    public function getKeyPairConfig(): KeyPairConfig
+    public function getKeyPairConfig(): KeyPairFilenameConfig
     {
         return $this->keyPairConfig;
     }

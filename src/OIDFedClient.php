@@ -6,7 +6,7 @@ namespace Cicnavi\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\ValueAbstracts\KeyPair;
-use Cicnavi\Oidc\ValueAbstracts\KeyPairConfig;
+use Cicnavi\Oidc\ValueAbstracts\KeyPairFilenameConfig;
 use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPair;
 use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairBag;
 use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfig;
@@ -107,6 +107,7 @@ class OIDFedClient
         SignatureKeyPairFactory $signatureKeyPairFactory = null,
         SignatureKeyPairBagFactory $signatureKeyPairBagFactory = null,
         protected readonly JwksDecoratorFactory $jwksDecoratorFactory = new JwksDecoratorFactory(),
+        protected readonly bool $includeSoftwareId = true,
     ) {
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
         $this->signatureKeyPairFactory = $signatureKeyPairFactory ?? new SignatureKeyPairFactory($this->jwk);
@@ -181,12 +182,25 @@ class OIDFedClient
         $payload[ClaimsEnum::Jti->value] = $this->federation->helpers()->random()->string();
         $payload[ClaimsEnum::Jwks->value] = $this->federationJwks->jsonSerialize();
 
+        if (($authorityHints = $this->entityConfig->getAuthorityHintBag()->getAll()) !== []) {
+            $payload[ClaimsEnum::AuthorityHints->value] = $authorityHints;
+        }
+
+        // TODO mivanci TrustMarks
+
         $rpMetadata = $this->entityConfig->getRpConfig()->getAdditionalClaimBag()->getAll();
         $rpMetadata[ClaimsEnum::ApplicationType->value] = ApplicationTypesEnum::Web->value;
         $rpMetadata[ClaimsEnum::GrantTypes->value] = [GrantTypesEnum::AuthorizationCode->value];
         $rpMetadata[ClaimsEnum::RedirectUris->value] = $this->entityConfig->getRpConfig()->getRedirectUriBag()
             ->getAll();
+        // https://openid.net/specs/openid-connect-registration-1_0.html#ClientMetadata
         $rpMetadata[ClaimsEnum::TokenEndpointAuthMethod->value] = TokenEndpointAuthMethodsEnum::PrivateKeyJwt->value;
+        https://openid.net/specs/openid-connect-rp-metadata-choices-1_0-01.html
+        $rpMetadata[ClaimsEnum::TokenEndpointAuthMethodsSupported->value] = [
+            TokenEndpointAuthMethodsEnum::PrivateKeyJwt->value,
+        ];
+        $rpMetadata[ClaimsEnum::TokenEndpointAuthSigningAlgValuesSupported->value] =
+        $this->getRpSigningAlgorithmValuesSupported();
         $rpMetadata[ClaimsEnum::ResponseTypes->value] = [ResponseTypesEnum::Code->value];
         $rpMetadata[ClaimsEnum::ClientRegistrationTypes->value] = [
             ClientRegistrationTypesEnum::Automatic->value,
@@ -195,25 +209,30 @@ class OIDFedClient
             fn(SignatureAlgorithmEnum $signatureAlgorithmEnum): string => $signatureAlgorithmEnum->value,
             $this->supportedAlgorithms->getSignatureAlgorithmBag()->getAll(),
         );
-        $rpMetadata[ClaimsEnum::RequestObjectSigningAlgValuesSupported->value] = [
-            $this->rpDefaultSignatureKeyPair->getSignatureAlgorithm()->value,
-            ...array_map(
-                fn(SignatureKeyPair $signatureKeyPair): string => $signatureKeyPair->getSignatureAlgorithm()->value,
-                $this->rpAdditionalSignatureKeyPairBag->getAll(),
-            )
-        ];
-        $rpMetadata[ClaimsEnum::SoftwareId->value] = 'https://github.com/cicnavi/oidc-client-php';
+        $rpMetadata[ClaimsEnum::RequestObjectSigningAlgValuesSupported->value] =
+        $this->getRpSigningAlgorithmValuesSupported();
+        $rpMetadata[ClaimsEnum::Scope->value] = $this->entityConfig->getRpConfig()->getScopeBag()->toString();
+        if ($this->includeSoftwareId) {
+            $rpMetadata[ClaimsEnum::SoftwareId->value] = 'https://github.com/cicnavi/oidc-client-php';
+        }
 
+        if (is_string($initiateLoginUri = $this->entityConfig->getRpConfig()->getInitiateLoginUri())) {
+            $rpMetadata[ClaimsEnum::InitiateLoginUri->value] = $initiateLoginUri;
+        }
 
-        $metadata = [
-            ClaimsEnum::Metadata->value => [
-                EntityTypesEnum::OpenIdRelyingParty->value => $rpMetadata,
-            ]
-        ];
+        if (is_string($jwksUri = $this->entityConfig->getRpConfig()->getJwksUri())) {
+            $rpMetadata[ClaimsEnum::JwksUri->value] = $jwksUri;
+        }
+
+        if (is_string($signedJwksUri = $this->entityConfig->getRpConfig()->getSignedJwksUri())) {
+            $rpMetadata[ClaimsEnum::SignedJwksUri->value] = $signedJwksUri;
+        }
+
+        $payloadMetadata = is_array($payloadMetadata = $payload[ClaimsEnum::Metadata->value]) ? $payloadMetadata : [];
+        $payloadMetadata[EntityTypesEnum::OpenIdRelyingParty->value] = $rpMetadata;
 
         /** @var array<non-empty-string,mixed> $payload */
-        $payload = array_merge_recursive($payload, $metadata);
-
+        $payload[ClaimsEnum::Metadata->value] = $payloadMetadata;
 
         $header = [];
         return $this->federation->entityStatementFactory()->fromData(
@@ -221,6 +240,43 @@ class OIDFedClient
             $this->federationDefaultSignatureKeyPair->getSignatureAlgorithm(),
             $payload,
             $header,
+        );
+    }
+
+    /**
+     * @return non-empty-string[]
+     */
+    protected function getSigningAlgorithmValuesSupported(
+        SignatureKeyPair $defaultSignatureKeyPair,
+        SignatureKeyPair ...$additionalSignatureKeyPairs,
+    ): array {
+        return array_unique(
+            array_merge([$defaultSignatureKeyPair->getSignatureAlgorithm()->value], array_map(
+                fn(SignatureKeyPair $signatureKeyPair): string => $signatureKeyPair->getSignatureAlgorithm()->value,
+                $additionalSignatureKeyPairs,
+            ))
+        );
+    }
+
+    /**
+     * @return non-empty-string[]
+     */
+    public function getRpSigningAlgorithmValuesSupported(): array
+    {
+        return $this->getSigningAlgorithmValuesSupported(
+            $this->rpDefaultSignatureKeyPair,
+            ...$this->rpAdditionalSignatureKeyPairBag->getAll(),
+        );
+    }
+
+    /**
+     * @return non-empty-string[]
+     */
+    public function getFederationSigningAlgorithmValuesSupported(): array
+    {
+        return $this->getSigningAlgorithmValuesSupported(
+            $this->federationDefaultSignatureKeyPair,
+            ...$this->federationAdditionalSignatureKeyPairBag->getAll(),
         );
     }
 }

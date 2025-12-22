@@ -37,7 +37,7 @@ class SignatureKeyPairBag
         return $this->signatureKeyPairs;
     }
 
-    public function has(string $keyId): bool
+    public function hasKeyId(string $keyId): bool
     {
         return isset($this->signatureKeyPairs[$keyId]);
     }
