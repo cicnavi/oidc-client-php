@@ -96,4 +96,14 @@ class EntityConfig
     {
         return $this->rpConfig;
     }
+
+    public function getStaticTrustMarkBag(): UniqueStringBag
+    {
+        return $this->staticTrustMarkBag;
+    }
+
+    public function getDynamicTrustMarkBag(): KeyedStringBag
+    {
+        return $this->dynamicTrustMarkBag;
+    }
 }

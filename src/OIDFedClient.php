@@ -28,6 +28,8 @@ use SimpleSAML\OpenID\Codebooks\HashAlgorithmsEnum;
 use SimpleSAML\OpenID\Codebooks\ResponseTypesEnum;
 use SimpleSAML\OpenID\Codebooks\TokenEndpointAuthMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\TrustMarkStatusEndpointUsagePolicyEnum;
+use SimpleSAML\OpenID\Exceptions\JwsException;
+use SimpleSAML\OpenID\Exceptions\TrustMarkException;
 use SimpleSAML\OpenID\Federation;
 use SimpleSAML\OpenID\Federation\EntityStatement;
 use SimpleSAML\OpenID\Jwk;
@@ -186,7 +188,14 @@ class OIDFedClient
             $payload[ClaimsEnum::AuthorityHints->value] = $authorityHints;
         }
 
-        // TODO mivanci TrustMarks
+        try {
+            $trustMarks = $this->prepareTrustMarksClaimValue();
+            if ($trustMarks !== []) {
+                $payload[ClaimsEnum::TrustMarks->value] = $trustMarks;
+            }
+        } catch (\Throwable $throwable) {
+            $this->logger?->error('Error preparing Trust Marks claim value: ' . $throwable->getMessage());
+        }
 
         $rpMetadata = $this->entityConfig->getRpConfig()->getAdditionalClaimBag()->getAll();
         $rpMetadata[ClaimsEnum::ApplicationType->value] = ApplicationTypesEnum::Web->value;
@@ -234,7 +243,10 @@ class OIDFedClient
         /** @var array<non-empty-string,mixed> $payload */
         $payload[ClaimsEnum::Metadata->value] = $payloadMetadata;
 
-        $header = [];
+        $header = [
+            ClaimsEnum::Kid->value => $this->federationDefaultSignatureKeyPair->getKeyPair()->getKeyId(),
+        ];
+
         return $this->federation->entityStatementFactory()->fromData(
             $this->federationDefaultSignatureKeyPair->getKeyPair()->getPrivateKey(),
             $this->federationDefaultSignatureKeyPair->getSignatureAlgorithm(),
@@ -278,5 +290,73 @@ class OIDFedClient
             $this->federationDefaultSignatureKeyPair,
             ...$this->federationAdditionalSignatureKeyPairBag->getAll(),
         );
+    }
+
+    /**
+     * @throws JwsException
+     * @throws TrustMarkException
+     * @return array<array{trust_mark_type: non-empty-string, trust_mark: string}>
+     */
+    protected function prepareTrustMarksClaimValue(): array
+    {
+        $trustmarks = [];
+
+        if (($staticTrustMarkTokens = $this->entityConfig->getStaticTrustMarkBag()->getAll()) !== []) {
+            $trustMarks = array_map(
+                function (string $trustMarkToken): array {
+                    $trustMarkEntity = $this->federation->trustMarkFactory()->fromToken($trustMarkToken);
+
+                    if ($trustMarkEntity->getSubject() === $this->entityConfig->getEntityId()) {
+                        return [
+                            ClaimsEnum::TrustMarkType->value => $trustMarkEntity->getTrustMarkType(),
+                            ClaimsEnum::TrustMark->value => $trustMarkToken,
+                        ];
+                    }
+
+                    $this->logger?->error(
+                        'Trust mark subject does not match entity ID.',
+                        [
+                            'trustMarkSubject' => $trustMarkEntity->getSubject(),
+                            'entityId' => $this->entityConfig->getEntityId(),
+                        ],
+                    );
+                       throw new \RuntimeException('Trust mark subject does not match entity ID.');
+                },
+                $staticTrustMarkTokens,
+            );
+        }
+
+        if (($dynamicTrustMarks = $this->entityConfig->getDynamicTrustMarkBag()->getAll()) !== []) {
+            foreach ($dynamicTrustMarks as $dynamicTrustMark) {
+                try {
+                    $trustMarkType = $dynamicTrustMark->getKey();
+                    $trustMarkIssuer = $dynamicTrustMark->getValue();
+
+                    $trustMarkIssuerConfigurationStatement = $this->federation->entityStatementFetcher()
+                    ->fromCacheOrWellKnownEndpoint($trustMarkIssuer);
+
+                    $trustMarkEntity = $this->federation->trustMarkFetcher()->fromCacheOrFederationTrustMarkEndpoint(
+                        $trustMarkType,
+                        $this->entityConfig->getEntityId(),
+                        $trustMarkIssuerConfigurationStatement,
+                    );
+                    $trustmarks[] = [
+                        ClaimsEnum::TrustMarkType->value => $trustMarkType,
+                        ClaimsEnum::TrustMark->value => $trustMarkEntity->getToken(),
+                    ];
+                } catch (\Throwable $throwable) {
+                    $this->logger?->error(
+                        'Error fetching Trust Mark: ' . $throwable->getMessage(),
+                        [
+                            'trustMarkType' => $dynamicTrustMark->getKey(),
+                            'trustMarkIssuer' => $dynamicTrustMark->getValue(),
+                            'entityId' => $this->entityConfig->getEntityId(),
+                        ],
+                    );
+                }
+            }
+        }
+
+        return $trustmarks;
     }
 }
