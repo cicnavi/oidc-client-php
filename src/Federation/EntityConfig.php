@@ -25,11 +25,11 @@ class EntityConfig
      * Entities (or Trust Anchors), that is - the superiors of this entity.
      * @param RpConfig $rpConfig Configuration related to the Relying Party
      * (RP) role of this federation entity.
-     * @param SignatureKeyPairConfig $defaultSignatureKeyPairConfig Default
-     * signing key pair for the federation entity. Used, for example, to sign
-     * an Entity Configuration statement. Will be published in JWKS claim in
-     * the Entity Configuration statement.
-     * @param SignatureKeyPairConfigBag $additionalSignatureKeyPairConfigBag
+     * @param SignatureKeyPairConfig $defaultFederationSignatureKeyPairConfig
+     * Default signing key pair for the federation entity. Used, for example,
+     * to sign an Entity Configuration statement. Will be published in JWKS
+     * claim in the Entity Configuration statement.
+     * @param SignatureKeyPairConfigBag $additionalFederationSignatureKeyPairConfigBag
      * Additional signing key pairs for the federation entity. Can be used to
      * advertise additional keys, for example, for key-rollover scenarios. Will
      * be published in JWKS claim in the Entity Configuration statement.
@@ -53,9 +53,9 @@ class EntityConfig
         protected readonly TrustAnchorConfigBag $trustAnchorBag,
         protected readonly UniqueStringBag $authorityHintBag,
         protected readonly RpConfig $rpConfig,
-        protected readonly SignatureKeyPairConfig $defaultSignatureKeyPairConfig,
+        protected readonly SignatureKeyPairConfig $defaultFederationSignatureKeyPairConfig,
         // phpcs:ignore
-        protected readonly SignatureKeyPairConfigBag $additionalSignatureKeyPairConfigBag = new SignatureKeyPairConfigBag(),
+        protected readonly SignatureKeyPairConfigBag $additionalFederationSignatureKeyPairConfigBag = new SignatureKeyPairConfigBag(),
         protected readonly UniqueStringBag $staticTrustMarkBag = new UniqueStringBag(),
         protected readonly KeyedStringBag $dynamicTrustMarkBag = new KeyedStringBag(),
         protected readonly ClaimBag $additionalClaimBag = new ClaimBag(),
@@ -77,14 +77,14 @@ class EntityConfig
         return $this->authorityHintBag;
     }
 
-    public function getDefaultSignatureKeyPairConfig(): SignatureKeyPairConfig
+    public function getDefaultFederationSignatureKeyPairConfig(): SignatureKeyPairConfig
     {
-        return $this->defaultSignatureKeyPairConfig;
+        return $this->defaultFederationSignatureKeyPairConfig;
     }
 
-    public function getAdditionalSignatureKeyPairConfigBag(): SignatureKeyPairConfigBag
+    public function getAdditionalFederationSignatureKeyPairConfigBag(): SignatureKeyPairConfigBag
     {
-        return $this->additionalSignatureKeyPairConfigBag;
+        return $this->additionalFederationSignatureKeyPairConfigBag;
     }
 
     public function getAdditionalClaimBag(): ClaimBag

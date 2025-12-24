@@ -15,13 +15,14 @@ class RpConfig
     /**
      * @param RedirectUriBag $redirectUriBag Collection of redirect URIs for
      * this Relying Party. At least one redirect URI must be provided.
-     * @param SignatureKeyPairConfig $defaultSignatureKeyPairConfig Default
-     * signing key pair for this Relying Party. Used, for example, to sign the
-     * Request Object. Will be published in JWKS claim in RP metadata.
-     * @param SignatureKeyPairConfigBag $additionalSignatureKeyPairBag
-     * Additional signing key pairs for this Relying Party. Can be used to
-     * advertise additional keys, for example, for key-rollover scenarios. Will
-     * be published in JWKS claim in RP metadata.
+     * @param SignatureKeyPairConfig $defaultConnectSignatureKeyPairConfig
+     * Default Connect protocol signing key pair for this Relying Party. Used,
+     * for example, to sign the Request Object. Will be published in JWKS claim
+     * in RP metadata.
+     * @param SignatureKeyPairConfigBag $additionalConnectSignatureKeyPairBag
+     * Additional Connect protocol signing key pairs for this Relying Party. Can
+     * be used to advertise additional keys, for example, for key-rollover
+     * scenarios. Will be published in JWKS claim in RP metadata.
      * @param ClaimBag $additionalClaimBag Any additional claims to publish in
      * the RP metadata. Make sure to use the correct format for the particular
      * claim, as they will be published in RP metadata as provided.
@@ -30,8 +31,9 @@ class RpConfig
      */
     public function __construct(
         protected readonly RedirectUriBag $redirectUriBag,
-        protected readonly SignatureKeyPairConfig $defaultSignatureKeyPairConfig,
-        protected readonly SignatureKeyPairConfigBag $additionalSignatureKeyPairBag = new SignatureKeyPairConfigBag(),
+        protected readonly SignatureKeyPairConfig $defaultConnectSignatureKeyPairConfig,
+        // phpcs:ignore
+        protected readonly SignatureKeyPairConfigBag $additionalConnectSignatureKeyPairBag = new SignatureKeyPairConfigBag(),
         protected readonly ScopeBag $scopeBag = new ScopeBag(),
         protected readonly ClaimBag $additionalClaimBag = new ClaimBag(),
         protected readonly ?string $initiateLoginUri = null,
@@ -50,9 +52,9 @@ class RpConfig
         return $this->additionalClaimBag;
     }
 
-    public function getDefaultSignatureKeyPairConfig(): SignatureKeyPairConfig
+    public function getDefaultConnectSignatureKeyPairConfig(): SignatureKeyPairConfig
     {
-        return $this->defaultSignatureKeyPairConfig;
+        return $this->defaultConnectSignatureKeyPairConfig;
     }
 
     public function getScopeBag(): ScopeBag
@@ -60,9 +62,9 @@ class RpConfig
         return $this->scopeBag;
     }
 
-    public function getAdditionalSignatureKeyPairBag(): SignatureKeyPairConfigBag
+    public function getAdditionalConnectSignatureKeyPairBag(): SignatureKeyPairConfigBag
     {
-        return $this->additionalSignatureKeyPairBag;
+        return $this->additionalConnectSignatureKeyPairBag;
     }
 
     public function getInitiateLoginUri(): ?string

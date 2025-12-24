@@ -130,11 +130,11 @@ class FederatedClient
         );
 
         $this->federationDefaultSignatureKeyPair = $this->signatureKeyPairFactory->fromConfig(
-            $this->entityConfig->getDefaultSignatureKeyPairConfig(),
+            $this->entityConfig->getDefaultFederationSignatureKeyPairConfig(),
         );
 
         $this->federationAdditionalSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
-            $this->entityConfig->getAdditionalSignatureKeyPairConfigBag(),
+            $this->entityConfig->getAdditionalFederationSignatureKeyPairConfigBag(),
         );
 
         $this->federationJwks = $this->jwksDecoratorFactory->fromJwkDecorators(
@@ -146,11 +146,11 @@ class FederatedClient
         );
 
         $this->rpDefaultSignatureKeyPair = $this->signatureKeyPairFactory->fromConfig(
-            $this->entityConfig->getRpConfig()->getDefaultSignatureKeyPairConfig(),
+            $this->entityConfig->getRpConfig()->getDefaultConnectSignatureKeyPairConfig(),
         );
 
         $this->rpAdditionalSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
-            $this->entityConfig->getRpConfig()->getAdditionalSignatureKeyPairBag(),
+            $this->entityConfig->getRpConfig()->getAdditionalConnectSignatureKeyPairBag(),
         );
 
         $this->rpJwks = $this->jwksDecoratorFactory->fromJwkDecorators(
