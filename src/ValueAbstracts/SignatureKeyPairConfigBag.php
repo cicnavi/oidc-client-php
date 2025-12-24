@@ -9,7 +9,7 @@ class SignatureKeyPairConfigBag
     /**
      * @var SignatureKeyPairConfig[]
      */
-    protected array $signatureKeyPairConfigs;
+    protected array $signatureKeyPairConfigs = [];
 
     public function __construct(
         SignatureKeyPairConfig ...$signatureKeyPairConfigs,

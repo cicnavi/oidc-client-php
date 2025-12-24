@@ -9,7 +9,7 @@ class KeyedStringBag implements \JsonSerializable
     /**
      * @var array<string,KeyedString>
      */
-    protected array $keyedStrings;
+    protected array $keyedStrings = [];
 
     public function __construct(
         KeyedString ...$keyedStrings

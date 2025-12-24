@@ -9,7 +9,7 @@ class UniqueStringBag implements \JsonSerializable
     /**
      * @var string[]
      */
-    protected array $values;
+    protected array $values = [];
 
     public function __construct(
         string ...$values
