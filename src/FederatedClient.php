@@ -45,11 +45,11 @@ class FederatedClient
 
     protected readonly SignatureKeyPair $federationDefaultSignatureKeyPair;
 
+    protected readonly SignatureKeyPairBag $federationAdditionalSignatureKeyPairBag;
+
     protected readonly SignatureKeyPairFactory $signatureKeyPairFactory;
 
     protected readonly SignatureKeyPairBagFactory $signatureKeyPairBagFactory;
-
-    protected readonly SignatureKeyPairBag $federationAdditionalSignatureKeyPairBag;
 
     protected readonly Federation $federation;
 
@@ -162,6 +162,56 @@ class FederatedClient
         );
     }
 
+    public function getEntityConfig(): EntityConfig
+    {
+        return $this->entityConfig;
+    }
+
+    public function getEntityStatementDuration(): \DateInterval
+    {
+        return $this->entityStatementDuration;
+    }
+
+    public function getMaxCacheDuration(): \DateInterval
+    {
+        return $this->maxCacheDuration;
+    }
+
+    public function getTimestampValidationLeeway(): \DateInterval
+    {
+        return $this->timestampValidationLeeway;
+    }
+
+    public function getSupportedAlgorithms(): SupportedAlgorithms
+    {
+        return $this->supportedAlgorithms;
+    }
+
+    public function getSupportedSerializers(): SupportedSerializers
+    {
+        return $this->supportedSerializers;
+    }
+
+    public function getMaxTrustChainDepth(): int
+    {
+        return $this->maxTrustChainDepth;
+    }
+
+    public function getDefaultTrustMarkStatusEndpointUsagePolicyEnum(): TrustMarkStatusEndpointUsagePolicyEnum
+    {
+        return $this->defaultTrustMarkStatusEndpointUsagePolicyEnum;
+    }
+
+    public function shouldIncludeSoftwareId(): bool
+    {
+        return $this->includeSoftwareId;
+    }
+
+    public function getCache(): CacheInterface
+    {
+        return $this->cache;
+    }
+
     public function clearCache(): void
     {
         try {
@@ -172,7 +222,7 @@ class FederatedClient
         }
     }
 
-    public function getEntityConfiguration(): EntityStatement
+    public function prepareEntityConfiguration(): EntityStatement
     {
         $issuedAt = $this->federation->helpers()->dateTime()->getUtc();
 
