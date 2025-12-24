@@ -39,7 +39,7 @@ use SimpleSAML\OpenID\Jwks\JwksDecorator;
 use SimpleSAML\OpenID\SupportedAlgorithms;
 use SimpleSAML\OpenID\SupportedSerializers;
 
-class OIDFedClient
+class FederatedClient
 {
     protected readonly CacheInterface $cache;
 
