@@ -225,7 +225,7 @@ class FederatedClient
         }
     }
 
-    public function prepareEntityConfiguration(): EntityStatement
+    public function buildEntityStatement(): EntityStatement
     {
         $issuedAt = $this->federation->helpers()->dateTime()->getUtc();
 
