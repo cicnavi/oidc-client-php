@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Cicnavi\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
+use Cicnavi\Oidc\Federation\RelyingPartyConfig;
 use Cicnavi\Oidc\ValueAbstracts\KeyPair;
 use Cicnavi\Oidc\ValueAbstracts\KeyPairFilenameConfig;
 use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPair;
@@ -63,7 +64,8 @@ class FederatedClient
 
     /**
      * TODO mivanci Federation participation limit by Trust Marks.
-     *
+     * @param RelyingPartyConfig $relyingPartyConfig Configuration related to
+     * the Relying Party (RP) role of this federation entity.     *
      * @param \DateInterval $entityStatementDuration Entity statement duration
      * which determines the Expiration Time (exp) claim set in entity statement
      * JWSs published by this RP. Defaults to 1 day.
@@ -79,6 +81,7 @@ class FederatedClient
      */
     public function __construct(
         protected readonly EntityConfig $entityConfig,
+        protected readonly RelyingPartyConfig $relyingPartyConfig,
         protected readonly \DateInterval $entityStatementDuration = new \DateInterval('P1D'),
         ?CacheInterface $cache = null,
         protected readonly \DateInterval $maxCacheDuration = new \DateInterval('PT6H'),
@@ -146,11 +149,11 @@ class FederatedClient
         );
 
         $this->rpDefaultSignatureKeyPair = $this->signatureKeyPairFactory->fromConfig(
-            $this->entityConfig->getRpConfig()->getDefaultConnectSignatureKeyPairConfig(),
+            $this->relyingPartyConfig->getDefaultConnectSignatureKeyPairConfig(),
         );
 
         $this->rpAdditionalSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
-            $this->entityConfig->getRpConfig()->getAdditionalConnectSignatureKeyPairBag(),
+            $this->relyingPartyConfig->getAdditionalConnectSignatureKeyPairBag(),
         );
 
         $this->rpJwks = $this->jwksDecoratorFactory->fromJwkDecorators(
@@ -247,10 +250,10 @@ class FederatedClient
             $this->logger?->error('Error preparing Trust Marks claim value: ' . $throwable->getMessage());
         }
 
-        $rpMetadata = $this->entityConfig->getRpConfig()->getAdditionalClaimBag()->getAll();
+        $rpMetadata = $this->relyingPartyConfig->getAdditionalClaimBag()->getAll();
         $rpMetadata[ClaimsEnum::ApplicationType->value] = ApplicationTypesEnum::Web->value;
         $rpMetadata[ClaimsEnum::GrantTypes->value] = [GrantTypesEnum::AuthorizationCode->value];
-        $rpMetadata[ClaimsEnum::RedirectUris->value] = $this->entityConfig->getRpConfig()->getRedirectUriBag()
+        $rpMetadata[ClaimsEnum::RedirectUris->value] = $this->getRelyingPartyConfig()->getRedirectUriBag()
             ->getAll();
         // https://openid.net/specs/openid-connect-registration-1_0.html#ClientMetadata
         $rpMetadata[ClaimsEnum::TokenEndpointAuthMethod->value] = TokenEndpointAuthMethodsEnum::PrivateKeyJwt->value;
@@ -270,20 +273,20 @@ class FederatedClient
         );
         $rpMetadata[ClaimsEnum::RequestObjectSigningAlgValuesSupported->value] =
         $this->getRpSigningAlgorithmValuesSupported();
-        $rpMetadata[ClaimsEnum::Scope->value] = $this->entityConfig->getRpConfig()->getScopeBag()->toString();
+        $rpMetadata[ClaimsEnum::Scope->value] = $this->relyingPartyConfig->getScopeBag()->toString();
         if ($this->includeSoftwareId) {
             $rpMetadata[ClaimsEnum::SoftwareId->value] = 'https://github.com/cicnavi/oidc-client-php';
         }
 
-        if (is_string($initiateLoginUri = $this->entityConfig->getRpConfig()->getInitiateLoginUri())) {
+        if (is_string($initiateLoginUri = $this->relyingPartyConfig->getInitiateLoginUri())) {
             $rpMetadata[ClaimsEnum::InitiateLoginUri->value] = $initiateLoginUri;
         }
 
-        if (is_string($jwksUri = $this->entityConfig->getRpConfig()->getJwksUri())) {
+        if (is_string($jwksUri = $this->relyingPartyConfig->getJwksUri())) {
             $rpMetadata[ClaimsEnum::JwksUri->value] = $jwksUri;
         }
 
-        if (is_string($signedJwksUri = $this->entityConfig->getRpConfig()->getSignedJwksUri())) {
+        if (is_string($signedJwksUri = $this->relyingPartyConfig->getSignedJwksUri())) {
             $rpMetadata[ClaimsEnum::SignedJwksUri->value] = $signedJwksUri;
         }
 
@@ -408,5 +411,10 @@ class FederatedClient
         }
 
         return $trustmarks;
+    }
+
+    public function getRelyingPartyConfig(): RelyingPartyConfig
+    {
+        return $this->relyingPartyConfig;
     }
 }

@@ -10,7 +10,7 @@ use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfig;
 use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfigBag;
 use Cicnavi\Oidc\ValueAbstracts\RedirectUriBag;
 
-class RpConfig
+class RelyingPartyConfig
 {
     /**
      * @param RedirectUriBag $redirectUriBag Collection of redirect URIs for

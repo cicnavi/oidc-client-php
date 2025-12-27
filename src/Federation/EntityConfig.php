@@ -23,8 +23,6 @@ class EntityConfig
      * @param UniqueStringBag $authorityHintBag Authority Hints which are valid
      * for this entity. Authority Hints are Entity Identifiers of Intermediate
      * Entities (or Trust Anchors), that is - the superiors of this entity.
-     * @param RpConfig $rpConfig Configuration related to the Relying Party
-     * (RP) role of this federation entity.
      * @param SignatureKeyPairConfig $defaultFederationSignatureKeyPairConfig
      * Default signing key pair for the federation entity. Used, for example,
      * to sign an Entity Configuration statement. Will be published in JWKS
@@ -52,7 +50,6 @@ class EntityConfig
         protected readonly string $entityId,
         protected readonly TrustAnchorConfigBag $trustAnchorBag,
         protected readonly UniqueStringBag $authorityHintBag,
-        protected readonly RpConfig $rpConfig,
         protected readonly SignatureKeyPairConfig $defaultFederationSignatureKeyPairConfig,
         // phpcs:ignore
         protected readonly SignatureKeyPairConfigBag $additionalFederationSignatureKeyPairConfigBag = new SignatureKeyPairConfigBag(),
@@ -90,11 +87,6 @@ class EntityConfig
     public function getAdditionalClaimBag(): ClaimBag
     {
         return $this->additionalClaimBag;
-    }
-
-    public function getRpConfig(): RpConfig
-    {
-        return $this->rpConfig;
     }
 
     public function getStaticTrustMarkBag(): UniqueStringBag
