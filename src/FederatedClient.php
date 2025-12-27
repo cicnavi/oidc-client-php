@@ -290,7 +290,9 @@ class FederatedClient
             $rpMetadata[ClaimsEnum::SignedJwksUri->value] = $signedJwksUri;
         }
 
-        $payloadMetadata = is_array($payloadMetadata = $payload[ClaimsEnum::Metadata->value]) ? $payloadMetadata : [];
+        $payloadMetadata = is_array($payloadMetadata = $payload[ClaimsEnum::Metadata->value] ?? null) ?
+            $payloadMetadata :
+            [];
         $payloadMetadata[EntityTypesEnum::OpenIdRelyingParty->value] = $rpMetadata;
 
         /** @var array<non-empty-string,mixed> $payload */
