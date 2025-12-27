@@ -417,4 +417,14 @@ class FederatedClient
     {
         return $this->relyingPartyConfig;
     }
+
+    public function getFederationDefaultSignatureKeyPair(): SignatureKeyPair
+    {
+        return $this->federationDefaultSignatureKeyPair;
+    }
+
+    public function getFederationAdditionalSignatureKeyPairBag(): SignatureKeyPairBag
+    {
+        return $this->federationAdditionalSignatureKeyPairBag;
+    }
 }
