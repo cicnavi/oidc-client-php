@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Cicnavi\Oidc\Federation;
 
-use Cicnavi\Oidc\ValueAbstracts\ClaimBag;
-use Cicnavi\Oidc\ValueAbstracts\KeyedStringBag;
-use Cicnavi\Oidc\ValueAbstracts\KeyPairFilenameConfig;
-use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfig;
-use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfigBag;
-use Cicnavi\Oidc\ValueAbstracts\UniqueStringBag;
+use SimpleSAML\OpenID\ValueAbstracts\ClaimBag;
+use SimpleSAML\OpenID\ValueAbstracts\KeyedStringBag;
+use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairConfigBag;
+use SimpleSAML\OpenID\ValueAbstracts\UniqueStringBag;
 
 class EntityConfig
 {
@@ -23,11 +21,7 @@ class EntityConfig
      * @param UniqueStringBag $authorityHintBag Authority Hints which are valid
      * for this entity. Authority Hints are Entity Identifiers of Intermediate
      * Entities (or Trust Anchors), that is - the superiors of this entity.
-     * @param SignatureKeyPairConfig $defaultFederationSignatureKeyPairConfig
-     * Default signing key pair for the federation entity. Used, for example,
-     * to sign an Entity Configuration statement. Will be published in JWKS
-     * claim in the Entity Configuration statement.
-     * @param SignatureKeyPairConfigBag $additionalFederationSignatureKeyPairConfigBag
+     * @param SignatureKeyPairConfigBag $federationSignatureKeyPairConfigBag
      * Additional signing key pairs for the federation entity. Can be used to
      * advertise additional keys, for example, for key-rollover scenarios. Will
      * be published in JWKS claim in the Entity Configuration statement.
@@ -50,9 +44,8 @@ class EntityConfig
         protected readonly string $entityId,
         protected readonly TrustAnchorConfigBag $trustAnchorBag,
         protected readonly UniqueStringBag $authorityHintBag,
-        protected readonly SignatureKeyPairConfig $defaultFederationSignatureKeyPairConfig,
         // phpcs:ignore
-        protected readonly SignatureKeyPairConfigBag $additionalFederationSignatureKeyPairConfigBag = new SignatureKeyPairConfigBag(),
+        protected readonly SignatureKeyPairConfigBag $federationSignatureKeyPairConfigBag = new SignatureKeyPairConfigBag(),
         protected readonly UniqueStringBag $staticTrustMarkBag = new UniqueStringBag(),
         protected readonly KeyedStringBag $dynamicTrustMarkBag = new KeyedStringBag(),
         protected readonly ClaimBag $additionalClaimBag = new ClaimBag(),
@@ -74,14 +67,9 @@ class EntityConfig
         return $this->authorityHintBag;
     }
 
-    public function getDefaultFederationSignatureKeyPairConfig(): SignatureKeyPairConfig
+    public function getFederationSignatureKeyPairConfigBag(): SignatureKeyPairConfigBag
     {
-        return $this->defaultFederationSignatureKeyPairConfig;
-    }
-
-    public function getAdditionalFederationSignatureKeyPairConfigBag(): SignatureKeyPairConfigBag
-    {
-        return $this->additionalFederationSignatureKeyPairConfigBag;
+        return $this->federationSignatureKeyPairConfigBag;
     }
 
     public function getAdditionalClaimBag(): ClaimBag

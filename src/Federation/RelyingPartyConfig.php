@@ -4,22 +4,17 @@ declare(strict_types=1);
 
 namespace Cicnavi\Oidc\Federation;
 
-use Cicnavi\Oidc\ValueAbstracts\ClaimBag;
-use Cicnavi\Oidc\ValueAbstracts\ScopeBag;
-use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfig;
-use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfigBag;
-use Cicnavi\Oidc\ValueAbstracts\RedirectUriBag;
+use SimpleSAML\OpenID\ValueAbstracts\ClaimBag;
+use SimpleSAML\OpenID\ValueAbstracts\ScopeBag;
+use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairConfigBag;
+use SimpleSAML\OpenID\ValueAbstracts\RedirectUriBag;
 
 class RelyingPartyConfig
 {
     /**
      * @param RedirectUriBag $redirectUriBag Collection of redirect URIs for
      * this Relying Party. At least one redirect URI must be provided.
-     * @param SignatureKeyPairConfig $defaultConnectSignatureKeyPairConfig
-     * Default Connect protocol signing key pair for this Relying Party. Used,
-     * for example, to sign the Request Object. Will be published in JWKS claim
-     * in RP metadata.
-     * @param SignatureKeyPairConfigBag $additionalConnectSignatureKeyPairBag
+     * @param SignatureKeyPairConfigBag $connectSignatureKeyPairBag
      * Additional Connect protocol signing key pairs for this Relying Party. Can
      * be used to advertise additional keys, for example, for key-rollover
      * scenarios. Will be published in JWKS claim in RP metadata.
@@ -31,9 +26,8 @@ class RelyingPartyConfig
      */
     public function __construct(
         protected readonly RedirectUriBag $redirectUriBag,
-        protected readonly SignatureKeyPairConfig $defaultConnectSignatureKeyPairConfig,
         // phpcs:ignore
-        protected readonly SignatureKeyPairConfigBag $additionalConnectSignatureKeyPairBag = new SignatureKeyPairConfigBag(),
+        protected readonly SignatureKeyPairConfigBag $connectSignatureKeyPairBag = new SignatureKeyPairConfigBag(),
         protected readonly ScopeBag $scopeBag = new ScopeBag(),
         protected readonly ClaimBag $additionalClaimBag = new ClaimBag(),
         protected readonly ?string $initiateLoginUri = null,
@@ -52,19 +46,14 @@ class RelyingPartyConfig
         return $this->additionalClaimBag;
     }
 
-    public function getDefaultConnectSignatureKeyPairConfig(): SignatureKeyPairConfig
-    {
-        return $this->defaultConnectSignatureKeyPairConfig;
-    }
-
     public function getScopeBag(): ScopeBag
     {
         return $this->scopeBag;
     }
 
-    public function getAdditionalConnectSignatureKeyPairBag(): SignatureKeyPairConfigBag
+    public function getConnectSignatureKeyPairBag(): SignatureKeyPairConfigBag
     {
-        return $this->additionalConnectSignatureKeyPairBag;
+        return $this->connectSignatureKeyPairBag;
     }
 
     public function getInitiateLoginUri(): ?string

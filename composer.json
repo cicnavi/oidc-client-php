@@ -16,6 +16,9 @@
         "guzzlehttp/guzzle": "^7.8",
         "simplesamlphp/openid": "^0"
     },
+    "conflict": {
+        "rector/rector": "2.3.0"
+    },
     "autoload": {
         "psr-4": {
             "Cicnavi\\Oidc\\": "src/"

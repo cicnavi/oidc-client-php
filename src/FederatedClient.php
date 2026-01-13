@@ -6,13 +6,13 @@ namespace Cicnavi\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\Federation\RelyingPartyConfig;
-use Cicnavi\Oidc\ValueAbstracts\KeyPair;
-use Cicnavi\Oidc\ValueAbstracts\KeyPairFilenameConfig;
-use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPair;
-use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairBag;
-use Cicnavi\Oidc\ValueAbstracts\SignatureKeyPairConfig;
-use Cicnavi\Oidc\Factories\SignatureKeyPairBagFactory;
-use Cicnavi\Oidc\Factories\SignatureKeyPairFactory;
+use SimpleSAML\OpenID\ValueAbstracts\KeyPair;
+use SimpleSAML\OpenID\ValueAbstracts\KeyPairFilenameConfig;
+use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPair;
+use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairBag;
+use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairConfig;
+use SimpleSAML\OpenID\ValueAbstracts\Factories\SignatureKeyPairBagFactory;
+use SimpleSAML\OpenID\ValueAbstracts\Factories\SignatureKeyPairFactory;
 use Cicnavi\Oidc\Federation\EntityConfig;
 use Cicnavi\SimpleFileCache\Exceptions\CacheException;
 use GuzzleHttp\Client;
@@ -44,9 +44,7 @@ class FederatedClient
 {
     protected readonly CacheInterface $cache;
 
-    protected readonly SignatureKeyPair $federationDefaultSignatureKeyPair;
-
-    protected readonly SignatureKeyPairBag $federationAdditionalSignatureKeyPairBag;
+    protected readonly SignatureKeyPairBag $federationSignatureKeyPairBag;
 
     protected readonly SignatureKeyPairFactory $signatureKeyPairFactory;
 
@@ -54,13 +52,11 @@ class FederatedClient
 
     protected readonly Federation $federation;
 
-    protected JwksDecorator $federationJwks;
+    protected JwksDecorator $federationJwksDecorator;
 
-    protected SignatureKeyPair $rpDefaultSignatureKeyPair;
+    protected SignatureKeyPairBag $connectSignatureKeyPairBag;
 
-    protected SignatureKeyPairBag $rpAdditionalSignatureKeyPairBag;
-
-    protected JwksDecorator $rpJwks;
+    protected JwksDecorator $relyingPartyJwksDecorator;
 
     /**
      * TODO mivanci Federation participation limit by Trust Marks.
@@ -132,36 +128,20 @@ class FederatedClient
             $this->defaultTrustMarkStatusEndpointUsagePolicyEnum,
         );
 
-        $this->federationDefaultSignatureKeyPair = $this->signatureKeyPairFactory->fromConfig(
-            $this->entityConfig->getDefaultFederationSignatureKeyPairConfig(),
+        $this->federationSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
+            $this->entityConfig->getFederationSignatureKeyPairConfigBag(),
         );
 
-        $this->federationAdditionalSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
-            $this->entityConfig->getAdditionalFederationSignatureKeyPairConfigBag(),
+        $this->federationJwksDecorator = $this->jwksDecoratorFactory->fromJwkDecorators(
+            ...$this->federationSignatureKeyPairBag->getAllPublicKeys(),
         );
 
-        $this->federationJwks = $this->jwksDecoratorFactory->fromJwkDecorators(
-            $this->federationDefaultSignatureKeyPair->getKeyPair()->getPublicKey(),
-            ...array_map(
-                fn(SignatureKeyPair $signatureKeyPair): JwkDecorator => $signatureKeyPair->getKeyPair()->getPublicKey(),
-                $this->federationAdditionalSignatureKeyPairBag->getAll()
-            ),
+        $this->connectSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
+            $this->relyingPartyConfig->getConnectSignatureKeyPairBag(),
         );
 
-        $this->rpDefaultSignatureKeyPair = $this->signatureKeyPairFactory->fromConfig(
-            $this->relyingPartyConfig->getDefaultConnectSignatureKeyPairConfig(),
-        );
-
-        $this->rpAdditionalSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
-            $this->relyingPartyConfig->getAdditionalConnectSignatureKeyPairBag(),
-        );
-
-        $this->rpJwks = $this->jwksDecoratorFactory->fromJwkDecorators(
-            $this->rpDefaultSignatureKeyPair->getKeyPair()->getPublicKey(),
-            ...array_map(
-                fn(SignatureKeyPair $signatureKeyPair): JwkDecorator => $signatureKeyPair->getKeyPair()->getPublicKey(),
-                $this->rpAdditionalSignatureKeyPairBag->getAll()
-            ),
+        $this->relyingPartyJwksDecorator = $this->jwksDecoratorFactory->fromJwkDecorators(
+            ...$this->connectSignatureKeyPairBag->getAllPublicKeys(),
         );
     }
 
@@ -235,7 +215,7 @@ class FederatedClient
         $payload[ClaimsEnum::Iat->value] = $issuedAt->getTimestamp();
         $payload[ClaimsEnum::Exp->value] = $issuedAt->add($this->entityStatementDuration)->getTimestamp();
         $payload[ClaimsEnum::Jti->value] = $this->federation->helpers()->random()->string();
-        $payload[ClaimsEnum::Jwks->value] = $this->federationJwks->jsonSerialize();
+        $payload[ClaimsEnum::Jwks->value] = $this->federationJwksDecorator->jsonSerialize();
 
         if (($authorityHints = $this->entityConfig->getAuthorityHintBag()->getAll()) !== []) {
             $payload[ClaimsEnum::AuthorityHints->value] = $authorityHints;
@@ -262,7 +242,7 @@ class FederatedClient
             TokenEndpointAuthMethodsEnum::PrivateKeyJwt->value,
         ];
         $rpMetadata[ClaimsEnum::TokenEndpointAuthSigningAlgValuesSupported->value] =
-        $this->getRpSigningAlgorithmValuesSupported();
+        $this->relyingPartyConfig->getConnectSignatureKeyPairBag()->getAllAlgorithmNamesUnique();
         $rpMetadata[ClaimsEnum::ResponseTypes->value] = [ResponseTypesEnum::Code->value];
         $rpMetadata[ClaimsEnum::ClientRegistrationTypes->value] = [
             ClientRegistrationTypesEnum::Automatic->value,
@@ -272,7 +252,7 @@ class FederatedClient
             $this->supportedAlgorithms->getSignatureAlgorithmBag()->getAll(),
         );
         $rpMetadata[ClaimsEnum::RequestObjectSigningAlgValuesSupported->value] =
-        $this->getRpSigningAlgorithmValuesSupported();
+        $this->relyingPartyConfig->getConnectSignatureKeyPairBag()->getAllAlgorithmNamesUnique();
         $rpMetadata[ClaimsEnum::Scope->value] = $this->relyingPartyConfig->getScopeBag()->toString();
         if ($this->includeSoftwareId) {
             $rpMetadata[ClaimsEnum::SoftwareId->value] = 'https://github.com/cicnavi/oidc-client-php';
@@ -291,20 +271,22 @@ class FederatedClient
         }
 
         $payloadMetadata = is_array($payloadMetadata = $payload[ClaimsEnum::Metadata->value] ?? null) ?
-            $payloadMetadata :
-            [];
+        $payloadMetadata :
+        [];
         $payloadMetadata[EntityTypesEnum::OpenIdRelyingParty->value] = $rpMetadata;
 
         /** @var array<non-empty-string,mixed> $payload */
         $payload[ClaimsEnum::Metadata->value] = $payloadMetadata;
 
+        $signatureKeyPair = $this->federationSignatureKeyPairBag->getFirstOrFail();
+
         $header = [
-            ClaimsEnum::Kid->value => $this->federationDefaultSignatureKeyPair->getKeyPair()->getKeyId(),
+            ClaimsEnum::Kid->value => $signatureKeyPair->getKeyPair()->getKeyId(),
         ];
 
         return $this->federation->entityStatementFactory()->fromData(
-            $this->federationDefaultSignatureKeyPair->getKeyPair()->getPrivateKey(),
-            $this->federationDefaultSignatureKeyPair->getSignatureAlgorithm(),
+            $signatureKeyPair->getKeyPair()->getPrivateKey(),
+            $signatureKeyPair->getSignatureAlgorithm(),
             $payload,
             $header,
         );
@@ -322,28 +304,6 @@ class FederatedClient
                 fn(SignatureKeyPair $signatureKeyPair): string => $signatureKeyPair->getSignatureAlgorithm()->value,
                 $additionalSignatureKeyPairs,
             ))
-        );
-    }
-
-    /**
-     * @return non-empty-string[]
-     */
-    public function getRpSigningAlgorithmValuesSupported(): array
-    {
-        return $this->getSigningAlgorithmValuesSupported(
-            $this->rpDefaultSignatureKeyPair,
-            ...$this->rpAdditionalSignatureKeyPairBag->getAll(),
-        );
-    }
-
-    /**
-     * @return non-empty-string[]
-     */
-    public function getFederationSigningAlgorithmValuesSupported(): array
-    {
-        return $this->getSigningAlgorithmValuesSupported(
-            $this->federationDefaultSignatureKeyPair,
-            ...$this->federationAdditionalSignatureKeyPairBag->getAll(),
         );
     }
 
@@ -420,13 +380,8 @@ class FederatedClient
         return $this->relyingPartyConfig;
     }
 
-    public function getFederationDefaultSignatureKeyPair(): SignatureKeyPair
+    public function getFederationSignatureKeyPairBag(): SignatureKeyPairBag
     {
-        return $this->federationDefaultSignatureKeyPair;
-    }
-
-    public function getFederationAdditionalSignatureKeyPairBag(): SignatureKeyPairBag
-    {
-        return $this->federationAdditionalSignatureKeyPairBag;
+        return $this->federationSignatureKeyPairBag;
     }
 }
