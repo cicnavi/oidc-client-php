@@ -33,6 +33,7 @@ class RelyingPartyConfig
         protected readonly ?string $initiateLoginUri = null,
         protected readonly ?string $jwksUri = null,
         protected readonly ?string $signedJwksUri = null,
+        protected readonly ?string $logoUri = null,
     ) {
     }
 
@@ -69,5 +70,10 @@ class RelyingPartyConfig
     public function getSignedJwksUri(): ?string
     {
         return $this->signedJwksUri;
+    }
+
+    public function getLogoUri(): ?string
+    {
+        return $this->logoUri;
     }
 }

@@ -262,12 +262,23 @@ class FederatedClient
             $rpMetadata[ClaimsEnum::InitiateLoginUri->value] = $initiateLoginUri;
         }
 
+        if (is_string($logoUri = $this->relyingPartyConfig->getLogoUri())) {
+            $rpMetadata[ClaimsEnum::LogoUri->value] = $logoUri;
+        }
+
         if (is_string($jwksUri = $this->relyingPartyConfig->getJwksUri())) {
             $rpMetadata[ClaimsEnum::JwksUri->value] = $jwksUri;
         }
 
         if (is_string($signedJwksUri = $this->relyingPartyConfig->getSignedJwksUri())) {
             $rpMetadata[ClaimsEnum::SignedJwksUri->value] = $signedJwksUri;
+        }
+
+        if (
+            (!array_key_exists(ClaimsEnum::JwksUri->value, $rpMetadata)) &&
+            (!array_key_exists(ClaimsEnum::SignedJwksUri->value, $rpMetadata))
+        ) {
+            $rpMetadata[ClaimsEnum::Jwks->value] = $this->relyingPartyJwksDecorator->jsonSerialize();
         }
 
         $payloadMetadata = is_array($payloadMetadata = $payload[ClaimsEnum::Metadata->value] ?? null) ?
