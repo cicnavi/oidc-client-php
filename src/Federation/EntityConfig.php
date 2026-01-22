@@ -8,12 +8,14 @@ use SimpleSAML\OpenID\ValueAbstracts\ClaimBag;
 use SimpleSAML\OpenID\ValueAbstracts\KeyedStringBag;
 use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairConfigBag;
 use SimpleSAML\OpenID\ValueAbstracts\UniqueStringBag;
+use SimpleSAML\OpenID\ValueAbstracts\TrustAnchorConfigBag;
 
 class EntityConfig
 {
     /**
-     * @param string $entityId ID of this federation entity. Will be published
-     * in the Issuer and Subject claims in the Entity Configuration statement.
+     * @param non-empty-string $entityId ID of this federation entity. Will be
+     * published in the Issuer and Subject claims in the Entity Configuration
+     * Statement.
      * @param TrustAnchorConfigBag $trustAnchorBag Trust Anchors which are valid
      * for this federation entity. This is a collection (bag) of key-value
      * pairs. The key represents the Trust Anchor Entity ID, while the
@@ -52,6 +54,9 @@ class EntityConfig
     ) {
     }
 
+    /**
+     * @return non-empty-string
+     */
     public function getEntityId(): string
     {
         return $this->entityId;

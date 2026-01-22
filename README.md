@@ -65,12 +65,12 @@ $oidcClient = new PreRegisteredClient(
     scope: 'openid profile',
     
     // Optional parameters with default values
-    shouldUsePkce: true,  // Determines if PKCE should be used in authorization flow. True by default.
+    usePkce: true,  // Determines if PKCE should be used in authorization flow. True by default.
     pkceCodeChallengeMethod: 'S256', // If PKCE is used, which Code Challenge Method should be used.
     timestampValidationLeeway: new DateInterval('PT1M'),  // Leeway used for timestamp (exp, iat, nbf...) validation.
-    isStateCheckEnabled: true,  // Enable/disable state check
-    isNonceCheckEnabled: true,  // Enable/disable nonce check
-    shouldFetchUserInfoClaims: true,  // Fetch claims from the userinfo endpoint
+    useState: true,  // Enable/disable state check
+    useNonce: true,  // Enable/disable nonce check
+    fetchUserInfoClaims: true,  // Fetch claims from the userinfo endpoint
     defaultCacheTtl: 86400,  // Cache TTL in seconds (24 hours)
     logger: null,  // \Psr\Log\LoggerInterface instance
 );

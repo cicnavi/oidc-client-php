@@ -67,7 +67,7 @@ $client = new PreRegisteredClient(
     clientSecret: 'client-secret',
     redirectUri: 'https://your-app.org/callback',
     scope: 'openid profile',
-    shouldUsePkce: true,
+    usePkce: true,
     defaultCacheTtl: 3600
 );
 ```

@@ -22,7 +22,6 @@ use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
-use Psr\SimpleCache\InvalidArgumentException as PsrSimpleCacheInvalidArgumentException;
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmBag;
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmEnum;
 use SimpleSAML\OpenID\Core;
@@ -65,12 +64,13 @@ class PreRegisteredClient
 
     /**
      * Client constructor.
+     * TODO mivanci Move to $issuerId as mandatory and $opConfigurationUrl as optional.
      * @param string $opConfigurationUrl URL where the OP configuration can be fetched.
      * @param string $clientId Client ID issued by the OP.
      * @param string $clientSecret Client Secret issued by the OP.
      * @param string $redirectUri Client Redirect URI to which the OP will send the authorization code.
      * @param string $scope Scopes to use in the authorization request
-     * @param bool $shouldUsePkce Determines if PKCE should be used in authorization flow. True by default.
+     * @param bool $usePkce Determines if PKCE should be used in authorization flow. True by default.
      * @param string $pkceCodeChallengeMethod If PKCE is used, which Code Challenge Method should be used.
      * Default is 'S256'.
      * @param DateInterval $timestampValidationLeeway Leeway used for timestamp (exp, iat, nbf...) validation.
@@ -91,12 +91,12 @@ class PreRegisteredClient
         protected string $clientSecret,
         protected string $redirectUri,
         protected string $scope,
-        protected bool $shouldUsePkce = true,
+        protected bool $usePkce = true,
         protected string $pkceCodeChallengeMethod = 'S256',
         protected readonly DateInterval $timestampValidationLeeway = new DateInterval('PT1M'),
-        protected bool $isStateCheckEnabled = true,
-        protected bool $isNonceCheckEnabled = true,
-        protected bool $shouldFetchUserInfoClaims = true,
+        protected bool $useState = true,
+        protected bool $useNonce = true,
+        protected bool $fetchUserInfoClaims = true,
         protected ?int $defaultCacheTtl = 86400,
         protected readonly SupportedAlgorithms $supportedAlgorithms = new SupportedAlgorithms(
             new SignatureAlgorithmBag(
@@ -176,15 +176,15 @@ class PreRegisteredClient
             'scope' => $this->scope,
         ];
 
-        if ($this->isStateCheckEnabled) {
+        if ($this->useState) {
             $queryParameters['state'] = $this->stateNonceDataHandler->get(StateNonce::STATE_KEY);
         }
 
-        if ($this->isNonceCheckEnabled) {
+        if ($this->useNonce) {
             $queryParameters['nonce'] = $this->stateNonceDataHandler->get(StateNonce::NONCE_KEY);
         }
 
-        if ($this->shouldUsePkce) {
+        if ($this->usePkce) {
             $codeChallengeMethod = $this->pkceCodeChallengeMethod;
 
             $codeChallenge = $this->pkceDataHandler->generateCodeChallengeFromCodeVerifier(
@@ -228,7 +228,7 @@ class PreRegisteredClient
 
         $this->validateTokenDataArray($tokenData);
 
-        if ($this->shouldUsePkce) {
+        if ($this->usePkce) {
             // Since we got tokens, we can remove the code verifier (it was validated on auth server).
             $this->pkceDataHandler->removeCodeVerifier();
         }
@@ -256,7 +256,7 @@ class PreRegisteredClient
             throw new OidcClientException('Not all required parameters were provided (code).');
         }
 
-        if ($this->isStateCheckEnabled) {
+        if ($this->useState) {
             $state = $_GET['state'] ?? null;
             if (!is_string($state)) {
                 throw new OidcClientException('Not all required parameters were provided (state).');
@@ -289,7 +289,7 @@ class PreRegisteredClient
         $headers['Authorization'] = 'Basic ' .
         base64_encode($this->clientId . ':' . $this->clientSecret);
 
-        if ($this->shouldUsePkce) {
+        if ($this->usePkce) {
             $params['code_verifier'] = $this->pkceDataHandler->getCodeVerifier();
         }
 
@@ -343,7 +343,7 @@ class PreRegisteredClient
             $idTokenClaims = $this->getDataFromIDToken($tokenData['id_token']);
         }
 
-        if ($this->shouldFetchUserInfoClaims) {
+        if ($this->fetchUserInfoClaims) {
             $userInfoClaims = $this->requestUserDataFromUserInfoEndpoint($tokenData['access_token']);
         }
 
@@ -387,7 +387,7 @@ class PreRegisteredClient
             return $this->getDataFromIDToken($idToken, true);
         }
 
-        if ($this->isNonceCheckEnabled) {
+        if ($this->useNonce) {
             if (($nonce = $idTokenJws->getNonce()) === null) {
                 $this->logger?->error('ID token nonce not found.');
                 throw new OidcClientException('Nonce parameter is not present in ID token.');
@@ -613,7 +613,7 @@ class PreRegisteredClient
      */
     protected function validateIdTokenAndUserInfoClaims(array $idTokenClaims, array $userInfoClaims): void
     {
-        if (! $this->shouldFetchUserInfoClaims) {
+        if (! $this->fetchUserInfoClaims) {
             return;
         }
 

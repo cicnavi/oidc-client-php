@@ -5,12 +5,20 @@ declare(strict_types=1);
 namespace Cicnavi\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
+use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\PkceDataHandlerInterface;
+use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\StateNonceDataHandlerInterface;
+use Cicnavi\Oidc\DataStore\DataHandlers\Pkce;
+use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
+use Cicnavi\Oidc\DataStore\Interfaces\DataStoreInterface;
+use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
+use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Federation\RelyingPartyConfig;
-use SimpleSAML\OpenID\ValueAbstracts\KeyPair;
-use SimpleSAML\OpenID\ValueAbstracts\KeyPairFilenameConfig;
-use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPair;
+use Psr\Http\Message\ResponseInterface;
+use SimpleSAML\OpenID\Codebooks\ParamsEnum;
+use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
+use SimpleSAML\OpenID\Exceptions\TrustChainException;
+use SimpleSAML\OpenID\Federation\TrustChain;
 use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairBag;
-use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairConfig;
 use SimpleSAML\OpenID\ValueAbstracts\Factories\SignatureKeyPairBagFactory;
 use SimpleSAML\OpenID\ValueAbstracts\Factories\SignatureKeyPairFactory;
 use Cicnavi\Oidc\Federation\EntityConfig;
@@ -34,11 +42,11 @@ use SimpleSAML\OpenID\Exceptions\TrustMarkException;
 use SimpleSAML\OpenID\Federation;
 use SimpleSAML\OpenID\Federation\EntityStatement;
 use SimpleSAML\OpenID\Jwk;
-use SimpleSAML\OpenID\Jwk\JwkDecorator;
 use SimpleSAML\OpenID\Jwks\Factories\JwksDecoratorFactory;
 use SimpleSAML\OpenID\Jwks\JwksDecorator;
 use SimpleSAML\OpenID\SupportedAlgorithms;
 use SimpleSAML\OpenID\SupportedSerializers;
+use SimpleSAML\OpenID\ValueAbstracts\TrustAnchorConfigBag;
 
 class FederatedClient
 {
@@ -57,6 +65,10 @@ class FederatedClient
     protected SignatureKeyPairBag $connectSignatureKeyPairBag;
 
     protected JwksDecorator $relyingPartyJwksDecorator;
+
+    protected StateNonceDataHandlerInterface $stateNonceDataHandler;
+
+    protected PkceDataHandlerInterface $pkceDataHandler;
 
     /**
      * TODO mivanci Federation participation limit by Trust Marks.
@@ -109,12 +121,23 @@ class FederatedClient
         SignatureKeyPairBagFactory $signatureKeyPairBagFactory = null,
         protected readonly JwksDecoratorFactory $jwksDecoratorFactory = new JwksDecoratorFactory(),
         protected readonly bool $includeSoftwareId = true,
+        protected readonly \DateInterval $requestObjectDuration = new \DateInterval('PT10M'),
+        protected readonly bool $useState = true,
+        protected readonly bool $useNonce = true,
+        protected readonly bool $usePkce = true,
+        protected readonly DataStoreInterface $dataStore = new PhpSessionDataStore(),
+        ?StateNonceDataHandlerInterface $stateNonceDataHandler = null,
+        ?PkceDataHandlerInterface $pkceDataHandler = null,
+        protected readonly PkceCodeChallengeMethodEnum $pkceCodeChallengeMethod = PkceCodeChallengeMethodEnum::S256,
     ) {
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
         $this->signatureKeyPairFactory = $signatureKeyPairFactory ?? new SignatureKeyPairFactory($this->jwk);
         $this->signatureKeyPairBagFactory = $signatureKeyPairBagFactory ?? new SignatureKeyPairBagFactory(
             $this->signatureKeyPairFactory,
         );
+
+        $this->stateNonceDataHandler = $stateNonceDataHandler ?? new StateNonce($this->dataStore);
+        $this->pkceDataHandler = $pkceDataHandler ?? new Pkce($this->dataStore);
 
         $this->federation = $federation ?? new Federation(
             $this->supportedAlgorithms,
@@ -123,7 +146,7 @@ class FederatedClient
             $this->timestampValidationLeeway,
             $this->maxTrustChainDepth,
             $this->cache,
-            $this->logger,
+            $this-> logger,
             $this->client,
             $this->defaultTrustMarkStatusEndpointUsagePolicyEnum,
         );
@@ -303,19 +326,9 @@ class FederatedClient
         );
     }
 
-    /**
-     * @return non-empty-string[]
-     */
-    protected function getSigningAlgorithmValuesSupported(
-        SignatureKeyPair $defaultSignatureKeyPair,
-        SignatureKeyPair ...$additionalSignatureKeyPairs,
-    ): array {
-        return array_unique(
-            array_merge([$defaultSignatureKeyPair->getSignatureAlgorithm()->value], array_map(
-                fn(SignatureKeyPair $signatureKeyPair): string => $signatureKeyPair->getSignatureAlgorithm()->value,
-                $additionalSignatureKeyPairs,
-            ))
-        );
+    public function getFederation(): Federation
+    {
+        return $this->federation;
     }
 
     /**
@@ -394,5 +407,329 @@ class FederatedClient
     public function getFederationSignatureKeyPairBag(): SignatureKeyPairBag
     {
         return $this->federationSignatureKeyPairBag;
+    }
+
+    /**
+     * @param non-empty-string $openIdProviderEntityId OpenID Provider Entity
+     * Identifier.
+     * @param TrustAnchorConfigBag|null $specificTrustAnchors Optional, specific
+     * Trust Anchors to use for resolving the trust chain. Must be a subset of
+     * the original Trust Anchors configured for the client. It can also be used
+     * to set the desired priority of Trust Anchors for Trust Chain resolution.
+     * @param ResponseInterface|null $response Optional, the HTTP response which
+     * will be populated with proper redirect headers, and then returned by this
+     * method. If not provided, an immediate redirect will be performed.
+     * @param string|null $authorizationRedirectUri Optional, the redirect URI to use for the
+     * authorization request. If not provided, the default redirect URI
+     * configured for the client will be used. If set, the value must match one
+     * of the redirect URIs configured for the client.
+     *
+     * @throws TrustChainException
+     * @throws OidcClientException
+     */
+    public function autoRegisterAndAuthenticateUsingRedirect(
+        string $openIdProviderEntityId,
+        ?string $loginHint = null,
+        ?TrustAnchorConfigBag $specificTrustAnchors = null,
+        ?ResponseInterface $response = null,
+        ?string $authorizationRedirectUri = null,
+    ): ?ResponseInterface {
+        $trustAnchorBag = $this->entityConfig->getTrustAnchorBag();
+        if ($specificTrustAnchors instanceof TrustAnchorConfigBag) {
+            $trustAnchorBag = $trustAnchorBag->getInCommonWith($specificTrustAnchors);
+        }
+
+        $validTrustAnchorIds = $trustAnchorBag->getAllEntityIds();
+
+        if ($validTrustAnchorIds === []) {
+            $this->logger?->error(
+                'No valid Trust Anchors configured for the client.',
+            );
+            throw new OidcClientException('No valid Trust Anchors configured for the client.');
+        }
+
+        try {
+            // Resolve Trust Chains to the OpenID Provider.
+            $opTrustChainBag = $this->federation->trustChainResolver()->for(
+                $openIdProviderEntityId,
+                $validTrustAnchorIds,
+            );
+        } catch (TrustChainException $trustChainException) {
+            $this->logger?->error(
+                'Error resolving Trust Chain to OP: ' . $trustChainException->getMessage(),
+                [
+                    'openIdProviderId' => $openIdProviderEntityId,
+                    'entityId' => $this->entityConfig->getEntityId(),
+                ],
+            );
+            throw new OidcClientException(
+                $trustChainException->getMessage(),
+                $trustChainException->getCode(),
+                $trustChainException,
+            );
+        }
+
+        $this->logger?->debug(sprintf('Trust Chains resolved to OP: %s.', $opTrustChainBag->getCount()), [
+            $opTrustChainBag->getAll(),
+        ]);
+
+        $opTrustChain = $opTrustChainBag->getShortest();
+
+        $this->logger?->debug(
+            'Shortest Trust Chain to OP: ',
+            $opTrustChain->jsonSerialize(),
+        );
+
+        if ($specificTrustAnchors instanceof TrustAnchorConfigBag) {
+            $this->logger?->debug(
+                'Specific Trust Anchors provided, getting shortest Trust Chain to OP by Trust Anchor priority.',
+                ['specificTrustAnchorIds' => $trustAnchorBag->getAllEntityIds()],
+            );
+            $prioritizedTrustChain = $opTrustChainBag->getShortestByTrustAnchorPriority(
+                ...$trustAnchorBag->getAllEntityIds(),
+            );
+
+            if ($prioritizedTrustChain instanceof TrustChain) {
+                $this->logger?->debug(
+                    'Prioritized Trust Chain to OP found.',
+                    ['prioritizedTrustChain' => $prioritizedTrustChain->jsonSerialize()],
+                );
+                $opTrustChain = $prioritizedTrustChain;
+            }
+
+            $this->logger?->debug(
+                'Prioritized Trust Chain to OP not found, using shortest chain instead.'
+            );
+        }
+
+        $opEntityStatement = $opTrustChain->getResolvedLeaf();
+
+        if (
+            ($opEntityStatement->getSubject() !== $openIdProviderEntityId) ||
+            ($opEntityStatement->getIssuer() !== $openIdProviderEntityId)
+        ) {
+            $this->logger?->error(
+                'OpenID Provider subject / issuer does not match the expected one.',
+                [
+                    'openIdProviderSubject' => $opEntityStatement->getSubject(),
+                    'openIdProviderIssuer' => $opEntityStatement->getIssuer(),
+                    'expectedOpenIdProviderId' => $openIdProviderEntityId,
+                ],
+            );
+            throw new OidcClientException('OpenID Provider subject / issuer does not match the expected one.');
+        }
+
+        $opResolvedMetadata = $opTrustChain->getResolvedMetadata(EntityTypesEnum::OpenIdProvider);
+
+        if (!is_array($opResolvedMetadata)) {
+            $this->logger?->error(
+                'OpenID Provider resolved metadata not available.',
+                [
+                    'entityId' => $openIdProviderEntityId,
+                ],
+            );
+            throw new OidcClientException('OpenID Provider resolved metadata not available.');
+        }
+
+        $opAuthorizationEndpoint = $opResolvedMetadata[ClaimsEnum::AuthorizationEndpoint->value] ?? null;
+
+        if (!is_string($opAuthorizationEndpoint)) {
+            $this->logger?->error(
+                'OpenID Provider authorization endpoint not available.',
+                [
+                    'entityId' => $openIdProviderEntityId,
+                ],
+            );
+            throw new OidcClientException('OpenID Provider authorization endpoint not available.');
+        }
+
+        // Try to resolve supported signing algorithms for Request Object.
+        $signingKeyPair = $this->connectSignatureKeyPairBag->getFirstOrFail();
+        $this->logger?->debug(
+            'Default RP Signing Key Pair: ',
+            [
+                'algorithm' => $signingKeyPair->getSignatureAlgorithm()->value,
+                'keyId' => $signingKeyPair->getKeyPair()->getKeyId(),
+            ]
+        );
+        $opRequestObjectSigningAlgValuesSupported =
+        $opResolvedMetadata[ClaimsEnum::RequestObjectSigningAlgValuesSupported->value] ?? null;
+        if (is_array($opRequestObjectSigningAlgValuesSupported)) {
+            $opRequestObjectSigningAlgValuesSupported = $this->federation->helpers()->type()
+                ->ensureArrayWithValuesAsNonEmptyStrings($opRequestObjectSigningAlgValuesSupported);
+            $this->logger?->debug(
+                'OP designates supported Request Object signing algorithms:',
+                $opRequestObjectSigningAlgValuesSupported,
+            );
+
+            $commonlySupportedRequestObjectSigningAlgorithms = array_intersect(
+                $this->connectSignatureKeyPairBag->getAllAlgorithmNamesUnique(),
+                $opRequestObjectSigningAlgValuesSupported,
+            );
+
+            $commonlySupportedRequestObjectSigningAlgorithms = $this->federation->helpers()->type()
+                ->ensureArrayWithValuesAsNonEmptyStrings($commonlySupportedRequestObjectSigningAlgorithms);
+
+            if ($commonlySupportedRequestObjectSigningAlgorithms !== []) {
+                $this->logger?->debug(
+                    'Commonly supported Request Object signing algorithms with OP:',
+                    $commonlySupportedRequestObjectSigningAlgorithms,
+                );
+
+                $signingKeyPair = $this->connectSignatureKeyPairBag->getFirstByAlgorithmOrFail(
+                    SignatureAlgorithmEnum::from(
+                        $commonlySupportedRequestObjectSigningAlgorithms[
+                            array_key_first($commonlySupportedRequestObjectSigningAlgorithms)
+                        ],
+                    ),
+                );
+
+                $this->logger?->debug(
+                    'Signing Key Pair after algorithm selection: ',
+                    [
+                        'algorithm' => $signingKeyPair->getSignatureAlgorithm()->value,
+                        'keyId' => $signingKeyPair->getKeyPair()->getKeyId(),
+                    ],
+                );
+            } else {
+                $this->logger?->debug(
+                    'No common Request Object signing algorithms found. Falling back to default signing key pair.'
+                );
+            }
+        } else {
+            $this->logger?->debug(
+                'OP does not designate supported Request Object signing algorithms.',
+            );
+        }
+
+        try {
+            // Resolve own RP Trust Chain using the resolved OP's Trust Anchor.
+            $this->logger?->debug(
+                "Resolving own RP Trust Chain using the resolved OP's Trust Anchor.",
+                ['resolvedOpTrustAnchorId' => $opTrustChain->getResolvedTrustAnchor()->getIssuer()],
+            );
+            $rpTrustChain = $this->federation->trustChainResolver()->for(
+                $this->entityConfig->getEntityId(),
+                [$opTrustChain->getResolvedTrustAnchor()->getIssuer()],
+            )->getShortest();
+        } catch (TrustChainException $trustChainException) {
+            $this->logger?->error(
+                'Error resolving own RP Trust Chain: ' . $trustChainException->getMessage(),
+            );
+            throw new OidcClientException(
+                $trustChainException->getMessage(),
+                $trustChainException->getCode(),
+                $trustChainException,
+            );
+        }
+
+        $this->logger?->debug(
+            'RP Trust Chain resolved: ',
+            $rpTrustChain->jsonSerialize(),
+        );
+
+        $currentTimeUtc = $this->federation->helpers()->dateTime()->getUtc();
+        $authorizationRedirectUri = $this->resolveClientRedirectUriForAuthorizationRequest($authorizationRedirectUri);
+        $state = $this->useState ?
+        $this->stateNonceDataHandler->get(StateNonce::STATE_KEY) :
+        null;
+        $nonce = $this->useNonce ?
+        $this->stateNonceDataHandler->get(StateNonce::NONCE_KEY) :
+        null;
+        $pkceCodeChallenge = $this->usePkce ?
+        $this->pkceDataHandler->generateCodeChallengeFromCodeVerifier(
+            $this->pkceDataHandler->getCodeVerifier(),
+            $this->pkceCodeChallengeMethod->value,
+        ) :
+        null;
+        $pkceCodeChallengeMethod = $this->usePkce ? $this->pkceCodeChallengeMethod->value : null;
+        $scope = $this->relyingPartyConfig->getScopeBag()->toString();
+
+
+        $requestObjectPayload = array_filter([
+            ClaimsEnum::Aud->value => $openIdProviderEntityId,
+            ClaimsEnum::ClientId->value => $this->entityConfig->getEntityId(),
+            ClaimsEnum::Iss->value => $this->entityConfig->getEntityId(),
+            ClaimsEnum::Jti->value => $this->federation->helpers()->random()->string(),
+            ClaimsEnum::Exp->value => $currentTimeUtc->add($this->requestObjectDuration)->getTimestamp(),
+            ClaimsEnum::Iat->value => $currentTimeUtc->getTimestamp(),
+
+            ParamsEnum::ResponseType->value => ResponseTypesEnum::Code->value,
+            ParamsEnum::RedirectUri->value => $authorizationRedirectUri,
+            ParamsEnum::Scope->value => $scope,
+            ParamsEnum::State->value => $state,
+            ParamsEnum::Nonce->value => $nonce,
+            ParamsEnum::CodeChallenge->value => $pkceCodeChallenge,
+            ParamsEnum::CodeChallengeMethod->value => $pkceCodeChallengeMethod,
+            ParamsEnum::LoginHint->value => $loginHint,
+        ]);
+
+        $requestObjectHeader = [
+            ClaimsEnum::Kid->value => $signingKeyPair->getKeyPair()->getKeyId(),
+            // TODO mivanci Since we are doing a redirect to the authorization
+            // endpoint, we will not include the following claims in the Request
+            // This should be enabled for other authorization request types
+            // which are not limited by the URL length.
+            //
+            // ClaimsEnum::TrustChain->value => $rpTrustChain->jsonSerialize(),
+            // ClaimsEnum::PeerTrustChain->value => $opTrustChain->jsonSerialize(),
+        ];
+
+        $this->logger?->debug(
+            'Request Object payload and header prepared: ',
+            [
+                'payload' => $requestObjectPayload,
+                'header' => $requestObjectHeader,
+            ],
+        );
+
+        $requestObject = $this->federation->requestObjectFactory()->fromData(
+            $signingKeyPair->getKeyPair()->getPrivateKey(),
+            $signingKeyPair->getSignatureAlgorithm(),
+            $requestObjectPayload,
+            $requestObjectHeader,
+        );
+
+        $authorizationParameters = array_filter([
+            ParamsEnum::Request->value => $requestObject->getToken(),
+            // We have the following in the Request Object; however,
+            // they are mandatory by the OpenID Connect Core 1.0 specification.
+            ParamsEnum::Scope->value => $scope,
+            ParamsEnum::ResponseType->value => ResponseTypesEnum::Code->value,
+            ParamsEnum::ClientId->value => $this->entityConfig->getEntityId(),
+            ParamsEnum::RedirectUri->value => $authorizationRedirectUri,
+        ]);
+
+        $this->logger?->debug(
+            'Authorization parameters prepared: ',
+            $authorizationParameters,
+        );
+
+        $authorizationRedirectUri = $opAuthorizationEndpoint . '?' . http_build_query($authorizationParameters);
+
+        if ($response instanceof ResponseInterface) {
+            $this->logger?->debug('Redirecting to authorization endpoint.');
+            return $response->withHeader('Location', $authorizationRedirectUri);
+        }
+
+        header('Location: ' . $authorizationRedirectUri);
+        exit;
+    }
+
+    protected function resolveClientRedirectUriForAuthorizationRequest(?string $specificRedirectUri): string
+    {
+        if (!is_string($specificRedirectUri)) {
+            return $this->relyingPartyConfig->getRedirectUriBag()->getDefaultRedirectUri();
+        }
+
+        if (in_array($specificRedirectUri, $this->relyingPartyConfig->getRedirectUriBag()->getAll(), true)) {
+            return $specificRedirectUri;
+        }
+
+        $this->logger?->warning(
+            'Redirect URI provided does not match any configured redirect URI. Using default redirect URI instead.',
+        );
+
+        return $this->relyingPartyConfig->getRedirectUriBag()->getDefaultRedirectUri();
     }
 }
