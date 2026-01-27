@@ -2,17 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Cicnavi\Oidc;
+namespace Cicnavi\Oidc\Protocol;
 
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Http\RequestFactory;
-use Psr\Http\Client\ClientExceptionInterface as PsrHttpClientClientExceptionInterface;
-use Psr\SimpleCache\CacheInterface;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use GuzzleHttp\Client;
-use Psr\Http\Message\RequestFactoryInterface;
+use Psr\Http\Client\ClientExceptionInterface as PsrHttpClientClientExceptionInterface;
 use Psr\Http\Client\ClientInterface;
-use Psr\SimpleCache\InvalidArgumentException as PsrSimpleCacheInvalidArgumentException;
+use Psr\Http\Message\RequestFactoryInterface;
+use Psr\SimpleCache\CacheInterface;
 use Throwable;
 
 class OpMetadata implements MetadataInterface

@@ -35,13 +35,13 @@ class StateNonce extends AbstractDataHandler implements StateNonceDataHandlerInt
     {
         $this->validateParameterKey($key);
 
-        if (is_string($value = $this->store->get($key))) {
+        if (is_string($value = $this->sessionStore->get($key))) {
             return $value;
         }
 
         $value = StringHelper::random($length);
 
-        $this->store->put($key, $value);
+        $this->sessionStore->put($key, $value);
 
         return $value;
     }
@@ -53,7 +53,7 @@ class StateNonce extends AbstractDataHandler implements StateNonceDataHandlerInt
     {
         $this->validateParameterKey($key);
 
-        if (! $this->store->exists($key)) {
+        if (! $this->sessionStore->exists($key)) {
             throw new OidcClientException(sprintf('Value not present in store for key %s', $key));
         }
 
@@ -75,7 +75,7 @@ class StateNonce extends AbstractDataHandler implements StateNonceDataHandlerInt
     {
         $this->validateParameterKey($key);
 
-        $this->store->delete($key);
+        $this->sessionStore->delete($key);
     }
 
     /**

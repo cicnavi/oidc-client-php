@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace Cicnavi\Tests\Oidc\DataStore;
 
-use Cicnavi\Oidc\DataStore\Interfaces\DataStoreInterface;
-use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
+use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
+use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
-#[CoversClass(PhpSessionDataStore::class)]
+#[CoversClass(PhpSessionStore::class)]
 final class PhpSessionDataStoreTest extends TestCase
 {
-    protected DataStoreInterface $store;
+    protected SessionStoreInterface $sessionStore;
 
     protected string $testKey = 'testKey';
 
@@ -20,55 +20,55 @@ final class PhpSessionDataStoreTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->store = new PhpSessionDataStore();
+        $this->sessionStore = new PhpSessionStore();
     }
 
     public function testPut(): void
     {
-        $this->store->put($this->testKey, $this->testValue);
+        $this->sessionStore->put($this->testKey, $this->testValue);
 
-        $this->assertTrue($this->store->exists($this->testKey));
+        $this->assertTrue($this->sessionStore->exists($this->testKey));
 
-        $this->assertEquals($this->testValue, $this->store->get($this->testKey));
+        $this->assertEquals($this->testValue, $this->sessionStore->get($this->testKey));
     }
 
     public function testDelete(): void
     {
-        $this->assertNotTrue($this->store->exists($this->testKey));
+        $this->assertNotTrue($this->sessionStore->exists($this->testKey));
 
-        $this->store->put($this->testKey, $this->testValue);
+        $this->sessionStore->put($this->testKey, $this->testValue);
 
-        $this->assertTrue($this->store->exists($this->testKey));
+        $this->assertTrue($this->sessionStore->exists($this->testKey));
 
-        $this->store->delete($this->testKey);
+        $this->sessionStore->delete($this->testKey);
 
-        $this->assertNotTrue($this->store->exists($this->testKey));
+        $this->assertNotTrue($this->sessionStore->exists($this->testKey));
     }
 
     public function testExists(): void
     {
-        $this->assertNotTrue($this->store->exists($this->testKey));
+        $this->assertNotTrue($this->sessionStore->exists($this->testKey));
 
-        $this->store->put($this->testKey, $this->testValue);
+        $this->sessionStore->put($this->testKey, $this->testValue);
 
-        $this->assertTrue($this->store->exists($this->testKey));
+        $this->assertTrue($this->sessionStore->exists($this->testKey));
     }
 
     public function testConstruct(): void
     {
-        $this->assertInstanceOf(DataStoreInterface::class, new PhpSessionDataStore());
+        $this->assertInstanceOf(SessionStoreInterface::class, new PhpSessionStore());
     }
 
     public function testGet(): void
     {
-        $this->assertNotTrue($this->store->exists($this->testKey));
+        $this->assertNotTrue($this->sessionStore->exists($this->testKey));
 
-        $this->assertEquals(null, $this->store->get($this->testKey));
+        $this->assertEquals(null, $this->sessionStore->get($this->testKey));
 
-        $this->store->put($this->testKey, $this->testValue);
+        $this->sessionStore->put($this->testKey, $this->testValue);
 
-        $this->assertTrue($this->store->exists($this->testKey));
+        $this->assertTrue($this->sessionStore->exists($this->testKey));
 
-        $this->assertEquals($this->testValue, $this->store->get($this->testKey));
+        $this->assertEquals($this->testValue, $this->sessionStore->get($this->testKey));
     }
 }

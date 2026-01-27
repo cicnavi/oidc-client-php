@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Cicnavi\Oidc\DataStore;
 
-use Cicnavi\Oidc\DataStore\Interfaces\DataStoreInterface;
+use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Helpers\HttpHelper;
 
-class PhpSessionDataStore implements DataStoreInterface
+class PhpSessionStore implements SessionStoreInterface
 {
     /**
      * PhpSessionDataStore constructor.

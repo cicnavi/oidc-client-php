@@ -27,13 +27,13 @@ class Pkce extends AbstractDataHandler implements PkceDataHandlerInterface
      */
     public function getCodeVerifier(): string
     {
-        if (is_string($codeVerifier = $this->store->get(self::CODE_VERIFIER_SESSION_KEY))) {
+        if (is_string($codeVerifier = $this->sessionStore->get(self::CODE_VERIFIER_SESSION_KEY))) {
             return $codeVerifier;
         }
 
         $codeVerifier = StringHelper::random(128);
 
-        $this->store->put(self::CODE_VERIFIER_SESSION_KEY, $codeVerifier);
+        $this->sessionStore->put(self::CODE_VERIFIER_SESSION_KEY, $codeVerifier);
 
         return $codeVerifier;
     }
@@ -68,7 +68,7 @@ class Pkce extends AbstractDataHandler implements PkceDataHandlerInterface
      */
     public function removeCodeVerifier(): void
     {
-        $this->store->delete(self::CODE_VERIFIER_SESSION_KEY);
+        $this->sessionStore->delete(self::CODE_VERIFIER_SESSION_KEY);
     }
 
     /**

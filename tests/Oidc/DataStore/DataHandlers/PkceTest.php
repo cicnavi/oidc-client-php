@@ -6,7 +6,7 @@ namespace Cicnavi\Tests\Oidc\DataStore\DataHandlers;
 
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\DataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Pkce;
-use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
+use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Helpers\StringHelper;
 use Exception;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -14,7 +14,7 @@ use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(Pkce::class)]
-#[UsesClass(PhpSessionDataStore::class)]
+#[UsesClass(PhpSessionStore::class)]
 #[UsesClass(StringHelper::class)]
 final class PkceTest extends TestCase
 {
@@ -77,7 +77,7 @@ final class PkceTest extends TestCase
 
     public function testGetExistingCodeVerifier(): void
     {
-        $storeStub = $this->createStub(PhpSessionDataStore::class);
+        $storeStub = $this->createStub(PhpSessionStore::class);
         $storeStub->method('exists')
             ->willReturn(true);
         $storeStub->method('get')
@@ -95,7 +95,7 @@ final class PkceTest extends TestCase
     {
         $testCodeVerifierValue = 'testCodeVerifier';
 
-        $storeStub = $this->createStub(PhpSessionDataStore::class);
+        $storeStub = $this->createStub(PhpSessionStore::class);
         $storeStub->method('exists')
             ->willReturn(false);
 
@@ -112,15 +112,15 @@ final class PkceTest extends TestCase
 
     public function testConstructWithArguments(): void
     {
-        $store = new PhpSessionDataStore();
+        $store = new PhpSessionStore();
         $this->assertInstanceOf(DataHandlerInterface::class, new Pkce($store));
     }
 
     public function testSetStore(): void
     {
-        $store = new PhpSessionDataStore();
+        $store = new PhpSessionStore();
         $pkce = new Pkce();
-        $pkce->setStore($store);
+        $pkce->setSessionStore($store);
         $this->assertInstanceOf(DataHandlerInterface::class, $pkce);
     }
 }

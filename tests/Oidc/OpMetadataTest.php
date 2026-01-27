@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Cicnavi\Tests\Oidc;
 
-use Cicnavi\Oidc\Http\RequestFactory;
-use Cicnavi\SimpleFileCache\Exceptions\InvalidArgumentException;
 use Cicnavi\Oidc\Cache\FileCache;
-use Cicnavi\Oidc\OpMetadata;
+use Cicnavi\Oidc\Http\RequestFactory;
+use Cicnavi\Oidc\Protocol\OpMetadata;
+use Cicnavi\SimpleFileCache\Exceptions\InvalidArgumentException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request;

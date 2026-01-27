@@ -9,12 +9,13 @@ use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\PkceDataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\StateNonceDataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Pkce;
 use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
-use Cicnavi\Oidc\DataStore\Interfaces\DataStoreInterface;
-use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
+use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
+use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Http\RequestFactory;
-use Cicnavi\SimpleFileCache\Exceptions\CacheException;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
+use Cicnavi\Oidc\Protocol\OpMetadata;
+use Cicnavi\SimpleFileCache\Exceptions\CacheException;
 use DateInterval;
 use GuzzleHttp\Psr7\Utils;
 use Psr\Http\Client\ClientInterface;
@@ -78,7 +79,7 @@ class PreRegisteredClient
      * @param SupportedAlgorithms $supportedAlgorithms Algorithms that the client will support. Default for
      * signatures are: EdDSA, ES256, ES384, ES512, PS256, PS384, PS512, RS256, RS384, RS512.
      * @param CacheInterface|null $cache Cache instance to use for caching. Default is simple file-based cache.
-     * @param DataStoreInterface $dataStore Data store for State, Nonce, and PKCE parameter handling.
+     * @param SessionStoreInterface $sessionStore Data store for State, Nonce, and PKCE parameter handling.
      * @param ClientInterface $httpClient Helper HTTP client instance used to easily send HTTP requests.
      * @param RequestFactoryInterface $httpRequestFactory Used to prepare HTTP requests
      * @param Core|null $core Core library instance. If not provided, new one will be built using provided options.
@@ -115,7 +116,7 @@ class PreRegisteredClient
         protected readonly SupportedSerializers $supportedSerializers = new SupportedSerializers(),
         protected readonly ?LoggerInterface $logger = null,
         ?CacheInterface $cache = null,
-        protected readonly DataStoreInterface $dataStore = new PhpSessionDataStore(),
+        protected readonly SessionStoreInterface $sessionStore = new PhpSessionStore(),
         protected readonly ClientInterface $httpClient = new \GuzzleHttp\Client(),
         protected readonly RequestFactoryInterface $httpRequestFactory = new RequestFactory(),
         ?StateNonceDataHandlerInterface $stateNonceDataHandler = null,
@@ -127,8 +128,8 @@ class PreRegisteredClient
 
         $this->validateCache();
 
-        $this->stateNonceDataHandler = $stateNonceDataHandler ?? new StateNonce($this->dataStore);
-        $this->pkceDataHandler = $pkceDataHandler ?? new Pkce($this->dataStore);
+        $this->stateNonceDataHandler = $stateNonceDataHandler ?? new StateNonce($this->sessionStore);
+        $this->pkceDataHandler = $pkceDataHandler ?? new Pkce($this->sessionStore);
         $this->metadata = $metadata ?? new OpMetadata($this->opConfigurationUrl, $this->cache, $this->httpClient);
 
         $this->core = $core ?? new Core(
@@ -208,8 +209,8 @@ class PreRegisteredClient
     }
 
     /**
-     * Get user data by performing HTTP requests to token endpoint first and
-     * then using tokens to get user data.
+     * Get user data by performing an HTTP request to a token endpoint first
+     *  and then to the userinfo endpoint using tokens to get user data.
      *
      * @return mixed[] User data.
      * @throws InvalidValueException

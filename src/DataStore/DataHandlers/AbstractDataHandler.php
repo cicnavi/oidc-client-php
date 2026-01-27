@@ -5,24 +5,24 @@ declare(strict_types=1);
 namespace Cicnavi\Oidc\DataStore\DataHandlers;
 
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\DataHandlerInterface;
-use Cicnavi\Oidc\DataStore\Interfaces\DataStoreInterface;
-use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
+use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
+use Cicnavi\Oidc\DataStore\PhpSessionStore;
 
 abstract class AbstractDataHandler implements DataHandlerInterface
 {
-    protected DataStoreInterface $store;
+    protected SessionStoreInterface $sessionStore;
 
-    public function __construct(?DataStoreInterface $store = null)
+    public function __construct(?SessionStoreInterface $sessionStore = null)
     {
         // PHP Session Store is the default store.
-        $this->store = $store ?? new PhpSessionDataStore();
+        $this->sessionStore = $sessionStore ?? new PhpSessionStore();
     }
 
     /**
      * @inheritDoc
      */
-    public function setStore(DataStoreInterface $store): void
+    public function setSessionStore(SessionStoreInterface $sessionStore): void
     {
-        $this->store = $store;
+        $this->sessionStore = $sessionStore;
     }
 }

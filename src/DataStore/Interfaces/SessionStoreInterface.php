@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Cicnavi\Oidc\DataStore\Interfaces;
 
-interface DataStoreInterface
+interface SessionStoreInterface
 {
     /**
      * Check if key exists in data store.

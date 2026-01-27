@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace Cicnavi\Tests\Oidc\DataStore\DataHandlers;
 
 use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
-use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
+use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Helpers\StringHelper;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(StateNonce::class)]
-#[UsesClass(PhpSessionDataStore::class)]
+#[UsesClass(PhpSessionStore::class)]
 #[UsesClass(StringHelper::class)]
 final class StateNonceTest extends TestCase
 {
@@ -61,7 +61,7 @@ final class StateNonceTest extends TestCase
     {
         $testValue = 'testValue';
 
-        $storeStub = $this->createStub(PhpSessionDataStore::class);
+        $storeStub = $this->createStub(PhpSessionStore::class);
         $storeStub->method('exists')
             ->willReturn(true);
         $storeStub->method('get')

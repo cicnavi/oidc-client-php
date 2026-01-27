@@ -9,13 +9,17 @@ use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\PkceDataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\StateNonceDataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Pkce;
 use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
-use Cicnavi\Oidc\DataStore\Interfaces\DataStoreInterface;
-use Cicnavi\Oidc\DataStore\PhpSessionDataStore;
+use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
+use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Federation\RelyingPartyConfig;
+use Cicnavi\Oidc\Protocol\RequestDataHandler;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use SimpleSAML\OpenID\Codebooks\ParamsEnum;
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
+use SimpleSAML\OpenID\Core;
+use SimpleSAML\OpenID\Exceptions\InvalidValueException;
 use SimpleSAML\OpenID\Exceptions\TrustChainException;
 use SimpleSAML\OpenID\Federation\TrustChain;
 use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairBag;
@@ -66,9 +70,9 @@ class FederatedClient
 
     protected JwksDecorator $relyingPartyJwksDecorator;
 
-    protected StateNonceDataHandlerInterface $stateNonceDataHandler;
+    protected RequestDataHandler $requestDataHandler;
 
-    protected PkceDataHandlerInterface $pkceDataHandler;
+    protected Core $core;
 
     /**
      * TODO mivanci Federation participation limit by Trust Marks.
@@ -122,13 +126,12 @@ class FederatedClient
         protected readonly JwksDecoratorFactory $jwksDecoratorFactory = new JwksDecoratorFactory(),
         protected readonly bool $includeSoftwareId = true,
         protected readonly \DateInterval $requestObjectDuration = new \DateInterval('PT10M'),
-        protected readonly bool $useState = true,
         protected readonly bool $useNonce = true,
         protected readonly bool $usePkce = true,
-        protected readonly DataStoreInterface $dataStore = new PhpSessionDataStore(),
-        ?StateNonceDataHandlerInterface $stateNonceDataHandler = null,
-        ?PkceDataHandlerInterface $pkceDataHandler = null,
         protected readonly PkceCodeChallengeMethodEnum $pkceCodeChallengeMethod = PkceCodeChallengeMethodEnum::S256,
+        protected readonly SessionStoreInterface $sessionStore = new PhpSessionStore(),
+        ?Core $core = null,
+        RequestDataHandler $requestDataHandler = null,
     ) {
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
         $this->signatureKeyPairFactory = $signatureKeyPairFactory ?? new SignatureKeyPairFactory($this->jwk);
@@ -136,8 +139,20 @@ class FederatedClient
             $this->signatureKeyPairFactory,
         );
 
-        $this->stateNonceDataHandler = $stateNonceDataHandler ?? new StateNonce($this->dataStore);
-        $this->pkceDataHandler = $pkceDataHandler ?? new Pkce($this->dataStore);
+        $this->core = $core ?? new Core(
+            $this->supportedAlgorithms,
+            $this->supportedSerializers,
+            $this->timestampValidationLeeway,
+            $this->logger,
+        );
+
+        $this->requestDataHandler = $requestDataHandler ?? new RequestDataHandler(
+            sessionStore: $this->sessionStore,
+            core: $this->core,
+            cache: $this->cache,
+            logger: $this->logger,
+            maxCacheDuration: $this->maxCacheDuration,
+        );
 
         $this->federation = $federation ?? new Federation(
             $this->supportedAlgorithms,
@@ -630,15 +645,11 @@ class FederatedClient
 
         $currentTimeUtc = $this->federation->helpers()->dateTime()->getUtc();
         $authorizationRedirectUri = $this->resolveClientRedirectUriForAuthorizationRequest($authorizationRedirectUri);
-        $state = $this->useState ?
-        $this->stateNonceDataHandler->get(StateNonce::STATE_KEY) :
-        null;
-        $nonce = $this->useNonce ?
-        $this->stateNonceDataHandler->get(StateNonce::NONCE_KEY) :
-        null;
+        $state = $this->requestDataHandler->getState();
+        $nonce = $this->useNonce ? $this->requestDataHandler->getNonce() : null;
         $pkceCodeChallenge = $this->usePkce ?
-        $this->pkceDataHandler->generateCodeChallengeFromCodeVerifier(
-            $this->pkceDataHandler->getCodeVerifier(),
+        $this->requestDataHandler->generateCodeChallengeFromCodeVerifier(
+            $this->requestDataHandler->getCodeVerifier(),
             $this->pkceCodeChallengeMethod->value,
         ) :
         null;
@@ -731,5 +742,17 @@ class FederatedClient
         );
 
         return $this->relyingPartyConfig->getRedirectUriBag()->getDefaultRedirectUri();
+    }
+
+    /**
+     * Get user data by performing an HTTP request to a token endpoint first
+     * and then to the userinfo endpoint using tokens to get user data.
+     *
+     * @return mixed[] User data.
+     */
+    public function getUserData(?ServerRequestInterface $request = null): array
+    {
+
+        return [];
     }
 }
