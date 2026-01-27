@@ -20,6 +20,7 @@ use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
 use SimpleSAML\OpenID\Codebooks\ClaimsEnum;
 use SimpleSAML\OpenID\Codebooks\ClientAssertionTypesEnum;
+use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\GrantTypesEnum;
 use SimpleSAML\OpenID\Codebooks\HttpMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\ParamsEnum;
@@ -30,6 +31,10 @@ use Throwable;
 
 class RequestDataHandler
 {
+    public const KEY_OP_METADATA_FOR_STATE = 'op_metadata_for_state_';
+
+    public const KEY_REDIRECT_URI_FOR_STATE_ = 'redirect_uri_for_state_';
+
     protected StateNonceDataHandlerInterface $stateNonceDataHandler;
 
     protected PkceDataHandlerInterface $pkceDataHandler;
@@ -96,7 +101,7 @@ class RequestDataHandler
      * @throws OidcClientException
      */
     public function getUserData(
-        ClientAuthenticationEnum $clientAuthentication,
+        ClientAuthenticationMethodsEnum $clientAuthentication,
         string $tokenEndpoint,
         string $clientId,
         string $redirectUri,
@@ -193,7 +198,7 @@ class RequestDataHandler
  * @throws OidcClientException
  */
     public function requestTokenData(
-        ClientAuthenticationEnum $clientAuthentication,
+        ClientAuthenticationMethodsEnum $clientAuthenticationMethod,
         string $tokenEndpoint,
         string $authorizationCode,
         string $clientId,
@@ -214,7 +219,7 @@ class RequestDataHandler
             'Content-Type' => 'application/x-www-form-urlencoded',
         ];
 
-        if ($clientAuthentication === ClientAuthenticationEnum::ClientSecretBasic) {
+        if ($clientAuthenticationMethod === ClientAuthenticationMethodsEnum::ClientSecretBasic) {
             if (!is_string($clientSecret)) {
                 throw new OidcClientException(
                     'Client secret must be provided for client authentication method "client_secret_basic".',
@@ -224,7 +229,7 @@ class RequestDataHandler
             $headers['Authorization'] = 'Basic ' . base64_encode($clientId . ':' . $clientSecret);
         }
 
-        if ($clientAuthentication === ClientAuthenticationEnum::PrivateKeyJwt) {
+        if ($clientAuthenticationMethod === ClientAuthenticationMethodsEnum::PrivateKeyJwt) {
             if (!is_string($clientAssertion)) {
                 throw new OidcClientException(
                     'Client assertion must be provided for client authentication method "private_key_jwt".',
@@ -585,5 +590,49 @@ class RequestDataHandler
         if ($idTokenClaims[ClaimsEnum::Sub->value] !== $userInfoClaims[ClaimsEnum::Sub->value]) {
             throw new OidcClientException('ID token and UserInfo sub claim must be equal.');
         }
+    }
+
+    /**
+     * @param mixed[] $opMetadata
+     */
+    public function setResolvedOpMetadataForState(string $state, array $opMetadata): void
+    {
+        $this->sessionStore->put(self::KEY_OP_METADATA_FOR_STATE . $state, $opMetadata);
+    }
+
+    /**
+     * @return mixed[]
+     * @throws OidcClientException
+     */
+    public function getResolvedOpMetadataForState(string $state): array
+    {
+        $resolvedOpMetadata = $this->sessionStore->get(self::KEY_OP_METADATA_FOR_STATE . $state);
+
+        if (is_array($resolvedOpMetadata)) {
+            $this->sessionStore->delete(self::KEY_OP_METADATA_FOR_STATE . $state);
+            return $resolvedOpMetadata;
+        }
+
+        throw new OidcClientException('Resolved OP metadata not found for state "' . $state . '".');
+    }
+
+    public function setRedirectUriForState(string $state, string $redirectUri): void
+    {
+        $this->sessionStore->put(self::KEY_REDIRECT_URI_FOR_STATE_ . $state, $redirectUri);
+    }
+
+    /**
+     * @throws OidcClientException
+     */
+    public function getRedirectUriForState(string $state): string
+    {
+        $redirectUri = $this->sessionStore->get(self::KEY_REDIRECT_URI_FOR_STATE_ . $state);
+
+        if (is_string($redirectUri)) {
+            $this->sessionStore->delete(self::KEY_REDIRECT_URI_FOR_STATE_ . $state);
+            return $redirectUri;
+        }
+
+        throw new OidcClientException('Redirect URI not found for state "' . $state . '".');
     }
 }

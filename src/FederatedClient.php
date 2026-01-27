@@ -5,10 +5,6 @@ declare(strict_types=1);
 namespace Cicnavi\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
-use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\PkceDataHandlerInterface;
-use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\StateNonceDataHandlerInterface;
-use Cicnavi\Oidc\DataStore\DataHandlers\Pkce;
-use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
@@ -16,10 +12,10 @@ use Cicnavi\Oidc\Federation\RelyingPartyConfig;
 use Cicnavi\Oidc\Protocol\RequestDataHandler;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\ParamsEnum;
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 use SimpleSAML\OpenID\Core;
-use SimpleSAML\OpenID\Exceptions\InvalidValueException;
 use SimpleSAML\OpenID\Exceptions\TrustChainException;
 use SimpleSAML\OpenID\Federation\TrustChain;
 use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairBag;
@@ -656,6 +652,10 @@ class FederatedClient
         $pkceCodeChallengeMethod = $this->usePkce ? $this->pkceCodeChallengeMethod->value : null;
         $scope = $this->relyingPartyConfig->getScopeBag()->toString();
 
+        // Set resolved OP metadata for the state, so we can fetch it on callback.
+        $this->requestDataHandler->setResolvedOpMetadataForState($state, $opResolvedMetadata);
+        // Set used redirect URI for state, so we can fetch it on callback.
+        $this->requestDataHandler->setRedirectUriForState($state, $authorizationRedirectUri);
 
         $requestObjectPayload = array_filter([
             ClaimsEnum::Aud->value => $openIdProviderEntityId,
@@ -749,9 +749,20 @@ class FederatedClient
      * and then to the userinfo endpoint using tokens to get user data.
      *
      * @return mixed[] User data.
+     * @throws OidcClientException
      */
     public function getUserData(?ServerRequestInterface $request = null): array
     {
+        $state = $this->requestDataHandler->validateAuthorizationCallbackResponse($request)[ParamsEnum::State->value];
+
+        $this->requestDataHandler->getResolvedOpMetadataForState($state);
+        $this->requestDataHandler->getRedirectUriForState($state);
+
+
+
+//        return $this->requestDataHandler->getUserData(
+//            ClientAuthenticationMethodsEnum::PrivateKeyJwt,
+//        );
 
         return [];
     }
