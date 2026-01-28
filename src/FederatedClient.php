@@ -126,7 +126,7 @@ class FederatedClient
         SignatureKeyPairBagFactory $signatureKeyPairBagFactory = null,
         protected readonly JwksDecoratorFactory $jwksDecoratorFactory = new JwksDecoratorFactory(),
         protected readonly bool $includeSoftwareId = true,
-        protected readonly \DateInterval $privateKeyJwtDuration = new \DateInterval('PT10M'),
+        protected readonly \DateInterval $privateKeyJwtDuration = new \DateInterval('PT5M'),
         protected readonly bool $useNonce = true,
         protected readonly bool $usePkce = true,
         protected bool $fetchUserinfoClaims = true,
@@ -234,12 +234,12 @@ class FederatedClient
         return $this->maxTrustChainDepth;
     }
 
-    public function getDefaultTrustMarkStatusEndpointUsagePolicyEnum(): TrustMarkStatusEndpointUsagePolicyEnum
+    public function getDefaultTrustMarkStatusEndpointUsagePolicy(): TrustMarkStatusEndpointUsagePolicyEnum
     {
         return $this->defaultTrustMarkStatusEndpointUsagePolicyEnum;
     }
 
-    public function shouldIncludeSoftwareId(): bool
+    public function includeSoftwareId(): bool
     {
         return $this->includeSoftwareId;
     }
@@ -257,6 +257,31 @@ class FederatedClient
         } catch (CacheException $cacheException) {
             $this->logger?->error('Error clearing cache: ' . $cacheException->getMessage());
         }
+    }
+
+    public function getPrivateKeyJwtDuration(): \DateInterval
+    {
+        return $this->privateKeyJwtDuration;
+    }
+
+    public function useNonce(): bool
+    {
+        return $this->useNonce;
+    }
+
+    public function usePkce(): bool
+    {
+        return $this->usePkce;
+    }
+
+    public function fetchUserinfoClaims(): bool
+    {
+        return $this->fetchUserinfoClaims;
+    }
+
+    public function getPkceCodeChallengeMethod(): PkceCodeChallengeMethodEnum
+    {
+        return $this->pkceCodeChallengeMethod;
     }
 
     public function buildEntityStatement(): EntityStatement
