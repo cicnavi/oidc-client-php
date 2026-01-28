@@ -25,6 +25,7 @@ use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmBag;
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmEnum;
+use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 use SimpleSAML\OpenID\Core;
 use SimpleSAML\OpenID\Exceptions\InvalidValueException;
 use SimpleSAML\OpenID\Exceptions\JwsException;
@@ -72,8 +73,8 @@ class PreRegisteredClient
      * @param string $redirectUri Client Redirect URI to which the OP will send the authorization code.
      * @param string $scope Scopes to use in the authorization request
      * @param bool $usePkce Determines if PKCE should be used in authorization flow. True by default.
-     * @param string $pkceCodeChallengeMethod If PKCE is used, which Code Challenge Method should be used.
-     * Default is 'S256'.
+     * @param PkceCodeChallengeMethodEnum $pkceCodeChallengeMethod If PKCE is
+     * used, which Code Challenge Method should be used. Default is 'S256'.
      * @param DateInterval $timestampValidationLeeway Leeway used for timestamp (exp, iat, nbf...) validation.
      * Default is 'PT1M' (1 minute).
      * @param SupportedAlgorithms $supportedAlgorithms Algorithms that the client will support. Default for
@@ -93,7 +94,7 @@ class PreRegisteredClient
         protected string $redirectUri,
         protected string $scope,
         protected bool $usePkce = true,
-        protected string $pkceCodeChallengeMethod = 'S256',
+        protected PkceCodeChallengeMethodEnum $pkceCodeChallengeMethod = PkceCodeChallengeMethodEnum::S256,
         protected readonly DateInterval $timestampValidationLeeway = new DateInterval('PT1M'),
         protected bool $useState = true,
         protected bool $useNonce = true,
@@ -186,15 +187,13 @@ class PreRegisteredClient
         }
 
         if ($this->usePkce) {
-            $codeChallengeMethod = $this->pkceCodeChallengeMethod;
-
             $codeChallenge = $this->pkceDataHandler->generateCodeChallengeFromCodeVerifier(
                 $this->pkceDataHandler->getCodeVerifier(),
-                $codeChallengeMethod
+                $this->pkceCodeChallengeMethod
             );
 
             $queryParameters['code_challenge'] = $codeChallenge;
-            $queryParameters['code_challenge_method'] = $codeChallengeMethod;
+            $queryParameters['code_challenge_method'] = $this->pkceCodeChallengeMethod->value;
         }
 
         $this->logger?->debug('Authorization request parameters', $queryParameters);

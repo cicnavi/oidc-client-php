@@ -54,6 +54,7 @@ your OpenID Provider).
 You can also customize the client behavior with optional parameters:
 
 ```php
+use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 use Cicnavi\Oidc\PreRegisteredClient;
 
 $oidcClient = new PreRegisteredClient(
@@ -66,7 +67,7 @@ $oidcClient = new PreRegisteredClient(
     
     // Optional parameters with default values
     usePkce: true,  // Determines if PKCE should be used in authorization flow. True by default.
-    pkceCodeChallengeMethod: 'S256', // If PKCE is used, which Code Challenge Method should be used.
+    pkceCodeChallengeMethod: PkceCodeChallengeMethodEnum::S256, // If PKCE is used, which Code Challenge Method should be used.
     timestampValidationLeeway: new DateInterval('PT1M'),  // Leeway used for timestamp (exp, iat, nbf...) validation.
     useState: true,  // Enable/disable state check
     useNonce: true,  // Enable/disable nonce check

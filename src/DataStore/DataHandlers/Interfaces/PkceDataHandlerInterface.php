@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Cicnavi\Oidc\DataStore\DataHandlers\Interfaces;
 
 use Cicnavi\Oidc\Exceptions\OidcClientException;
+use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 
 interface PkceDataHandlerInterface
 {
@@ -16,20 +17,19 @@ interface PkceDataHandlerInterface
     public function getCodeVerifier(): string;
 
     /**
-     * Generate code challenge for provided code verifier using the desired method.
+     * Generate a code challenge for a provided code verifier using the desired
+     * method.
      *
      * @return string Code challenge.
-     * @throws OidcClientException If code verifier is not valid or method is not valid.
+     * @throws OidcClientException If a code verifier is not valid.
      */
-    public function generateCodeChallengeFromCodeVerifier(string $codeVerifier, string $method = 'S256'): string;
+    public function generateCodeChallengeFromCodeVerifier(
+        string $codeVerifier,
+        PkceCodeChallengeMethodEnum $pkceCodeChallengeMethodEnum = PkceCodeChallengeMethodEnum::S256
+    ): string;
 
     /**
      * Remove current code verifier from store.
      */
     public function removeCodeVerifier(): void;
-
-    /**
-     * @throws OidcClientException If code challenge method is not valid
-     */
-    public function validatePkceCodeChallengeMethod(string $pkceCodeChallengeMethod): void;
 }

@@ -12,7 +12,7 @@ use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Http\RequestFactory;
-use Psr\Http\Client\ClientInterface;
+use GuzzleHttp\Client;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -24,9 +24,11 @@ use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\GrantTypesEnum;
 use SimpleSAML\OpenID\Codebooks\HttpMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\ParamsEnum;
+use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 use SimpleSAML\OpenID\Core;
 use SimpleSAML\OpenID\Exceptions\InvalidValueException;
 use SimpleSAML\OpenID\Exceptions\JwsException;
+use SimpleSAML\OpenID\Jwks;
 use Throwable;
 
 class RequestDataHandler
@@ -43,9 +45,10 @@ class RequestDataHandler
         protected readonly SessionStoreInterface $sessionStore,
         protected readonly Core $core,
         protected readonly CacheInterface $cache,
+        protected readonly Jwks $jwks,
         protected readonly RequestFactoryInterface $httpRequestFactory = new RequestFactory(),
         protected readonly GuzzleBridge $guzzleBridge = new GuzzleBridge(),
-        protected readonly ClientInterface $httpClient = new \GuzzleHttp\Client(),
+        protected readonly Client $httpClient = new Client(),
         ?StateNonceDataHandlerInterface $stateNonceDataHandler = null,
         ?PkceDataHandlerInterface $pkceDataHandler = null,
         protected readonly ?LoggerInterface $logger = null,
@@ -84,9 +87,12 @@ class RequestDataHandler
      */
     public function generateCodeChallengeFromCodeVerifier(
         string $codeVerifier,
-        string $method = 'S256',
+        PkceCodeChallengeMethodEnum $pkceCodeChallengeMethodEnum = PkceCodeChallengeMethodEnum::S256,
     ): string {
-        return $this->pkceDataHandler->generateCodeChallengeFromCodeVerifier($codeVerifier, $method);
+        return $this->pkceDataHandler->generateCodeChallengeFromCodeVerifier(
+            $codeVerifier,
+            $pkceCodeChallengeMethodEnum,
+        );
     }
 
 
@@ -101,31 +107,29 @@ class RequestDataHandler
      * @throws OidcClientException
      */
     public function getUserData(
-        ClientAuthenticationMethodsEnum $clientAuthentication,
-        string $tokenEndpoint,
+        ClientAuthenticationMethodsEnum $clientAuthenticationMethod,
+        string $authorizationCode,
         string $clientId,
-        string $redirectUri,
-        string $jwksUri,
-        ?string $userInfoEndpoint = null,
+        string $clientRedirectUri,
+        string $opJwksUri,
+        string $opTokenEndpoint,
+        ?string $opUserinfoEndpoint = null,
         ?string $clientSecret = null, // For client_secret_basic client authentication
         ?string $clientAssertion = null, // For private_key_jwt client authentication
         bool $usePkce = true,
-        bool $fetchUserInfoClaims = true,
-        ?ServerRequestInterface $request = null,
+        bool $useNonce = true,
+        bool $fetchUserinfoClaims = true,
     ): array {
-        $params = $this->validateAuthorizationCallbackResponse($request);
-
-        $authorizationCode = $params[ParamsEnum::Code->value];
 
         $tokenData = $this->requestTokenData(
-            $clientAuthentication,
-            $tokenEndpoint,
-            $authorizationCode,
-            $clientId,
-            $redirectUri,
-            $clientSecret,
-            $clientAssertion,
-            $usePkce,
+            clientAuthenticationMethod: $clientAuthenticationMethod,
+            tokenEndpoint: $opTokenEndpoint,
+            authorizationCode: $authorizationCode,
+            clientId: $clientId,
+            redirectUri: $clientRedirectUri,
+            clientSecret: $clientSecret,
+            clientAssertion: $clientAssertion,
+            usePkce: $usePkce,
         );
 
         $tokenData = $this->validateTokenDataArray($tokenData);
@@ -136,10 +140,11 @@ class RequestDataHandler
         }
 
         return $this->getClaims(
-            $tokenData,
-            $jwksUri,
-            $userInfoEndpoint,
-            $fetchUserInfoClaims
+            tokenData: $tokenData,
+            jwksUri: $opJwksUri,
+            userinfoEndpoint: $opUserinfoEndpoint,
+            useNonce: $useNonce,
+            fetchUserinfoClaims: $fetchUserinfoClaims,
         );
     }
 
@@ -385,26 +390,30 @@ class RequestDataHandler
     public function getClaims(
         array $tokenData,
         string $jwksUri,
-        ?string $userInfoEndpoint = null,
+        ?string $userinfoEndpoint = null,
         bool $useNonce = true,
-        bool $fetchUserInfoClaims = true,
+        bool $fetchUserinfoClaims = true,
     ): array {
         $idTokenClaims = [];
         $userInfoClaims = [];
 
         $idToken = $tokenData[ParamsEnum::IdToken->value] ?? null;
         if (is_string($idToken)) {
-            $idTokenClaims = $this->getDataFromIDToken($idToken, $jwksUri, $useNonce);
+            $idTokenClaims = $this->getDataFromIdToken(
+                idToken: $idToken,
+                jwksUri: $jwksUri,
+                useNonce: $useNonce,
+            );
         }
 
         $accessToken = $tokenData[ParamsEnum::AccessToken->value];
-        if ($fetchUserInfoClaims && is_string($userInfoEndpoint)) {
+        if ($fetchUserinfoClaims && is_string($userinfoEndpoint)) {
             $userInfoClaims = $this->requestUserDataFromUserInfoEndpoint(
-                $accessToken,
-                $userInfoEndpoint,
+                accessToken: $accessToken,
+                userInfoEndpoint: $userinfoEndpoint,
             );
 
-            $this->validateIdTokenAndUserInfoClaims($idTokenClaims, $userInfoClaims);
+            $this->validateIdTokenAndUserinfoClaims($idTokenClaims, $userInfoClaims);
         }
 
         return array_merge($idTokenClaims, $userInfoClaims);
@@ -419,7 +428,7 @@ class RequestDataHandler
      * @throws OidcClientException
      * @throws InvalidValueException
      */
-    public function getDataFromIDToken(
+    public function getDataFromIdToken(
         string $idToken,
         string $jwksUri,
         bool $useNonce = true,
@@ -446,11 +455,11 @@ class RequestDataHandler
 
             $this->logger?->warning('ID Token signature verification failed, but trying once more with JWKS refresh.');
             // Try once more with refreshing cache (fetch fresh JWKS).
-            return $this->getDataFromIDToken(
-                $idToken,
-                $jwksUri,
-                $useNonce,
-                true,
+            return $this->getDataFromIdToken(
+                idToken: $idToken,
+                jwksUri: $jwksUri,
+                useNonce: $useNonce,
+                refreshCache: true,
             );
         }
 
@@ -472,7 +481,7 @@ class RequestDataHandler
      * (making an HTTP request).
      *
      * @param bool $refreshCache Indicate if the JWKS cache value should be refreshed.
-     * @return mixed[] JWKS URI content
+     * @return array{keys:array<array<string,mixed>>} JWKS URI content
      * @throws OidcClientException
      */
     public function getJwksUriContent(
@@ -480,60 +489,28 @@ class RequestDataHandler
         bool $refreshCache = false
     ): array {
         if ($refreshCache) {
-            return $this->requestJwksUriContent($jwksUri);
+            $jwks = $this->jwks->jwksFetcher()->fromJwksUri($jwksUri)?->jsonSerialize();
+            if (!is_array($jwks)) {
+                $this->logger?->error(
+                    'No JWKS content from JWKS URI.',
+                    ['jwksUri' => $jwksUri, 'refreshCache' => $refreshCache],
+                );
+                throw new OidcClientException('Invalid JWKS URI content.');
+            }
         }
 
-        try {
-            $jwksURIContent = $this->cache->get($jwksUri);
-        } catch (Throwable $throwable) {
-            throw new OidcClientException('JWKS URI content cache error. ' . $throwable->getMessage());
+        $jwks = $this->jwks->jwksFetcher()->fromCacheOrJwksUri($jwksUri)?->jsonSerialize();
+
+        if (!is_array($jwks)) {
+            $this->logger?->error(
+                'No JWKS content from cache or JWKS URI.',
+                ['jwksUri' => $jwksUri, 'refreshCache' => $refreshCache],
+            );
+
+            throw new OidcClientException('Invalid JWKS URI content.');
         }
 
-        if (is_array($jwksURIContent)) {
-            return $jwksURIContent;
-        }
-
-        return $this->requestJwksUriContent($jwksUri);
-    }
-
-    /**
-     * Get content from JWKS URI and store it in cache for future use.
-     *
-     * @return mixed[] JWKS URI content
-     * @throws OidcClientException
-     */
-    protected function requestJwksUriContent(
-        string $jwksUri,
-    ): array {
-        $jwksRequest = $this->httpRequestFactory
-            ->createRequest('GET', $jwksUri)
-            ->withHeader('Accept', 'application/json');
-        try {
-            $response = $this->httpClient->sendRequest($jwksRequest);
-            $this->validateHttpResponseOk($response);
-            $jwksUriContent = $this->getDecodedHttpResponseJson($response);
-            $this->validateJwksUriContentArary($jwksUriContent);
-            $this->cache->set($jwksUri, $jwksUriContent, $this->maxCacheDuration);
-        } catch (Throwable $throwable) {
-            throw new OidcClientException('JWKS URI content request error. ' . $throwable->getMessage());
-        }
-
-        return $jwksUriContent;
-    }
-
-    /**
-     * @param mixed[] $jwksUriContent
-     * @throws OidcClientException If JWKS URI does not contain keys
-     */
-    public function validateJwksUriContentArary(array $jwksUriContent): void
-    {
-        if (
-            (! isset($jwksUriContent['keys'])) ||
-            (! is_array($jwksUriContent['keys'])) ||
-            ($jwksUriContent['keys'] === [])
-        ) {
-            throw new OidcClientException('JWKS URI does not contain any keys.');
-        }
+        return $jwks;
     }
 
     /**
@@ -558,7 +535,7 @@ class RequestDataHandler
 
             $claims = $this->getDecodedHttpResponseJson($response);
 
-            $this->validateUserInfoClaims($claims);
+            $this->validateUserinfoClaims($claims);
 
             return $claims;
         } catch (Throwable $throwable) {
@@ -570,7 +547,7 @@ class RequestDataHandler
      * @param mixed[] $claims
      * @throws OidcClientException
      */
-    protected function validateUserInfoClaims(array $claims): void
+    protected function validateUserinfoClaims(array $claims): void
     {
         if (! isset($claims[ClaimsEnum::Sub->value])) {
             throw new OidcClientException('UserInfo Response does not contain mandatory sub claim.');
@@ -582,7 +559,7 @@ class RequestDataHandler
      * @param mixed[] $userInfoClaims
      * @throws OidcClientException
      */
-    protected function validateIdTokenAndUserInfoClaims(
+    protected function validateIdTokenAndUserinfoClaims(
         array $idTokenClaims,
         array $userInfoClaims,
     ): void {
@@ -616,7 +593,7 @@ class RequestDataHandler
         throw new OidcClientException('Resolved OP metadata not found for state "' . $state . '".');
     }
 
-    public function setRedirectUriForState(string $state, string $redirectUri): void
+    public function setClientRedirectUriForState(string $state, string $redirectUri): void
     {
         $this->sessionStore->put(self::KEY_REDIRECT_URI_FOR_STATE_ . $state, $redirectUri);
     }
@@ -624,7 +601,7 @@ class RequestDataHandler
     /**
      * @throws OidcClientException
      */
-    public function getRedirectUriForState(string $state): string
+    public function getClientRedirectUriForState(string $state): string
     {
         $redirectUri = $this->sessionStore->get(self::KEY_REDIRECT_URI_FOR_STATE_ . $state);
 

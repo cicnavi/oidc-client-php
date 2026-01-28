@@ -12,6 +12,7 @@ use Exception;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 
 #[CoversClass(Pkce::class)]
 #[UsesClass(PhpSessionStore::class)]
@@ -22,19 +23,6 @@ final class PkceTest extends TestCase
     'Ap2MeLxjd9hP0MJrlS8L99TV5A49aSIVm2z7JD032BWA8AvGYDuEWjLw';
 
     protected string $testCodeChallenge = '3e8R0tTilJlPsoRSooW-To9J2hzvAeKImTmBb5XMztY';
-
-    /**
-     * @throws Exception
-     */
-    public function testValidatePkceCodeChallengeMethod(): void
-    {
-        $pkce = new Pkce();
-        $pkce->validatePkceCodeChallengeMethod('plain');
-
-        $this->expectException(Exception::class);
-
-        $pkce->validatePkceCodeChallengeMethod('invalid');
-    }
 
     /**
      * @throws Exception
@@ -53,12 +41,18 @@ final class PkceTest extends TestCase
     {
         $this->assertSame(
             $this->testCodeVerifier,
-            (new Pkce())->generateCodeChallengeFromCodeVerifier($this->testCodeVerifier, 'plain')
+            (new Pkce())->generateCodeChallengeFromCodeVerifier(
+                $this->testCodeVerifier,
+                PkceCodeChallengeMethodEnum::Plain,
+            )
         );
 
         $this->assertSame(
             $this->testCodeChallenge,
-            (new Pkce())->generateCodeChallengeFromCodeVerifier($this->testCodeVerifier, 'S256')
+            (new Pkce())->generateCodeChallengeFromCodeVerifier(
+                $this->testCodeVerifier,
+                PkceCodeChallengeMethodEnum::S256,
+            )
         );
     }
 

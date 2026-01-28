@@ -16,8 +16,12 @@ use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\ParamsEnum;
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 use SimpleSAML\OpenID\Core;
+use SimpleSAML\OpenID\Exceptions\InvalidValueException;
+use SimpleSAML\OpenID\Exceptions\OpenIdException;
 use SimpleSAML\OpenID\Exceptions\TrustChainException;
 use SimpleSAML\OpenID\Federation\TrustChain;
+use SimpleSAML\OpenID\Jwks;
+use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPair;
 use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairBag;
 use SimpleSAML\OpenID\ValueAbstracts\Factories\SignatureKeyPairBagFactory;
 use SimpleSAML\OpenID\ValueAbstracts\Factories\SignatureKeyPairFactory;
@@ -70,6 +74,8 @@ class FederatedClient
 
     protected Core $core;
 
+    protected Jwks $jwks;
+
     /**
      * TODO mivanci Federation participation limit by Trust Marks.
      * @param RelyingPartyConfig $relyingPartyConfig Configuration related to
@@ -111,7 +117,6 @@ class FederatedClient
         protected readonly SupportedSerializers $supportedSerializers = new SupportedSerializers(),
         protected readonly ?LoggerInterface $logger = null,
         protected readonly int $maxTrustChainDepth = 9,
-        protected readonly ?Client $client = null,
         // phpcs:ignore
         protected readonly TrustMarkStatusEndpointUsagePolicyEnum $defaultTrustMarkStatusEndpointUsagePolicyEnum = TrustMarkStatusEndpointUsagePolicyEnum::NotUsed,
         ?Federation $federation = null,
@@ -121,12 +126,15 @@ class FederatedClient
         SignatureKeyPairBagFactory $signatureKeyPairBagFactory = null,
         protected readonly JwksDecoratorFactory $jwksDecoratorFactory = new JwksDecoratorFactory(),
         protected readonly bool $includeSoftwareId = true,
-        protected readonly \DateInterval $requestObjectDuration = new \DateInterval('PT10M'),
+        protected readonly \DateInterval $privateKeyJwtDuration = new \DateInterval('PT10M'),
         protected readonly bool $useNonce = true,
         protected readonly bool $usePkce = true,
+        protected bool $fetchUserinfoClaims = true,
         protected readonly PkceCodeChallengeMethodEnum $pkceCodeChallengeMethod = PkceCodeChallengeMethodEnum::S256,
         protected readonly SessionStoreInterface $sessionStore = new PhpSessionStore(),
+        protected readonly Client $httpClient = new Client(),
         ?Core $core = null,
+        ?Jwks $jwks = null,
         RequestDataHandler $requestDataHandler = null,
     ) {
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
@@ -136,30 +144,42 @@ class FederatedClient
         );
 
         $this->core = $core ?? new Core(
-            $this->supportedAlgorithms,
-            $this->supportedSerializers,
-            $this->timestampValidationLeeway,
-            $this->logger,
+            supportedAlgorithms: $this->supportedAlgorithms,
+            supportedSerializers: $this->supportedSerializers,
+            timestampValidationLeeway: $this->timestampValidationLeeway,
+            logger: $this->logger,
+        );
+
+        $this->jwks = $jwks ?? new Jwks(
+            supportedAlgorithms: $this->supportedAlgorithms,
+            supportedSerializers: $this->supportedSerializers,
+            maxCacheDuration: $this->maxCacheDuration,
+            timestampValidationLeeway: $this->timestampValidationLeeway,
+            cache: $this->cache,
+            logger: $this->logger,
+            httpClient: $this->httpClient,
         );
 
         $this->requestDataHandler = $requestDataHandler ?? new RequestDataHandler(
             sessionStore: $this->sessionStore,
             core: $this->core,
             cache: $this->cache,
+            jwks: $this->jwks,
+            httpClient: $this->httpClient,
             logger: $this->logger,
             maxCacheDuration: $this->maxCacheDuration,
         );
 
         $this->federation = $federation ?? new Federation(
-            $this->supportedAlgorithms,
-            $this->supportedSerializers,
-            $this->maxCacheDuration,
-            $this->timestampValidationLeeway,
-            $this->maxTrustChainDepth,
-            $this->cache,
-            $this-> logger,
-            $this->client,
-            $this->defaultTrustMarkStatusEndpointUsagePolicyEnum,
+            supportedAlgorithms: $this->supportedAlgorithms,
+            supportedSerializers: $this->supportedSerializers,
+            maxCacheDuration: $this->maxCacheDuration,
+            timestampValidationLeeway: $this->timestampValidationLeeway,
+            maxTrustChainDepth: $this->maxTrustChainDepth,
+            cache: $this->cache,
+            logger: $this-> logger,
+            client: $this->httpClient,
+            defaultTrustMarkStatusEndpointUsagePolicyEnum: $this->defaultTrustMarkStatusEndpointUsagePolicyEnum,
         );
 
         $this->federationSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
@@ -430,10 +450,10 @@ class FederatedClient
      * @param ResponseInterface|null $response Optional, the HTTP response which
      * will be populated with proper redirect headers, and then returned by this
      * method. If not provided, an immediate redirect will be performed.
-     * @param string|null $authorizationRedirectUri Optional, the redirect URI to use for the
-     * authorization request. If not provided, the default redirect URI
-     * configured for the client will be used. If set, the value must match one
-     * of the redirect URIs configured for the client.
+     * @param string|null $clientRedirectUri Optional, the redirect URI of
+     * the client to use for the authorization request. If not provided, the
+     * default redirect URI configured for the client will be used. If set,
+     * the value must match one of the redirect URIs configured for the client.
      *
      * @throws TrustChainException
      * @throws OidcClientException
@@ -443,7 +463,7 @@ class FederatedClient
         ?string $loginHint = null,
         ?TrustAnchorConfigBag $specificTrustAnchors = null,
         ?ResponseInterface $response = null,
-        ?string $authorizationRedirectUri = null,
+        ?string $clientRedirectUri = null,
     ): ?ResponseInterface {
         $trustAnchorBag = $this->entityConfig->getTrustAnchorBag();
         if ($specificTrustAnchors instanceof TrustAnchorConfigBag) {
@@ -554,64 +574,12 @@ class FederatedClient
             throw new OidcClientException('OpenID Provider authorization endpoint not available.');
         }
 
-        // Try to resolve supported signing algorithms for Request Object.
-        $signingKeyPair = $this->connectSignatureKeyPairBag->getFirstOrFail();
-        $this->logger?->debug(
-            'Default RP Signing Key Pair: ',
-            [
-                'algorithm' => $signingKeyPair->getSignatureAlgorithm()->value,
-                'keyId' => $signingKeyPair->getKeyPair()->getKeyId(),
-            ]
+        $signingKeyPair = $this->resolveSignatureKeyPair(
+            signatureKeyPairBag: $this->connectSignatureKeyPairBag,
+            receiverEntityMetadata: $opResolvedMetadata,
+            receiverDesignatedSignatureAlgorithmMetadataKey: null,
+            receiverSupportedSignatureAlgorithmsMetadataKey: ClaimsEnum::RequestObjectSigningAlgValuesSupported->value,
         );
-        $opRequestObjectSigningAlgValuesSupported =
-        $opResolvedMetadata[ClaimsEnum::RequestObjectSigningAlgValuesSupported->value] ?? null;
-        if (is_array($opRequestObjectSigningAlgValuesSupported)) {
-            $opRequestObjectSigningAlgValuesSupported = $this->federation->helpers()->type()
-                ->ensureArrayWithValuesAsNonEmptyStrings($opRequestObjectSigningAlgValuesSupported);
-            $this->logger?->debug(
-                'OP designates supported Request Object signing algorithms:',
-                $opRequestObjectSigningAlgValuesSupported,
-            );
-
-            $commonlySupportedRequestObjectSigningAlgorithms = array_intersect(
-                $this->connectSignatureKeyPairBag->getAllAlgorithmNamesUnique(),
-                $opRequestObjectSigningAlgValuesSupported,
-            );
-
-            $commonlySupportedRequestObjectSigningAlgorithms = $this->federation->helpers()->type()
-                ->ensureArrayWithValuesAsNonEmptyStrings($commonlySupportedRequestObjectSigningAlgorithms);
-
-            if ($commonlySupportedRequestObjectSigningAlgorithms !== []) {
-                $this->logger?->debug(
-                    'Commonly supported Request Object signing algorithms with OP:',
-                    $commonlySupportedRequestObjectSigningAlgorithms,
-                );
-
-                $signingKeyPair = $this->connectSignatureKeyPairBag->getFirstByAlgorithmOrFail(
-                    SignatureAlgorithmEnum::from(
-                        $commonlySupportedRequestObjectSigningAlgorithms[
-                            array_key_first($commonlySupportedRequestObjectSigningAlgorithms)
-                        ],
-                    ),
-                );
-
-                $this->logger?->debug(
-                    'Signing Key Pair after algorithm selection: ',
-                    [
-                        'algorithm' => $signingKeyPair->getSignatureAlgorithm()->value,
-                        'keyId' => $signingKeyPair->getKeyPair()->getKeyId(),
-                    ],
-                );
-            } else {
-                $this->logger?->debug(
-                    'No common Request Object signing algorithms found. Falling back to default signing key pair.'
-                );
-            }
-        } else {
-            $this->logger?->debug(
-                'OP does not designate supported Request Object signing algorithms.',
-            );
-        }
 
         try {
             // Resolve own RP Trust Chain using the resolved OP's Trust Anchor.
@@ -640,13 +608,13 @@ class FederatedClient
         );
 
         $currentTimeUtc = $this->federation->helpers()->dateTime()->getUtc();
-        $authorizationRedirectUri = $this->resolveClientRedirectUriForAuthorizationRequest($authorizationRedirectUri);
+        $clientRedirectUri = $this->resolveClientRedirectUriForAuthorizationRequest($clientRedirectUri);
         $state = $this->requestDataHandler->getState();
         $nonce = $this->useNonce ? $this->requestDataHandler->getNonce() : null;
         $pkceCodeChallenge = $this->usePkce ?
         $this->requestDataHandler->generateCodeChallengeFromCodeVerifier(
             $this->requestDataHandler->getCodeVerifier(),
-            $this->pkceCodeChallengeMethod->value,
+            $this->pkceCodeChallengeMethod,
         ) :
         null;
         $pkceCodeChallengeMethod = $this->usePkce ? $this->pkceCodeChallengeMethod->value : null;
@@ -655,18 +623,18 @@ class FederatedClient
         // Set resolved OP metadata for the state, so we can fetch it on callback.
         $this->requestDataHandler->setResolvedOpMetadataForState($state, $opResolvedMetadata);
         // Set used redirect URI for state, so we can fetch it on callback.
-        $this->requestDataHandler->setRedirectUriForState($state, $authorizationRedirectUri);
+        $this->requestDataHandler->setClientRedirectUriForState($state, $clientRedirectUri);
 
         $requestObjectPayload = array_filter([
             ClaimsEnum::Aud->value => $openIdProviderEntityId,
             ClaimsEnum::ClientId->value => $this->entityConfig->getEntityId(),
             ClaimsEnum::Iss->value => $this->entityConfig->getEntityId(),
             ClaimsEnum::Jti->value => $this->federation->helpers()->random()->string(),
-            ClaimsEnum::Exp->value => $currentTimeUtc->add($this->requestObjectDuration)->getTimestamp(),
+            ClaimsEnum::Exp->value => $currentTimeUtc->add($this->privateKeyJwtDuration)->getTimestamp(),
             ClaimsEnum::Iat->value => $currentTimeUtc->getTimestamp(),
 
             ParamsEnum::ResponseType->value => ResponseTypesEnum::Code->value,
-            ParamsEnum::RedirectUri->value => $authorizationRedirectUri,
+            ParamsEnum::RedirectUri->value => $clientRedirectUri,
             ParamsEnum::Scope->value => $scope,
             ParamsEnum::State->value => $state,
             ParamsEnum::Nonce->value => $nonce,
@@ -708,7 +676,7 @@ class FederatedClient
             ParamsEnum::Scope->value => $scope,
             ParamsEnum::ResponseType->value => ResponseTypesEnum::Code->value,
             ParamsEnum::ClientId->value => $this->entityConfig->getEntityId(),
-            ParamsEnum::RedirectUri->value => $authorizationRedirectUri,
+            ParamsEnum::RedirectUri->value => $clientRedirectUri,
         ]);
 
         $this->logger?->debug(
@@ -716,14 +684,14 @@ class FederatedClient
             $authorizationParameters,
         );
 
-        $authorizationRedirectUri = $opAuthorizationEndpoint . '?' . http_build_query($authorizationParameters);
+        $opAuthorizationEndpointUri = $opAuthorizationEndpoint . '?' . http_build_query($authorizationParameters);
 
         if ($response instanceof ResponseInterface) {
             $this->logger?->debug('Redirecting to authorization endpoint.');
-            return $response->withHeader('Location', $authorizationRedirectUri);
+            return $response->withHeader('Location', $opAuthorizationEndpointUri);
         }
 
-        header('Location: ' . $authorizationRedirectUri);
+        header('Location: ' . $opAuthorizationEndpointUri);
         exit;
     }
 
@@ -753,17 +721,201 @@ class FederatedClient
      */
     public function getUserData(?ServerRequestInterface $request = null): array
     {
-        $state = $this->requestDataHandler->validateAuthorizationCallbackResponse($request)[ParamsEnum::State->value];
+        $params = $this->requestDataHandler->validateAuthorizationCallbackResponse($request);
 
-        $this->requestDataHandler->getResolvedOpMetadataForState($state);
-        $this->requestDataHandler->getRedirectUriForState($state);
+        $authorizationCode = $params[ParamsEnum::Code->value];
+        $state = $params[ParamsEnum::State->value];
 
+        $resolvedOpMetadata = $this->requestDataHandler->getResolvedOpMetadataForState($state);
+        $clientRedirectUri = $this->requestDataHandler->getClientRedirectUriForState($state);
 
+        $opJwksUri = $resolvedOpMetadata[ClaimsEnum::JwksUri->value] ?? null;
+        if (!is_string($opJwksUri)) {
+            $this->logger?->error('OpenID Provider JWKS URI not available.', [
+                'resolvedOpMetadata' => $resolvedOpMetadata,
+            ]);
+            throw new OidcClientException('OpenID Provider JWKS URI not available.');
+        }
 
-//        return $this->requestDataHandler->getUserData(
-//            ClientAuthenticationMethodsEnum::PrivateKeyJwt,
-//        );
+        $opTokenEndpoint = $resolvedOpMetadata[ClaimsEnum::TokenEndpoint->value] ?? null;
+        if (!is_string($opTokenEndpoint)) {
+            $this->logger?->error(
+                'OpenID Provider token endpoint not available.',
+                ['resolvedOpMetadata' => $resolvedOpMetadata],
+            );
+            throw new OidcClientException('OpenID Provider token endpoint not available.');
+        }
 
-        return [];
+        $opUserinfoEndpoint = $resolvedOpMetadata[ClaimsEnum::UserinfoEndpoint->value] ?? null;
+        $opUserinfoEndpoint = is_string($opUserinfoEndpoint) ? $opUserinfoEndpoint : null;
+
+        $opEntityId = $resolvedOpMetadata[ClaimsEnum::Issuer->value] ?? null;
+        if (!is_string($opEntityId)) {
+            $this->logger?->error(
+                'OpenID Provider entity ID not available.',
+                ['resolvedOpMetadata' => $resolvedOpMetadata],
+            );
+            throw new OidcClientException('OpenID Provider entity ID not available.');
+        }
+
+        $signingKeyPair = $this->resolveSignatureKeyPair(
+            signatureKeyPairBag: $this->connectSignatureKeyPairBag,
+            receiverEntityMetadata: $resolvedOpMetadata,
+            receiverSupportedSignatureAlgorithmsMetadataKey:
+            ClaimsEnum::TokenEndpointAuthSigningAlgValuesSupported->value,
+        );
+
+        $currentTimeUtc = $this->federation->helpers()->dateTime()->getUtc();
+
+        $clientAssertionPayload = array_filter([
+            ClaimsEnum::Iss->value => $this->entityConfig->getEntityId(),
+            ClaimsEnum::Sub->value => $this->entityConfig->getEntityId(),
+            ClaimsEnum::Aud->value => $opEntityId,
+            ClaimsEnum::Jti->value => $this->federation->helpers()->random()->string(),
+            ClaimsEnum::Exp->value => $currentTimeUtc->add($this->privateKeyJwtDuration)->getTimestamp(),
+            ClaimsEnum::Iat->value => $currentTimeUtc->getTimestamp(),
+        ]);
+
+        $clientAssertionHeader = [
+            ClaimsEnum::Kid->value => $signingKeyPair->getKeyPair()->getKeyId(),
+        ];
+
+        $clientAssertion = $this->core->clientAssertionFactory()->fromData(
+            $signingKeyPair->getKeyPair()->getPrivateKey(),
+            $signingKeyPair->getSignatureAlgorithm(),
+            $clientAssertionPayload,
+            $clientAssertionHeader,
+        );
+
+        return $this->requestDataHandler->getUserData(
+            clientAuthenticationMethod: ClientAuthenticationMethodsEnum::PrivateKeyJwt,
+            authorizationCode: $authorizationCode,
+            clientId: $this->entityConfig->getEntityId(),
+            clientRedirectUri: $clientRedirectUri,
+            opJwksUri: $opJwksUri,
+            opTokenEndpoint: $opTokenEndpoint,
+            opUserinfoEndpoint: $opUserinfoEndpoint,
+            clientSecret: null,
+            clientAssertion: $clientAssertion->getToken(),
+            usePkce: $this->usePkce,
+            useNonce: $this->useNonce,
+            fetchUserinfoClaims: $this->fetchUserinfoClaims
+        );
+    }
+
+    /**
+     * @param mixed[] $receiverEntityMetadata
+     * @param mixed[] $senderEntityMetadata
+     * @throws InvalidValueException
+     * @throws OpenIdException
+     */
+    public function resolveSignatureKeyPair(
+        SignatureKeyPairBag $signatureKeyPairBag,
+        array $receiverEntityMetadata = [],
+        array $senderEntityMetadata = [],
+        ?string $receiverDesignatedSignatureAlgorithmMetadataKey = null,
+        ?string $receiverSupportedSignatureAlgorithmsMetadataKey = null,
+        ?string $senderDesignatedSignatureAlgorithmMetadataKey = null,
+        ?string $senderSupportedSignatureAlgorithmsMetadataKey = null,
+    ): SignatureKeyPair {
+        $signingKeyPair = $signatureKeyPairBag->getFirstOrFail();
+        $this->logger?->debug(
+            'Default Signing Key Pair: ',
+            [
+                'algorithm' => $signingKeyPair->getSignatureAlgorithm()->value,
+                'keyId' => $signingKeyPair->getKeyPair()->getKeyId(),
+            ]
+        );
+
+        // TODO mivanci Finish by including sender constraints.
+        // Start with sender designated signature algorithm check.
+
+        if (is_string($receiverDesignatedSignatureAlgorithmMetadataKey)) {
+            $this->logger?->debug(
+                'Designated signature algorithm metadata key provided: ' .
+                $receiverDesignatedSignatureAlgorithmMetadataKey,
+            );
+            if (
+                array_key_exists($receiverDesignatedSignatureAlgorithmMetadataKey, $receiverEntityMetadata) &&
+                is_string(
+                    $entityDesignatedSigningAlg = $receiverEntityMetadata[
+                        $receiverDesignatedSignatureAlgorithmMetadataKey
+                    ]
+                )
+            ) {
+                $this->logger?->debug('Entity defines designated signing algorithm: ' . $entityDesignatedSigningAlg);
+
+                return $signatureKeyPairBag->getFirstByAlgorithmOrFail(
+                    SignatureAlgorithmEnum::from($entityDesignatedSigningAlg),
+                );
+            }
+
+            $this->logger?->debug('Entity does not define designated signing algorithm.');
+        } else {
+            $this->logger?->debug('No designated signature algorithm metadata key provided.');
+        }
+
+        if (is_string($receiverSupportedSignatureAlgorithmsMetadataKey)) {
+            $this->logger?->debug(
+                'Supported signature algorithms metadata key provided: ' .
+                $receiverSupportedSignatureAlgorithmsMetadataKey,
+            );
+
+            if (
+                array_key_exists($receiverSupportedSignatureAlgorithmsMetadataKey, $receiverEntityMetadata) &&
+                is_array(
+                    $entitySupportedSigningAlgs = $receiverEntityMetadata[
+                        $receiverSupportedSignatureAlgorithmsMetadataKey
+                    ]
+                )
+            ) {
+                $entitySupportedSigningAlgs = $this->federation->helpers()->type()
+                    ->ensureArrayWithValuesAsNonEmptyStrings($entitySupportedSigningAlgs);
+                $this->logger?->debug(
+                    'Entity defines supported signing algorithms: ' . implode(', ', $entitySupportedSigningAlgs)
+                );
+
+                $commonlySupportedSignatureAlgorithms = array_intersect(
+                    $signatureKeyPairBag->getAllAlgorithmNamesUnique(),
+                    $entitySupportedSigningAlgs,
+                );
+
+                $commonlySupportedSignatureAlgorithms = $this->federation->helpers()->type()
+                    ->ensureArrayWithValuesAsNonEmptyStrings($commonlySupportedSignatureAlgorithms);
+
+                if ($commonlySupportedSignatureAlgorithms !== []) {
+                    $this->logger?->debug(
+                        'Commonly supported signature algorithms with:',
+                        $commonlySupportedSignatureAlgorithms,
+                    );
+
+                    $signingKeyPair = $signatureKeyPairBag->getFirstByAlgorithmOrFail(
+                        SignatureAlgorithmEnum::from(
+                            $commonlySupportedSignatureAlgorithms[
+                                array_key_first($commonlySupportedSignatureAlgorithms)
+                            ],
+                        ),
+                    );
+                } else {
+                    $this->logger?->debug(
+                        'No commonly signature algorithms found.'
+                    );
+                }
+            } else {
+                $this->logger?->debug('Entity does not define supported signing algorithms.');
+            }
+        } else {
+            $this->logger?->debug('No supported signature algorithms metadata key provided.');
+        }
+
+        $this->logger?->debug(
+            'Signing Key Pair after algorithm selection: ',
+            [
+                'algorithm' => $signingKeyPair->getSignatureAlgorithm()->value,
+                'keyId' => $signingKeyPair->getKeyPair()->getKeyId(),
+            ],
+        );
+
+        return $signingKeyPair;
     }
 }
