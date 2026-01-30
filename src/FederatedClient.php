@@ -122,8 +122,8 @@ class FederatedClient
         ?Federation $federation = null,
         protected Jwk $jwk = new Jwk(),
         protected readonly HashAlgorithmsEnum $jwkThumbprintHashAlgo = HashAlgorithmsEnum::SHA_256,
-        SignatureKeyPairFactory $signatureKeyPairFactory = null,
-        SignatureKeyPairBagFactory $signatureKeyPairBagFactory = null,
+        ?SignatureKeyPairFactory $signatureKeyPairFactory = null,
+        ?SignatureKeyPairBagFactory $signatureKeyPairBagFactory = null,
         protected readonly JwksDecoratorFactory $jwksDecoratorFactory = new JwksDecoratorFactory(),
         protected readonly bool $includeSoftwareId = true,
         protected readonly \DateInterval $privateKeyJwtDuration = new \DateInterval('PT5M'),
@@ -135,7 +135,7 @@ class FederatedClient
         protected readonly Client $httpClient = new Client(),
         ?Core $core = null,
         ?Jwks $jwks = null,
-        RequestDataHandler $requestDataHandler = null,
+        ?RequestDataHandler $requestDataHandler = null,
     ) {
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
         $this->signatureKeyPairFactory = $signatureKeyPairFactory ?? new SignatureKeyPairFactory($this->jwk);
@@ -177,7 +177,7 @@ class FederatedClient
             timestampValidationLeeway: $this->timestampValidationLeeway,
             maxTrustChainDepth: $this->maxTrustChainDepth,
             cache: $this->cache,
-            logger: $this-> logger,
+            logger: $this->logger,
             client: $this->httpClient,
             defaultTrustMarkStatusEndpointUsagePolicyEnum: $this->defaultTrustMarkStatusEndpointUsagePolicyEnum,
         );
@@ -316,7 +316,7 @@ class FederatedClient
             ->getAll();
         // https://openid.net/specs/openid-connect-registration-1_0.html#ClientMetadata
         $rpMetadata[ClaimsEnum::TokenEndpointAuthMethod->value] = TokenEndpointAuthMethodsEnum::PrivateKeyJwt->value;
-        https://openid.net/specs/openid-connect-rp-metadata-choices-1_0-01.html
+        https: //openid.net/specs/openid-connect-rp-metadata-choices-1_0-01.html
         $rpMetadata[ClaimsEnum::TokenEndpointAuthMethodsSupported->value] = [
             TokenEndpointAuthMethodsEnum::PrivateKeyJwt->value,
         ];
@@ -415,7 +415,7 @@ class FederatedClient
                             'entityId' => $this->entityConfig->getEntityId(),
                         ],
                     );
-                       throw new \RuntimeException('Trust mark subject does not match entity ID.');
+                    throw new \RuntimeException('Trust mark subject does not match entity ID.');
                 },
                 $staticTrustMarkTokens,
             );
@@ -428,7 +428,7 @@ class FederatedClient
                     $trustMarkIssuer = $dynamicTrustMark->getValue();
 
                     $trustMarkIssuerConfigurationStatement = $this->federation->entityStatementFetcher()
-                    ->fromCacheOrWellKnownEndpoint($trustMarkIssuer);
+                        ->fromCacheOrWellKnownEndpoint($trustMarkIssuer);
 
                     $trustMarkEntity = $this->federation->trustMarkFetcher()->fromCacheOrFederationTrustMarkEndpoint(
                         $trustMarkType,
@@ -599,7 +599,7 @@ class FederatedClient
             throw new OidcClientException('OpenID Provider authorization endpoint not available.');
         }
 
-        $signingKeyPair = $this->resolveSignatureKeyPair(
+        $signingKeyPair = $this->federation->keyPairResolver()->resolveSignatureKeyPairByAlgorithm(
             signatureKeyPairBag: $this->connectSignatureKeyPairBag,
             receiverEntityMetadata: $opResolvedMetadata,
             receiverDesignatedSignatureAlgorithmMetadataKey: null,
@@ -783,7 +783,7 @@ class FederatedClient
             throw new OidcClientException('OpenID Provider entity ID not available.');
         }
 
-        $signingKeyPair = $this->resolveSignatureKeyPair(
+        $signingKeyPair = $this->federation->keyPairResolver()->resolveSignatureKeyPairByAlgorithm(
             signatureKeyPairBag: $this->connectSignatureKeyPairBag,
             receiverEntityMetadata: $resolvedOpMetadata,
             receiverSupportedSignatureAlgorithmsMetadataKey:
@@ -826,121 +826,5 @@ class FederatedClient
             useNonce: $this->useNonce,
             fetchUserinfoClaims: $this->fetchUserinfoClaims
         );
-    }
-
-    /**
-     * @param mixed[] $receiverEntityMetadata
-     * @param mixed[] $senderEntityMetadata
-     * @throws InvalidValueException
-     * @throws OpenIdException
-     */
-    public function resolveSignatureKeyPair(
-        SignatureKeyPairBag $signatureKeyPairBag,
-        array $receiverEntityMetadata = [],
-        array $senderEntityMetadata = [],
-        ?string $receiverDesignatedSignatureAlgorithmMetadataKey = null,
-        ?string $receiverSupportedSignatureAlgorithmsMetadataKey = null,
-        ?string $senderDesignatedSignatureAlgorithmMetadataKey = null,
-        ?string $senderSupportedSignatureAlgorithmsMetadataKey = null,
-    ): SignatureKeyPair {
-        $signingKeyPair = $signatureKeyPairBag->getFirstOrFail();
-        $this->logger?->debug(
-            'Default Signing Key Pair: ',
-            [
-                'algorithm' => $signingKeyPair->getSignatureAlgorithm()->value,
-                'keyId' => $signingKeyPair->getKeyPair()->getKeyId(),
-            ]
-        );
-
-        // TODO mivanci Finish by including sender constraints.
-        // Start with sender designated signature algorithm check.
-
-        if (is_string($receiverDesignatedSignatureAlgorithmMetadataKey)) {
-            $this->logger?->debug(
-                'Designated signature algorithm metadata key provided: ' .
-                $receiverDesignatedSignatureAlgorithmMetadataKey,
-            );
-            if (
-                array_key_exists($receiverDesignatedSignatureAlgorithmMetadataKey, $receiverEntityMetadata) &&
-                is_string(
-                    $entityDesignatedSigningAlg = $receiverEntityMetadata[
-                        $receiverDesignatedSignatureAlgorithmMetadataKey
-                    ]
-                )
-            ) {
-                $this->logger?->debug('Entity defines designated signing algorithm: ' . $entityDesignatedSigningAlg);
-
-                return $signatureKeyPairBag->getFirstByAlgorithmOrFail(
-                    SignatureAlgorithmEnum::from($entityDesignatedSigningAlg),
-                );
-            }
-
-            $this->logger?->debug('Entity does not define designated signing algorithm.');
-        } else {
-            $this->logger?->debug('No designated signature algorithm metadata key provided.');
-        }
-
-        if (is_string($receiverSupportedSignatureAlgorithmsMetadataKey)) {
-            $this->logger?->debug(
-                'Supported signature algorithms metadata key provided: ' .
-                $receiverSupportedSignatureAlgorithmsMetadataKey,
-            );
-
-            if (
-                array_key_exists($receiverSupportedSignatureAlgorithmsMetadataKey, $receiverEntityMetadata) &&
-                is_array(
-                    $entitySupportedSigningAlgs = $receiverEntityMetadata[
-                        $receiverSupportedSignatureAlgorithmsMetadataKey
-                    ]
-                )
-            ) {
-                $entitySupportedSigningAlgs = $this->federation->helpers()->type()
-                    ->ensureArrayWithValuesAsNonEmptyStrings($entitySupportedSigningAlgs);
-                $this->logger?->debug(
-                    'Entity defines supported signing algorithms: ' . implode(', ', $entitySupportedSigningAlgs)
-                );
-
-                $commonlySupportedSignatureAlgorithms = array_intersect(
-                    $signatureKeyPairBag->getAllAlgorithmNamesUnique(),
-                    $entitySupportedSigningAlgs,
-                );
-
-                $commonlySupportedSignatureAlgorithms = $this->federation->helpers()->type()
-                    ->ensureArrayWithValuesAsNonEmptyStrings($commonlySupportedSignatureAlgorithms);
-
-                if ($commonlySupportedSignatureAlgorithms !== []) {
-                    $this->logger?->debug(
-                        'Commonly supported signature algorithms with:',
-                        $commonlySupportedSignatureAlgorithms,
-                    );
-
-                    $signingKeyPair = $signatureKeyPairBag->getFirstByAlgorithmOrFail(
-                        SignatureAlgorithmEnum::from(
-                            $commonlySupportedSignatureAlgorithms[
-                                array_key_first($commonlySupportedSignatureAlgorithms)
-                            ],
-                        ),
-                    );
-                } else {
-                    $this->logger?->debug(
-                        'No commonly signature algorithms found.'
-                    );
-                }
-            } else {
-                $this->logger?->debug('Entity does not define supported signing algorithms.');
-            }
-        } else {
-            $this->logger?->debug('No supported signature algorithms metadata key provided.');
-        }
-
-        $this->logger?->debug(
-            'Signing Key Pair after algorithm selection: ',
-            [
-                'algorithm' => $signingKeyPair->getSignatureAlgorithm()->value,
-                'keyId' => $signingKeyPair->getKeyPair()->getKeyId(),
-            ],
-        );
-
-        return $signingKeyPair;
     }
 }
