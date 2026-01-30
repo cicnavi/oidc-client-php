@@ -24,7 +24,6 @@ use SimpleSAML\OpenID\Exceptions\OpenIdException;
 use SimpleSAML\OpenID\Exceptions\TrustChainException;
 use SimpleSAML\OpenID\Federation\TrustChain;
 use SimpleSAML\OpenID\Jwks;
-use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPair;
 use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairBag;
 use SimpleSAML\OpenID\ValueAbstracts\Factories\SignatureKeyPairBagFactory;
 use SimpleSAML\OpenID\ValueAbstracts\Factories\SignatureKeyPairFactory;
@@ -478,7 +477,6 @@ class FederatedClient
     /**
      * @param non-empty-string $openIdProviderEntityId OpenID Provider Entity
      * Identifier.
-     * @param string|null $loginHint
      * @param TrustAnchorConfigBag|null $specificTrustAnchors Optional, specific
      * Trust Anchors to use for resolving the trust chain. Must be a subset of
      * the original Trust Anchors configured for the client. It can also be used
@@ -495,7 +493,6 @@ class FederatedClient
      * default authorization request method configured for the client will be
      * used.
      *
-     * @return ResponseInterface|null
      * @throws InvalidValueException
      * @throws JwsException
      * @throws OidcClientException
