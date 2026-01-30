@@ -114,4 +114,21 @@ final class HttpHelperTest extends TestCase
         $cookieParams['samesite'] = 'Strict';
         $this->assertSame('Lax', HttpHelper::normalizeSessionCookieParams($cookieParams)['samesite']);
     }
+
+    public function testGenerateAutoSubmitPostForm(): void
+    {
+        $url = 'https://example.com/auth';
+        $parameters = [
+            'client_id' => 'test_client',
+            'scope' => 'openid profile',
+        ];
+
+        $html = HttpHelper::generateAutoSubmitPostForm($url, $parameters);
+
+        $this->assertStringContainsString('action="https://example.com/auth"', $html);
+        $this->assertStringContainsString('method="post"', $html);
+        $this->assertStringContainsString('name="client_id" value="test_client"', $html);
+        $this->assertStringContainsString('name="scope" value="openid profile"', $html);
+        $this->assertStringContainsString('onload="document.forms[0].submit()"', $html);
+    }
 }

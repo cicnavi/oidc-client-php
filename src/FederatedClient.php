@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Cicnavi\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
+use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Federation\RelyingPartyConfig;
+use Cicnavi\Oidc\Helpers\HttpHelper;
 use Cicnavi\Oidc\Protocol\RequestDataHandler;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -16,6 +18,7 @@ use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\ParamsEnum;
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 use SimpleSAML\OpenID\Core;
+use SimpleSAML\OpenID\Exceptions\EntityStatementException;
 use SimpleSAML\OpenID\Exceptions\InvalidValueException;
 use SimpleSAML\OpenID\Exceptions\OpenIdException;
 use SimpleSAML\OpenID\Exceptions\TrustChainException;
@@ -136,6 +139,8 @@ class FederatedClient
         ?Core $core = null,
         ?Jwks $jwks = null,
         ?RequestDataHandler $requestDataHandler = null,
+        // phpcs:ignore
+        protected readonly AuthorizationRequestMethodEnum $defaultAuthorizationRequestMethod = AuthorizationRequestMethodEnum::FormPost,
     ) {
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
         $this->signatureKeyPairFactory = $signatureKeyPairFactory ?? new SignatureKeyPairFactory($this->jwk);
@@ -282,6 +287,11 @@ class FederatedClient
     public function getPkceCodeChallengeMethod(): PkceCodeChallengeMethodEnum
     {
         return $this->pkceCodeChallengeMethod;
+    }
+
+    public function getDefaultAuthorizationRequestMethod(): AuthorizationRequestMethodEnum
+    {
+        return $this->defaultAuthorizationRequestMethod;
     }
 
     public function buildEntityStatement(): EntityStatement
@@ -468,6 +478,7 @@ class FederatedClient
     /**
      * @param non-empty-string $openIdProviderEntityId OpenID Provider Entity
      * Identifier.
+     * @param string|null $loginHint
      * @param TrustAnchorConfigBag|null $specificTrustAnchors Optional, specific
      * Trust Anchors to use for resolving the trust chain. Must be a subset of
      * the original Trust Anchors configured for the client. It can also be used
@@ -479,17 +490,28 @@ class FederatedClient
      * the client to use for the authorization request. If not provided, the
      * default redirect URI configured for the client will be used. If set,
      * the value must match one of the redirect URIs configured for the client.
+     * @param AuthorizationRequestMethodEnum|null $authorizationRequestMethod
+     * Optional, the authorization request method to use. If not provided, the
+     * default authorization request method configured for the client will be
+     * used.
      *
-     * @throws TrustChainException
+     * @return ResponseInterface|null
+     * @throws InvalidValueException
+     * @throws JwsException
      * @throws OidcClientException
+     * @throws OpenIdException
+     * @throws TrustChainException
+     * @throws EntityStatementException
      */
-    public function autoRegisterAndAuthenticateUsingRedirect(
+    public function autoRegisterAndAuthenticate(
         string $openIdProviderEntityId,
         ?string $loginHint = null,
         ?TrustAnchorConfigBag $specificTrustAnchors = null,
         ?ResponseInterface $response = null,
         ?string $clientRedirectUri = null,
+        ?AuthorizationRequestMethodEnum $authorizationRequestMethod = null,
     ): ?ResponseInterface {
+        $authorizationRequestMethod ??= $this->defaultAuthorizationRequestMethod;
         $trustAnchorBag = $this->entityConfig->getTrustAnchorBag();
         if ($specificTrustAnchors instanceof TrustAnchorConfigBag) {
             $trustAnchorBag = $trustAnchorBag->getInCommonWith($specificTrustAnchors);
@@ -670,14 +692,12 @@ class FederatedClient
 
         $requestObjectHeader = [
             ClaimsEnum::Kid->value => $signingKeyPair->getKeyPair()->getKeyId(),
-            // TODO mivanci Since we are doing a redirect to the authorization
-            // endpoint, we will not include the following claims in the Request
-            // This should be enabled for other authorization request types
-            // which are not limited by the URL length.
-            //
-            // ClaimsEnum::TrustChain->value => $rpTrustChain->jsonSerialize(),
-            // ClaimsEnum::PeerTrustChain->value => $opTrustChain->jsonSerialize(),
         ];
+
+        if ($authorizationRequestMethod === AuthorizationRequestMethodEnum::FormPost) {
+            $requestObjectHeader[ClaimsEnum::TrustChain->value] = $rpTrustChain->jsonSerialize();
+            $requestObjectHeader[ClaimsEnum::PeerTrustChain->value] = $opTrustChain->jsonSerialize();
+        }
 
         $this->logger?->debug(
             'Request Object payload and header prepared: ',
@@ -708,6 +728,18 @@ class FederatedClient
             'Authorization parameters prepared: ',
             $authorizationParameters,
         );
+
+        if ($authorizationRequestMethod === AuthorizationRequestMethodEnum::FormPost) {
+            $formHtml = HttpHelper::generateAutoSubmitPostForm($opAuthorizationEndpoint, $authorizationParameters);
+            if ($response instanceof ResponseInterface) {
+                $this->logger?->debug('Returning FormPost HTML in response body.');
+                $response->getBody()->write($formHtml);
+                return $response->withHeader('Content-Type', 'text/html');
+            }
+
+            echo $formHtml;
+            exit;
+        }
 
         $opAuthorizationEndpointUri = $opAuthorizationEndpoint . '?' . http_build_query($authorizationParameters);
 
