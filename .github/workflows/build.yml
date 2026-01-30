@@ -12,11 +12,14 @@ jobs:
     container:
       image: cicnavi/dap:82
     steps:
-    - name: Trust Git working directory
-      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-    - name: Install dependencies
-      run: composer install --prefer-dist --no-progress --no-suggest
-    - name: Run test suite
-      run: composer run-script pre-commit
-    - name: Show PHP version
-      run: php -v
+      - uses: actions/checkout@v4
+      - name: Validate composer.json and composer.lock
+        run: composer validate
+      - name: Trust Git working directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-suggest
+      - name: Run test suite
+        run: composer run-script pre-commit
+      - name: Show PHP version
+        run: php -v
