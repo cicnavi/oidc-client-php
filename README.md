@@ -71,7 +71,7 @@ $oidcClient = new PreRegisteredClient(
     timestampValidationLeeway: new DateInterval('PT1M'),  // Leeway used for timestamp (exp, iat, nbf...) validation.
     useState: true,  // Enable/disable state check
     useNonce: true,  // Enable/disable nonce check
-    fetchUserInfoClaims: true,  // Fetch claims from the userinfo endpoint
+    fetchUserinfoClaims: true,  // Fetch claims from the userinfo endpoint
     defaultCacheTtl: 86400,  // Cache TTL in seconds (24 hours)
     logger: null,  // \Psr\Log\LoggerInterface instance
 );
