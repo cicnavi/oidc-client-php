@@ -103,8 +103,6 @@ class PreRegisteredClient
      * and PKCE parameter handling.
      * @param Client $httpClient Helper HTTP client instance used to easily
      * send HTTP requests.
-     * @param RequestFactoryInterface $httpRequestFactory Used to prepare HTTP
-     * requests
      * @param Core|null $core Core library instance. If not provided, a new one
      * will be built using provided options.
      * @throws CacheException If cache could not be initialized.
@@ -122,7 +120,6 @@ class PreRegisteredClient
         protected bool $useState = true,
         protected bool $useNonce = true,
         protected bool $fetchUserinfoClaims = true,
-        protected ?int $defaultCacheTtl = 86400,
         protected readonly SupportedAlgorithms $supportedAlgorithms = new SupportedAlgorithms(
             new SignatureAlgorithmBag(
                 SignatureAlgorithmEnum::EdDSA,
@@ -142,9 +139,6 @@ class PreRegisteredClient
         ?CacheInterface $cache = null,
         protected readonly SessionStoreInterface $sessionStore = new PhpSessionStore(),
         protected readonly Client $httpClient = new Client(),
-        protected readonly RequestFactoryInterface $httpRequestFactory = new RequestFactory(),
-        ?StateNonceDataHandlerInterface $stateNonceDataHandler = null,
-        ?PkceDataHandlerInterface $pkceDataHandler = null,
         ?MetadataInterface $metadata = null,
         ?Core $core = null,
         ?Jwks $jwks = null,
@@ -157,8 +151,6 @@ class PreRegisteredClient
 
         $this->validateCache();
 
-        $this->stateNonceDataHandler = $stateNonceDataHandler ?? new StateNonce($this->sessionStore);
-        $this->pkceDataHandler = $pkceDataHandler ?? new Pkce($this->sessionStore);
         $this->metadata = $metadata ?? new OpMetadata($this->opConfigurationUrl, $this->cache, $this->httpClient);
 
         $this->core = $core ?? new Core(
@@ -287,7 +279,10 @@ class PreRegisteredClient
      */
     public function getUserData(?ServerRequestInterface $request = null): array
     {
-        $params = $this->requestDataHandler->validateAuthorizationCallbackResponse($request);
+        $params = $this->requestDataHandler->validateAuthorizationCallbackResponse(
+            $request,
+            $this->useState,
+        );
 
         $authorizationCode = $params[ParamsEnum::Code->value];
 
