@@ -44,23 +44,23 @@ final class PreRegisteredClientTest extends TestCase
 
     private bool $fetchUserinfoClaims;
 
-    private \PHPUnit\Framework\MockObject\MockObject $supportedAlgorithmsMock;
+    private \PHPUnit\Framework\MockObject\Stub $supportedAlgorithmsMock;
 
-    private \PHPUnit\Framework\MockObject\MockObject $supportedSerializersMock;
+    private \PHPUnit\Framework\MockObject\Stub $supportedSerializersMock;
 
-    private \PHPUnit\Framework\MockObject\MockObject $loggerMock;
+    private \PHPUnit\Framework\MockObject\Stub $loggerMock;
 
     private \PHPUnit\Framework\MockObject\MockObject $cacheMock;
 
-    private \PHPUnit\Framework\MockObject\MockObject $sessionStoreMock;
+    private \PHPUnit\Framework\MockObject\Stub $sessionStoreMock;
 
-    private \PHPUnit\Framework\MockObject\MockObject $httpClientMock;
+    private \PHPUnit\Framework\MockObject\Stub $httpClientMock;
 
     private \PHPUnit\Framework\MockObject\MockObject $metadataMock;
 
-    private \PHPUnit\Framework\MockObject\MockObject $coreMock;
+    private \PHPUnit\Framework\MockObject\Stub $coreMock;
 
-    private \PHPUnit\Framework\MockObject\MockObject $jwksMock;
+    private \PHPUnit\Framework\MockObject\Stub $jwksMock;
 
     private \DateInterval $maxCacheDuration;
 
@@ -81,15 +81,15 @@ final class PreRegisteredClientTest extends TestCase
         $this->useState = true;
         $this->useNonce = true;
         $this->fetchUserinfoClaims = true;
-        $this->supportedAlgorithmsMock = $this->createMock(SupportedAlgorithms::class);
-        $this->supportedSerializersMock = $this->createMock(SupportedSerializers::class);
-        $this->loggerMock = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $this->supportedAlgorithmsMock = $this->createStub(SupportedAlgorithms::class);
+        $this->supportedSerializersMock = $this->createStub(SupportedSerializers::class);
+        $this->loggerMock = $this->createStub(\Psr\Log\LoggerInterface::class);
         $this->cacheMock = $this->createMock(\Psr\SimpleCache\CacheInterface::class);
-        $this->sessionStoreMock = $this->createMock(SessionStoreInterface::class);
-        $this->httpClientMock = $this->createMock(Client::class);
+        $this->sessionStoreMock = $this->createStub(SessionStoreInterface::class);
+        $this->httpClientMock = $this->createStub(Client::class);
         $this->metadataMock = $this->createMock(MetadataInterface::class);
-        $this->coreMock = $this->createMock(\SimpleSAML\OpenID\Core::class);
-        $this->jwksMock = $this->createMock(\SimpleSAML\OpenID\Jwks::class);
+        $this->coreMock = $this->createStub(\SimpleSAML\OpenID\Core::class);
+        $this->jwksMock = $this->createStub(\SimpleSAML\OpenID\Jwks::class);
         $this->maxCacheDuration = new \DateInterval('PT6H');
         $this->defaultAuthorizationRequestMethod = AuthorizationRequestMethodEnum::FormPost;
         $this->requestDataHandlerMock = $this->createMock(RequestDataHandler::class);
@@ -198,7 +198,7 @@ final class PreRegisteredClientTest extends TestCase
 
     public function testAuthorizeFormPostWithResponse(): void
     {
-        $this->metadataMock->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([
             ['authorization_endpoint', 'https://auth.example.org/authorize'],
         ]);
 
@@ -233,7 +233,7 @@ final class PreRegisteredClientTest extends TestCase
 
     public function testAuthorizeRedirectGetWithResponse(): void
     {
-        $this->metadataMock->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([
             ['authorization_endpoint', 'https://auth.example.org/authorize'],
         ]);
 
@@ -271,7 +271,7 @@ final class PreRegisteredClientTest extends TestCase
                 \SimpleSAML\OpenID\Codebooks\ParamsEnum::Code->value => 'auth-code-123',
             ]);
 
-        $this->metadataMock->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(3))->method('get')->willReturnMap([
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::JwksUri->value, 'https://op.example.org/jwks'],
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::TokenEndpoint->value, 'https://op.example.org/token'],
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::UserinfoEndpoint->value, 'https://op.example.org/userinfo'],
@@ -291,7 +291,7 @@ final class PreRegisteredClientTest extends TestCase
                 \SimpleSAML\OpenID\Codebooks\ParamsEnum::Code->value => 'auth-code-123',
             ]);
 
-        $this->metadataMock->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::JwksUri->value, null],
         ]);
 
@@ -308,7 +308,7 @@ final class PreRegisteredClientTest extends TestCase
                 \SimpleSAML\OpenID\Codebooks\ParamsEnum::Code->value => 'auth-code-123',
             ]);
 
-        $this->metadataMock->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::JwksUri->value, 'https://op.example.org/jwks'],
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::TokenEndpoint->value, null],
         ]);

@@ -43,7 +43,7 @@ final class RequestDataHandlerTest extends TestCase
 
     private MockObject $coreMock;
 
-    private MockObject $cacheMock;
+    private \PHPUnit\Framework\MockObject\Stub $cacheMock;
 
     private MockObject $jwksMock;
 
@@ -65,7 +65,7 @@ final class RequestDataHandlerTest extends TestCase
     {
         $this->sessionStoreMock = $this->createMock(SessionStoreInterface::class);
         $this->coreMock = $this->createMock(Core::class);
-        $this->cacheMock = $this->createMock(CacheInterface::class);
+        $this->cacheMock = $this->createStub(CacheInterface::class);
         $this->jwksMock = $this->createMock(Jwks::class);
         $this->requestFactoryMock = $this->createMock(RequestFactoryInterface::class);
         $this->guzzleBridgeMock = $this->createMock(GuzzleBridge::class);
@@ -441,7 +441,7 @@ final class RequestDataHandlerTest extends TestCase
     {
         $this->pkceDataHandlerMock->method('getCodeVerifier')->willReturn('verifier');
 
-        $stream = $this->createMock(StreamInterface::class);
+        $stream = $this->createStub(StreamInterface::class);
         $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($stream);
 
         $request = $this->createMock(RequestInterface::class);
@@ -471,7 +471,7 @@ final class RequestDataHandlerTest extends TestCase
     public function testRequestTokenDataThrowsOnRequestError(): void
     {
         $this->pkceDataHandlerMock->method('getCodeVerifier')->willReturn('verifier');
-        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createMock(StreamInterface::class));
+        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createStub(StreamInterface::class));
 
         $request = $this->createMock(RequestInterface::class);
         $this->requestFactoryMock->method('createRequest')->willReturn($request);
@@ -756,7 +756,7 @@ final class RequestDataHandlerTest extends TestCase
     {
         // 1. requestTokenData mocks
         $this->pkceDataHandlerMock->method('getCodeVerifier')->willReturn('verifier');
-        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createMock(StreamInterface::class));
+        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createStub(StreamInterface::class));
 
         $tokenRequest = $this->createMock(RequestInterface::class);
         $userInfoRequest = $this->createMock(RequestInterface::class);
@@ -824,7 +824,7 @@ final class RequestDataHandlerTest extends TestCase
     public function testRequestTokenDataWithClientSecretBasicAddsHeader(): void
     {
         $this->pkceDataHandlerMock->method('getCodeVerifier')->willReturn('verifier');
-        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createMock(StreamInterface::class));
+        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createStub(StreamInterface::class));
 
         $request = $this->createMock(RequestInterface::class);
         $this->requestFactoryMock->method('createRequest')->willReturn($request);
@@ -925,7 +925,7 @@ final class RequestDataHandlerTest extends TestCase
         // getCodeVerifier should NOT be called
         $this->pkceDataHandlerMock->expects($this->never())->method('getCodeVerifier');
 
-        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createMock(StreamInterface::class));
+        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createStub(StreamInterface::class));
 
         $tokenRequest = $this->createMock(RequestInterface::class);
         $this->requestFactoryMock->method('createRequest')->willReturn($tokenRequest);
@@ -989,7 +989,7 @@ final class RequestDataHandlerTest extends TestCase
     {
         // 1. requestTokenData mocks
         $this->pkceDataHandlerMock->method('getCodeVerifier')->willReturn('verifier');
-        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createMock(StreamInterface::class));
+        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createStub(StreamInterface::class));
 
         $tokenRequest = $this->createMock(RequestInterface::class);
         $this->requestFactoryMock->method('createRequest')->willReturn($tokenRequest);

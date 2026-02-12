@@ -19,27 +19,27 @@ final class EntityConfigTest extends TestCase
 {
     private string $entityId;
 
-    private MockObject $trustAnchorConfigBagMock;
+    private \PHPUnit\Framework\MockObject\Stub $trustAnchorConfigBagMock;
 
-    private MockObject $authorityHintBagMock;
+    private \PHPUnit\Framework\MockObject\Stub $authorityHintBagMock;
 
-    private MockObject $federationSignatureKeyPairConfigBagMock;
+    private \PHPUnit\Framework\MockObject\Stub $federationSignatureKeyPairConfigBagMock;
 
-    private MockObject $staticTrustMarkBagMock;
+    private \PHPUnit\Framework\MockObject\Stub $staticTrustMarkBagMock;
 
-    private MockObject $dynamicTrustMarkBagMock;
+    private \PHPUnit\Framework\MockObject\Stub $dynamicTrustMarkBagMock;
 
-    private MockObject $additionalClaimBag;
+    private \PHPUnit\Framework\MockObject\Stub $additionalClaimBag;
 
     protected function setUp(): void
     {
         $this->entityId = 'entity-id';
-        $this->trustAnchorConfigBagMock = $this->createMock(TrustAnchorConfigBag::class);
-        $this->authorityHintBagMock = $this->createMock(UniqueStringBag::class);
-        $this->federationSignatureKeyPairConfigBagMock = $this->createMock(SignatureKeyPairConfigBag::class);
-        $this->staticTrustMarkBagMock = $this->createMock(UniqueStringBag::class);
-        $this->dynamicTrustMarkBagMock = $this->createMock(KeyedStringBag::class);
-        $this->additionalClaimBag = $this->createMock(ClaimBag::class);
+        $this->trustAnchorConfigBagMock = $this->createStub(TrustAnchorConfigBag::class);
+        $this->authorityHintBagMock = $this->createStub(UniqueStringBag::class);
+        $this->federationSignatureKeyPairConfigBagMock = $this->createStub(SignatureKeyPairConfigBag::class);
+        $this->staticTrustMarkBagMock = $this->createStub(UniqueStringBag::class);
+        $this->dynamicTrustMarkBagMock = $this->createStub(KeyedStringBag::class);
+        $this->additionalClaimBag = $this->createStub(ClaimBag::class);
     }
 
     protected function sut(
@@ -96,8 +96,8 @@ final class EntityConfigTest extends TestCase
         // Construct with only required arguments - other params have defaults
         $entity = new EntityConfig(
             'default-entity',
-            $this->createMock(TrustAnchorConfigBag::class),
-            $this->createMock(UniqueStringBag::class),
+            $this->createStub(TrustAnchorConfigBag::class),
+            $this->createStub(UniqueStringBag::class),
         );
 
         $this->assertInstanceOf(SignatureKeyPairConfigBag::class, $entity->getFederationSignatureKeyPairConfigBag());

@@ -17,13 +17,13 @@ use SimpleSAML\OpenID\ValueAbstracts\UniqueStringBag;
 #[CoversClass(RelyingPartyConfig::class)]
 final class RelyingPartyConfigTest extends TestCase
 {
-    private MockObject $redirectUriBagMock;
+    private \PHPUnit\Framework\MockObject\Stub $redirectUriBagMock;
 
-    private MockObject $connectSignatureKeyPairBagMock;
+    private \PHPUnit\Framework\MockObject\Stub $connectSignatureKeyPairBagMock;
 
-    private MockObject $scopeBagMock;
+    private \PHPUnit\Framework\MockObject\Stub $scopeBagMock;
 
-    private MockObject $additionalClaimBagMock;
+    private \PHPUnit\Framework\MockObject\Stub $additionalClaimBagMock;
 
     private string $initiateLoginUri;
 
@@ -35,10 +35,10 @@ final class RelyingPartyConfigTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->redirectUriBagMock = $this->createMock(RedirectUriBag::class);
-        $this->connectSignatureKeyPairBagMock = $this->createMock(SignatureKeyPairConfigBag::class);
-        $this->scopeBagMock = $this->createMock(ScopeBag::class);
-        $this->additionalClaimBagMock = $this->createMock(ClaimBag::class);
+        $this->redirectUriBagMock = $this->createStub(RedirectUriBag::class);
+        $this->connectSignatureKeyPairBagMock = $this->createStub(SignatureKeyPairConfigBag::class);
+        $this->scopeBagMock = $this->createStub(ScopeBag::class);
+        $this->additionalClaimBagMock = $this->createStub(ClaimBag::class);
         $this->initiateLoginUri = 'https://rp.example.org/initiate';
         $this->jwksUri = 'https://rp.example.org/jwks';
         $this->signedJwksUri = 'https://rp.example.org/signed-jwks';

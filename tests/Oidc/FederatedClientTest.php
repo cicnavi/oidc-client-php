@@ -82,11 +82,11 @@ final class FederatedClientTest extends TestCase
 
     private MockObject $federationMock;
 
-    private MockObject $jwkMock;
+    private \PHPUnit\Framework\MockObject\Stub $jwkMock;
 
     private HashAlgorithmsEnum $jwkThumbprintHashAlgo;
 
-    private MockObject $signatureKeyPairFactoryMock;
+    private \PHPUnit\Framework\MockObject\Stub $signatureKeyPairFactoryMock;
 
     private MockObject $signatureKeyPairBagFactoryMock;
 
@@ -104,13 +104,13 @@ final class FederatedClientTest extends TestCase
 
     private PkceCodeChallengeMethodEnum $pkceCodeChallengeMethod;
 
-    private MockObject $sessionStoreMock;
+    private \PHPUnit\Framework\MockObject\Stub $sessionStoreMock;
 
-    private MockObject $httpClientMock;
+    private \PHPUnit\Framework\MockObject\Stub $httpClientMock;
 
     private MockObject $coreMock;
 
-    private MockObject $jwksMock;
+    private \PHPUnit\Framework\MockObject\Stub $jwksMock;
 
     private MockObject $requestDataHandlerMock;
 
@@ -132,9 +132,9 @@ final class FederatedClientTest extends TestCase
         $this->maxTrustChainDepth = 9;
         $this->defaultTrustMarkStatusEndpointUsagePolicyEnum = TrustMarkStatusEndpointUsagePolicyEnum::NotUsed;
         $this->federationMock = $this->createMock(Federation::class);
-        $this->jwkMock = $this->createMock(Jwk::class);
+        $this->jwkMock = $this->createStub(Jwk::class);
         $this->jwkThumbprintHashAlgo = HashAlgorithmsEnum::SHA_256;
-        $this->signatureKeyPairFactoryMock = $this->createMock(SignatureKeyPairFactory::class);
+        $this->signatureKeyPairFactoryMock = $this->createStub(SignatureKeyPairFactory::class);
         $this->signatureKeyPairBagFactoryMock = $this->createMock(SignatureKeyPairBagFactory::class);
         $this->jwksDecoratorFactoryMock = $this->createMock(JwksDecoratorFactory::class);
         $this->includeSoftwareId = true;
@@ -143,10 +143,10 @@ final class FederatedClientTest extends TestCase
         $this->usePkce = true;
         $this->fetchUserinfoClaims = true;
         $this->pkceCodeChallengeMethod = PkceCodeChallengeMethodEnum::S256;
-        $this->sessionStoreMock = $this->createMock(SessionStoreInterface::class);
-        $this->httpClientMock = $this->createMock(\GuzzleHttp\Client::class);
+        $this->sessionStoreMock = $this->createStub(SessionStoreInterface::class);
+        $this->httpClientMock = $this->createStub(\GuzzleHttp\Client::class);
         $this->coreMock = $this->createMock(Core::class);
-        $this->jwksMock = $this->createMock(Jwks::class);
+        $this->jwksMock = $this->createStub(Jwks::class);
         $this->requestDataHandlerMock = $this->createMock(RequestDataHandler::class);
         $this->defaultAuthorizationRequestMethod = AuthorizationRequestMethodEnum::FormPost;
     }
@@ -326,11 +326,11 @@ final class FederatedClientTest extends TestCase
         $innerKeyPairMock = $this->createMock(\SimpleSAML\OpenID\ValueAbstracts\KeyPair::class);
         $keyPairMock->method('getKeyPair')->willReturn($innerKeyPairMock);
         $innerKeyPairMock->method('getKeyId')->willReturn('kid1');
-        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createMock(JwkDecorator::class));
+        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createStub(JwkDecorator::class));
         $keyPairMock->method('getSignatureAlgorithm')->willReturn(SignatureAlgorithmEnum::ES256);
 
         $this->jwksDecoratorFactoryMock->method('fromJwkDecorators')
-            ->willReturn($this->createMock(JwksDecorator::class));
+            ->willReturn($this->createStub(JwksDecorator::class));
 
         $helpersMock = $this->createMock(\SimpleSAML\OpenID\Helpers::class);
         $this->federationMock->method('helpers')->willReturn($helpersMock);
@@ -343,7 +343,7 @@ final class FederatedClientTest extends TestCase
 
         $entityStatementFactoryMock = $this->createMock(EntityStatementFactory::class);
         $this->federationMock->method('entityStatementFactory')->willReturn($entityStatementFactoryMock);
-        $entityStatementFactoryMock->method('fromData')->willReturn($this->createMock(EntityStatement::class));
+        $entityStatementFactoryMock->method('fromData')->willReturn($this->createStub(EntityStatement::class));
 
         $this->assertInstanceOf(EntityStatement::class, $this->sut()->buildEntityStatement());
     }
@@ -466,7 +466,7 @@ final class FederatedClientTest extends TestCase
         $trustAnchorMock->method('getIssuer')->willReturn($trustAnchorId);
 
         $rpTrustChainBagMock = $this->createMock(TrustChainBag::class);
-        $rpTrustChainBagMock->method('getShortest')->willReturn($this->createMock(TrustChain::class));
+        $rpTrustChainBagMock->method('getShortest')->willReturn($this->createStub(TrustChain::class));
         // The second call to 'for' is for RP trust chain
         $trustChainResolverMock->method('for')
             ->willReturnOnConsecutiveCalls($opTrustChainBagMock, $rpTrustChainBagMock);
@@ -492,7 +492,7 @@ final class FederatedClientTest extends TestCase
         $innerKeyPairMock = $this->createMock(\SimpleSAML\OpenID\ValueAbstracts\KeyPair::class);
         $signingKeyPairMock->method('getKeyPair')->willReturn($innerKeyPairMock);
         $innerKeyPairMock->method('getKeyId')->willReturn('kid1');
-        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createMock(JwkDecorator::class));
+        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createStub(JwkDecorator::class));
         $signingKeyPairMock->method('getSignatureAlgorithm')->willReturn(SignatureAlgorithmEnum::ES256);
 
         $requestObjectFactoryMock = $this->createMock(RequestObjectFactory::class);
@@ -502,7 +502,7 @@ final class FederatedClientTest extends TestCase
         $requestObjectMock->method('getToken')->willReturn('signed_request_object');
 
         $responseMock = $this->createMock(ResponseInterface::class);
-        $streamMock = $this->createMock(StreamInterface::class);
+        $streamMock = $this->createStub(StreamInterface::class);
         $responseMock->method('getBody')->willReturn($streamMock);
         $responseMock->method('withHeader')->willReturn($responseMock);
 
@@ -538,7 +538,7 @@ final class FederatedClientTest extends TestCase
         $innerKeyPairMock = $this->createMock(\SimpleSAML\OpenID\ValueAbstracts\KeyPair::class);
         $signingKeyPairMock->method('getKeyPair')->willReturn($innerKeyPairMock);
         $innerKeyPairMock->method('getKeyId')->willReturn('kid1');
-        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createMock(JwkDecorator::class));
+        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createStub(JwkDecorator::class));
         $signingKeyPairMock->method('getSignatureAlgorithm')->willReturn(SignatureAlgorithmEnum::ES256);
 
         $helpersMock = $this->createMock(\SimpleSAML\OpenID\Helpers::class);
@@ -599,11 +599,11 @@ final class FederatedClientTest extends TestCase
         $innerKeyPairMock = $this->createMock(\SimpleSAML\OpenID\ValueAbstracts\KeyPair::class);
         $keyPairMock->method('getKeyPair')->willReturn($innerKeyPairMock);
         $innerKeyPairMock->method('getKeyId')->willReturn('kid1');
-        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createMock(JwkDecorator::class));
+        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createStub(JwkDecorator::class));
         $keyPairMock->method('getSignatureAlgorithm')->willReturn(SignatureAlgorithmEnum::ES256);
 
         $this->jwksDecoratorFactoryMock->method('fromJwkDecorators')
-            ->willReturn($this->createMock(JwksDecorator::class));
+            ->willReturn($this->createStub(JwksDecorator::class));
 
         $helpersMock = $this->createMock(\SimpleSAML\OpenID\Helpers::class);
         $this->federationMock->method('helpers')->willReturn($helpersMock);
@@ -616,7 +616,7 @@ final class FederatedClientTest extends TestCase
 
         $entityStatementFactoryMock = $this->createMock(EntityStatementFactory::class);
         $this->federationMock->method('entityStatementFactory')->willReturn($entityStatementFactoryMock);
-        $entityStatementFactoryMock->method('fromData')->willReturn($this->createMock(EntityStatement::class));
+        $entityStatementFactoryMock->method('fromData')->willReturn($this->createStub(EntityStatement::class));
 
         $this->assertInstanceOf(EntityStatement::class, $this->sut()->buildEntityStatement());
     }
@@ -639,7 +639,7 @@ final class FederatedClientTest extends TestCase
         $entityStatementFetcherMock = $this->createMock(\SimpleSAML\OpenID\Federation\EntityStatementFetcher::class);
         $this->federationMock->method('entityStatementFetcher')->willReturn($entityStatementFetcherMock);
         $entityStatementFetcherMock->method('fromCacheOrWellKnownEndpoint')
-            ->with('tm_issuer')->willReturn($this->createMock(EntityStatement::class));
+            ->with('tm_issuer')->willReturn($this->createStub(EntityStatement::class));
 
         $trustMarkFetcherMock = $this->createMock(TrustMarkFetcher::class);
         $this->federationMock->method('trustMarkFetcher')->willReturn($trustMarkFetcherMock);
@@ -663,11 +663,11 @@ final class FederatedClientTest extends TestCase
         $innerKeyPairMock = $this->createMock(\SimpleSAML\OpenID\ValueAbstracts\KeyPair::class);
         $keyPairMock->method('getKeyPair')->willReturn($innerKeyPairMock);
         $innerKeyPairMock->method('getKeyId')->willReturn('kid1');
-        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createMock(JwkDecorator::class));
+        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createStub(JwkDecorator::class));
         $keyPairMock->method('getSignatureAlgorithm')->willReturn(SignatureAlgorithmEnum::ES256);
 
         $this->jwksDecoratorFactoryMock->method('fromJwkDecorators')
-            ->willReturn($this->createMock(JwksDecorator::class));
+            ->willReturn($this->createStub(JwksDecorator::class));
 
         $helpersMock = $this->createMock(\SimpleSAML\OpenID\Helpers::class);
         $this->federationMock->method('helpers')->willReturn($helpersMock);
@@ -680,7 +680,7 @@ final class FederatedClientTest extends TestCase
 
         $entityStatementFactoryMock = $this->createMock(EntityStatementFactory::class);
         $this->federationMock->method('entityStatementFactory')->willReturn($entityStatementFactoryMock);
-        $entityStatementFactoryMock->method('fromData')->willReturn($this->createMock(EntityStatement::class));
+        $entityStatementFactoryMock->method('fromData')->willReturn($this->createStub(EntityStatement::class));
 
         $this->assertInstanceOf(EntityStatement::class, $this->sut()->buildEntityStatement());
     }
@@ -725,7 +725,7 @@ final class FederatedClientTest extends TestCase
         $trustAnchorMock->method('getIssuer')->willReturn($trustAnchorId);
 
         $rpTrustChainBagMock = $this->createMock(TrustChainBag::class);
-        $rpTrustChainBagMock->method('getShortest')->willReturn($this->createMock(TrustChain::class));
+        $rpTrustChainBagMock->method('getShortest')->willReturn($this->createStub(TrustChain::class));
         // The second call to 'for' is for RP trust chain
         $trustChainResolverMock->method('for')
             ->willReturnOnConsecutiveCalls($opTrustChainBagMock, $rpTrustChainBagMock);
@@ -751,7 +751,7 @@ final class FederatedClientTest extends TestCase
         $innerKeyPairMock = $this->createMock(\SimpleSAML\OpenID\ValueAbstracts\KeyPair::class);
         $signingKeyPairMock->method('getKeyPair')->willReturn($innerKeyPairMock);
         $innerKeyPairMock->method('getKeyId')->willReturn('kid1');
-        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createMock(JwkDecorator::class));
+        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createStub(JwkDecorator::class));
         $signingKeyPairMock->method('getSignatureAlgorithm')->willReturn(SignatureAlgorithmEnum::ES256);
 
         $requestObjectFactoryMock = $this->createMock(RequestObjectFactory::class);
