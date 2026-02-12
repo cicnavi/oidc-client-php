@@ -6,24 +6,16 @@ namespace Cicnavi\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
-use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\PkceDataHandlerInterface;
-use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\StateNonceDataHandlerInterface;
-use Cicnavi\Oidc\DataStore\DataHandlers\Pkce;
-use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Helpers\HttpHelper;
-use Cicnavi\Oidc\Http\RequestFactory;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use Cicnavi\Oidc\Protocol\OpMetadata;
 use Cicnavi\Oidc\Protocol\RequestDataHandler;
 use Cicnavi\SimpleFileCache\Exceptions\CacheException;
 use DateInterval;
 use GuzzleHttp\Client;
-use GuzzleHttp\Psr7\Utils;
-use Psr\Http\Client\ClientInterface;
-use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Log\LoggerInterface;
@@ -59,18 +51,9 @@ class PreRegisteredClient
     protected MetadataInterface $metadata;
 
     /**
-     * @var string Key used to store JWKS URI content in cache.
-     */
-    protected const CACHE_KEY_JWKS_URI_CONTENT = 'OIDC_JWKS_URI_CONTENT';
-
-    /**
      * @var string Key used to store OIDC configuration URL in cache.
      */
     protected const CACHE_KEY_OP_CONFIGURATION_URL = 'OIDC_OP_CONFIGURATION_URL';
-
-    protected PkceDataHandlerInterface $pkceDataHandler;
-
-    protected StateNonceDataHandlerInterface $stateNonceDataHandler;
 
     protected Core $core;
 
@@ -80,7 +63,6 @@ class PreRegisteredClient
 
     /**
      * Client constructor.
-     * TODO mivanci Move to $issuerId as mandatory and $opConfigurationUrl as optional.
      * @param string $opConfigurationUrl URL where the OP configuration can be
      * fetched.
      * @param string $clientId Client ID issued by the OP.
@@ -142,7 +124,7 @@ class PreRegisteredClient
         ?MetadataInterface $metadata = null,
         ?Core $core = null,
         ?Jwks $jwks = null,
-        protected readonly \DateInterval $maxCacheDuration = new \DateInterval('PT6H'),
+        protected readonly DateInterval $maxCacheDuration = new DateInterval('PT6H'),
         // phpcs:ignore
         protected readonly AuthorizationRequestMethodEnum $defaultAuthorizationRequestMethod = AuthorizationRequestMethodEnum::FormPost,
         ?RequestDataHandler $requestDataHandler = null,

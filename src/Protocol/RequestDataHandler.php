@@ -292,13 +292,13 @@ class RequestDataHandler
      */
     public function getDecodedHttpResponseJson(ResponseInterface $response): array
     {
+        $responseBody = (string) $response->getBody();
         try {
-            $responseBody = (string) $response->getBody();
             return $this->decodeJsonOrThrow($responseBody);
         } catch (Throwable $throwable) {
             $this->logger?->error(
                 'JSON response body decode error: ' . $throwable->getMessage(),
-                ['responseBody' => $responseBody ?? null]
+                ['responseBody' => $responseBody]
             );
             throw new OidcClientException(
                 'HTTP request JSON response is not valid.'
@@ -318,8 +318,7 @@ class RequestDataHandler
             }
 
             return $decodedJson;
-        } catch (Throwable $throwable) {
-            $this->logger?->error('JSON decode error: ' . $throwable->getMessage(), ['json' => $json]);
+        } catch (Throwable) {
             throw new OidcClientException('JSON decode error.');
         }
     }
@@ -563,6 +562,10 @@ class RequestDataHandler
         array $idTokenClaims,
         array $userInfoClaims,
     ): void {
+        if ($idTokenClaims === []) {
+            return;
+        }
+
         // Per https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
         if ($idTokenClaims[ClaimsEnum::Sub->value] !== $userInfoClaims[ClaimsEnum::Sub->value]) {
             throw new OidcClientException('ID token and UserInfo sub claim must be equal.');

@@ -6,6 +6,10 @@ Major release with breaking changes to the client instantiation API.
 
 ### Added
 
+- New `Cicnavi\Oidc\FederatedClient` class which can be used in federated 
+environments. Check the
+[Federated Client Documentation](docs/3-Federated-Client.md) for more
+information.
 
 ### Changed 
 - **Breaking**: Class `Cicnavi\Oidc\Client` (`src/Client.php`) has been
@@ -27,6 +31,7 @@ designate validation leeway for timestamps using `timestampValidationLeeway`
 configuration option, which is `DateInterval` instance.
 - `PreRegisteredClient` will now use PKCE by default. This can be disabled by
 setting `shouldUsePkce` to `false`.
+- The minimum supported PHP version is now v8.2
 
 ### Removed 
 - **Breaking**: Class `Cicnavi\Oidc\Config` (`src/Config.php`) has been removed.
@@ -68,7 +73,6 @@ $client = new PreRegisteredClient(
     redirectUri: 'https://your-app.org/callback',
     scope: 'openid profile',
     usePkce: true,
-    defaultCacheTtl: 3600
 );
 ```
 
