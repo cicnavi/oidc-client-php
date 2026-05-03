@@ -22,6 +22,7 @@ use SimpleSAML\OpenID\Exceptions\EntityStatementException;
 use SimpleSAML\OpenID\Exceptions\InvalidValueException;
 use SimpleSAML\OpenID\Exceptions\OpenIdException;
 use SimpleSAML\OpenID\Exceptions\TrustChainException;
+use SimpleSAML\OpenID\Federation\EntityCollection\EntityCollectionStoreInterface;
 use SimpleSAML\OpenID\Federation\TrustChain;
 use SimpleSAML\OpenID\Jwks;
 use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairBag;
@@ -140,6 +141,8 @@ class FederatedClient
         ?RequestDataHandler $requestDataHandler = null,
         // phpcs:ignore
         protected readonly AuthorizationRequestMethodEnum $defaultAuthorizationRequestMethod = AuthorizationRequestMethodEnum::FormPost,
+        int $maxDiscoveryDepth = 10,
+        ?EntityCollectionStoreInterface $entityCollectionStore = null,
     ) {
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
         $this->signatureKeyPairFactory = $signatureKeyPairFactory ?? new SignatureKeyPairFactory($this->jwk);
@@ -184,6 +187,8 @@ class FederatedClient
             logger: $this->logger,
             client: $this->httpClient,
             defaultTrustMarkStatusEndpointUsagePolicyEnum: $this->defaultTrustMarkStatusEndpointUsagePolicyEnum,
+            maxDiscoveryDepth: $maxDiscoveryDepth,
+            entityCollectionStore: $entityCollectionStore,
         );
 
         $this->federationSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
