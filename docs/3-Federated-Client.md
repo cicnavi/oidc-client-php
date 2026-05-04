@@ -141,29 +141,63 @@ service.
 ```php
 /** @var \Cicnavi\Oidc\FederatedClient $client */
 
-$trustAnchorId = 'https://example.com/trust-anchor';
+// Optionally define claim paths to sort discovered OPs by their display names
+// (e.g., for user-friendly display in a login UI). The paths are relative to
+// the OP's metadata structure. The method also has default paths it checks
+// if not provided.
+$sortClaimPaths = [
+    ['metadata', 'openid_provider', 'display_name'],
+    ['metadata', 'federation_entity', 'display_name'],
+];
+$forceRefresh = false; // Set to true to bypass cache and fetch fresh data
 
-$opEntities = $client->getFederation()
-                   ->federationDiscovery()
-                   ->discover(
-                       trustAnchorId: $trustAnchorId,
-                   )->filter(
-                       criteria: ['entity_type' => ['openid_provider']],
-                   )->sort(
-                       claimPaths: [
-                           ['metadata', 'openid_provider', 'display_name'],
-                           ['metadata', 'federation_entity', 'display_name']
-                       ],
-                       sortOrder: 'asc',
-                   )->getEntities();
+$openIdProvidersPerTrustAnchor = $client->discoverOpenIdProviders($sortClaimPaths, $forceRefresh);
 
-// $opEntities is an array of OP entities that match the criteria, keyed by
-// entity ID, and sorted by display name in this case. Use it to present
-// OP available for login to the user.
+// The result $openIdProvidersPerTrustAnchor is an associative array where each
+// trust anchor ID maps to its list of discovered entities:
+// [trustAnchorId => [entityId1 => entityPayload1, entityId2 => entityPayload2, ...]]
+// Use it to display available OPs for users to choose from during login.
+
 ```
 
-Note that this operation can be time-consuming due to the full traversal of the
-federation under the specified Trust Anchor. The implementation uses caching
-to improve performance on subsequent calls.
+This operation can be time-consuming on the first run because it may require a
+full traversal of the federation under each configured Trust Anchor. Results
+are cached and subsequent calls are typically much faster.
 
-To warmup the cache, you can
+To warm up discovery caches (for example, from a CLI command or scheduled job),
+you can trigger discovery in advance:
+
+```php
+/** @var \Cicnavi\Oidc\FederatedClient $client */
+
+// Warm up OP discovery caches for all configured trust anchors.
+// Keep forceRefresh=true only for explicit refresh jobs.
+$client->discoverOpenIdProviders(forceRefresh: true);
+```
+
+### Advanced Discovery
+
+If you need to discover entities other than OpenID Providers, use
+`discoverEntities()` and provide criteria explicitly:
+
+```php
+/** @var \Cicnavi\Oidc\FederatedClient $client */
+
+$entitiesPerTrustAnchor = $client->discoverEntities(
+    criteria: [
+        'entity_type' => ['openid_provider'],
+        // Optional filters:
+        // 'trust_mark_type' => ['https://example.org/trust-mark/type'],
+        // 'query' => 'search text',
+    ],
+    sortClaimPaths: [
+        ['metadata', 'openid_provider', 'display_name'],
+        ['metadata', 'federation_entity', 'display_name'],
+    ],
+    sortOrder: 'asc',
+    forceRefresh: false,
+);
+```
+
+`discoverEntities()` returns the same grouped shape:
+`[trustAnchorId => [entityId => entityPayload, ...]]`.
