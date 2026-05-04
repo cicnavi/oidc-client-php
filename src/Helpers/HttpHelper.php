@@ -61,7 +61,7 @@ class HttpHelper
             (!is_string($cookieParams['samesite']))
         ) {
             $cookieParams['samesite'] = $defaultSameSiteValue;
-        } elseif (! in_array($cookieParams['samesite'], $validSameSiteValues)) {
+        } elseif (! in_array($cookieParams['samesite'], $validSameSiteValues, true)) {
             error_log('Invalid SameSite session cookie attribute value in php.ini. Reverting to default value.');
             $cookieParams['samesite'] = $defaultSameSiteValue;
         } elseif (strcasecmp($cookieParams['samesite'], 'None') === 0) {

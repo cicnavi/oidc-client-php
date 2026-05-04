@@ -183,7 +183,7 @@ class PreRegisteredClient
         } catch (Throwable $throwable) {
             $error = 'Cache validation error. ' . $throwable->getMessage();
             $this->logger?->error($error);
-            throw new OidcClientException($error);
+            throw new OidcClientException($error, $throwable->getCode(), $throwable);
         }
     }
 

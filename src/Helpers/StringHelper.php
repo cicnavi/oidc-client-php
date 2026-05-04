@@ -34,7 +34,7 @@ class StringHelper
                 $string .= substr(str_replace(['/', '+', '='], '', base64_encode($bytes)), 0, $size);
             }
         } catch (Throwable $throwable) {
-            throw new OidcClientException($throwable->getMessage());
+            throw new OidcClientException($throwable->getMessage(), $throwable->getCode(), $throwable);
         }
 
         return $string;

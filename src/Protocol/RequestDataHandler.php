@@ -266,7 +266,11 @@ class RequestDataHandler
 
             return $this->getDecodedHttpResponseJson($response);
         } catch (Throwable $throwable) {
-            throw new OidcClientException('Token data request error. ' . $throwable->getMessage());
+            throw new OidcClientException(
+                'Token data request error. ' . $throwable->getMessage(),
+                $throwable->getCode(),
+                $throwable,
+            );
         }
     }
 
@@ -301,7 +305,9 @@ class RequestDataHandler
                 ['responseBody' => $responseBody]
             );
             throw new OidcClientException(
-                'HTTP request JSON response is not valid.'
+                'HTTP request JSON response is not valid.',
+                $throwable->getCode(),
+                $throwable,
             );
         }
     }
@@ -440,7 +446,7 @@ class RequestDataHandler
         } catch (JwsException $jwsException) {
             $error = 'Error building ID Token: ' . $jwsException->getMessage();
             $this->logger?->error($error, ['idToken' => $idToken]);
-            throw new OidcClientException($error);
+            throw new OidcClientException($error, $jwsException->getCode(), $jwsException);
         }
 
         try {
@@ -449,7 +455,11 @@ class RequestDataHandler
             // If we have already refreshed our cache (we have fresh JWKS), throw...
             if ($refreshCache) {
                 $this->logger?->error('ID token is not valid. ' . $throwable->getMessage());
-                throw new OidcClientException('ID token is not valid. ' . $throwable->getMessage());
+                throw new OidcClientException(
+                    'ID token is not valid. ' . $throwable->getMessage(),
+                    $throwable->getCode(),
+                    $throwable,
+                );
             }
 
             $this->logger?->warning('ID Token signature verification failed, but trying once more with JWKS refresh.');
@@ -538,7 +548,11 @@ class RequestDataHandler
 
             return $claims;
         } catch (Throwable $throwable) {
-            throw new OidcClientException('UserInfo endpoint error. ' . $throwable->getMessage());
+            throw new OidcClientException(
+                'UserInfo endpoint error. ' . $throwable->getMessage(),
+                $throwable->getCode(),
+                $throwable,
+            );
         }
     }
 

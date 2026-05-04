@@ -22,6 +22,7 @@ use SimpleSAML\OpenID\Exceptions\EntityStatementException;
 use SimpleSAML\OpenID\Exceptions\InvalidValueException;
 use SimpleSAML\OpenID\Exceptions\OpenIdException;
 use SimpleSAML\OpenID\Exceptions\TrustChainException;
+use SimpleSAML\OpenID\Federation\EntityCollection\EntityCollectionStoreInterface;
 use SimpleSAML\OpenID\Federation\TrustChain;
 use SimpleSAML\OpenID\Jwks;
 use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairBag;
@@ -140,6 +141,8 @@ class FederatedClient
         ?RequestDataHandler $requestDataHandler = null,
         // phpcs:ignore
         protected readonly AuthorizationRequestMethodEnum $defaultAuthorizationRequestMethod = AuthorizationRequestMethodEnum::FormPost,
+        int $maxDiscoveryDepth = 10,
+        ?EntityCollectionStoreInterface $entityCollectionStore = null,
     ) {
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
         $this->signatureKeyPairFactory = $signatureKeyPairFactory ?? new SignatureKeyPairFactory($this->jwk);
@@ -184,6 +187,8 @@ class FederatedClient
             logger: $this->logger,
             client: $this->httpClient,
             defaultTrustMarkStatusEndpointUsagePolicyEnum: $this->defaultTrustMarkStatusEndpointUsagePolicyEnum,
+            maxDiscoveryDepth: $maxDiscoveryDepth,
+            entityCollectionStore: $entityCollectionStore,
         );
 
         $this->federationSignatureKeyPairBag = $this->signatureKeyPairBagFactory->fromConfig(
@@ -855,5 +860,80 @@ class FederatedClient
             useNonce: $this->useNonce,
             fetchUserinfoClaims: $this->fetchUserinfoClaims
         );
+    }
+
+    /**
+     * Discover OpenID Providers across all configured trus anchors.
+     *
+     * @param non-empty-array<int, non-empty-string[]> $sortClaimPaths Optional
+     *  claim paths used for sorting the entities (multiple allowed). Example:
+     *  [['metadata', 'openid_provider', 'display_name'], ['metadata', 'federation_entity', 'display_name']]
+     * @param bool $forceRefresh Whether to force refreshing the cache.
+     *
+     * @return array<string, array<string,array<string, mixed>>> An associative
+     *  array where each trust anchor ID maps to its list of discovered OPs.
+     */
+    public function discoverOpenIdProviders(
+        array $sortClaimPaths = [
+            ['metadata', 'openid_provider', 'display_name'],
+            ['metadata', 'federation_entity', 'display_name'],
+        ],
+        bool $forceRefresh = false,
+    ): array {
+        return $this->discoverEntities(
+            criteria: ['entity_type' => ['openid_provider']],
+            sortClaimPaths: [
+                ['metadata', 'openid_provider', 'display_name'],
+                ['metadata', 'federation_entity', 'display_name'],
+            ],
+            forceRefresh: $forceRefresh,
+        );
+    }
+
+    /**
+     * Discovers federated entities across all configured trust anchors based on
+     * the provided criteria and sorting options.
+     *
+     * @param array{
+     *     entity_type?: string[],
+     *     trust_mark_type?: string[],
+     *     query?: string,
+     *   } $criteria $criteria Optional criteria to filter the discovered
+     * entities. Example: ['entity_type' => ['openid_provider']]
+     * @param non-empty-array<int, non-empty-string[]> $sortClaimPaths Optional
+     * claim paths used for sorting the entities (multiple allowed). Example:
+     * [['metadata', 'federation_entity', 'display_name']]
+     * @param 'asc'|'desc' $sortOrder The sorting order, either 'asc' (ascending)
+     * or 'desc' (descending). Defaults to 'asc'.
+     * @param bool $forceRefresh Whether to force refreshing the cache.
+     *
+     * @return array<string, array<string,array<string, mixed>>> An associative
+     * array where each trust anchor ID maps to its list of discovered entities.
+     * [trustAnchorId => [entityId1 => entityPayload1, entityId2 => entityPayload2, ...]]
+     */
+    public function discoverEntities(
+        array $criteria = [],
+        array $sortClaimPaths = [['metadata', 'federation_entity', 'display_name']],
+        string $sortOrder = 'asc',
+        bool $forceRefresh = false,
+    ): array {
+        $entities = [];
+
+        // Do entity discovery for each trust anchor.
+        foreach ($this->getEntityConfig()->getTrustAnchorBag()->getAllEntityIds() as $trustAnchorId) {
+            $entities[$trustAnchorId] = $this->getFederation()
+                ->federationDiscovery()
+                ->discover(
+                    trustAnchorId: $trustAnchorId,
+                    forceRefresh: $forceRefresh,
+                )->filter(
+                    criteria: $criteria,
+                )->sort(
+                    claimPaths: $sortClaimPaths,
+                    sortOrder: $sortOrder,
+                )->getEntities();
+        }
+
+        return $entities;
     }
 }

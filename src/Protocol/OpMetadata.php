@@ -57,7 +57,11 @@ class OpMetadata implements MetadataInterface
 
             $this->metadata = $metadata;
         } catch (Throwable $throwable) {
-            throw new OidcClientException('OIDC Provider (OP) Metadata fetch error. ' . $throwable->getMessage());
+            throw new OidcClientException(
+                'OIDC Provider (OP) Metadata fetch error. ' . $throwable->getMessage(),
+                $throwable->getCode(),
+                $throwable,
+            );
         }
     }
 

@@ -114,9 +114,7 @@ return [
     'fetch_userinfo_claims' => true,
     'authorization_request_method' => AuthorizationRequestMethodEnum::FormPost,
 
-    // Hardcoded OpenID Providers, until discovery is implemented.
-    'open_id_providers' => new \SimpleSAML\OpenID\ValueAbstracts\UniqueStringBag(
-        'https://idp.mivanci.incubator.hexaa.eu',
-        'https://oidfed-op-demo.incubator.geant.org',
-    ),
+    // Federation Discovery configuration.
+    'max_discovery_depth' => 10,
+
 ];
