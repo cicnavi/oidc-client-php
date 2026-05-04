@@ -1,5 +1,13 @@
 # Upgrading
 
+## [3.1.0] - 2026-05-04
+
+### Added
+
+In src/FederatedClient.php added methods `discoverOpenIdProviders` and
+`discoverEntities` to `FederatedClient` class, which can be used to discover
+OPs and entities in federated environments.
+
 ## [3.0.0] - 2025-12-02
 
 Major release with breaking changes to the client instantiation API.

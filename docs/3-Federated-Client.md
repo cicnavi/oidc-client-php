@@ -133,7 +133,7 @@ exit();
 See the [Entity Configuration Endpoint Example](../examples/FederatedClient/FederationConfigurationController.php)
 for a sample implementation.
 
-## Federation Discovery
+## Federation Discovery (from v3.1)
 
 The client can discover OPs and their metadata using the `FederationDiscovery`
 service.
