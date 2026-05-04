@@ -902,6 +902,7 @@ class FederatedClient
         array $criteria = [],
         array $sortClaimPaths = [['metadata', 'federation_entity', 'display_name']],
         string $sortOrder = 'asc',
+        bool $forceRefresh = false,
     ): array {
         $entities = [];
 
@@ -911,6 +912,7 @@ class FederatedClient
                 ->federationDiscovery()
                 ->discover(
                     trustAnchorId: $trustAnchorId,
+                    forceRefresh: $forceRefresh,
                 )->filter(
                     criteria: $criteria,
                 )->sort(
