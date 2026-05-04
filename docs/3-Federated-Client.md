@@ -12,6 +12,7 @@ from the OpenID Provider (OP) to a configured Trust Anchor.
 the first authentication request.
 - **Metadata Management**: Handles the generation of the RP's Entity
 Configuration and metadata, including keys and trust marks.
+- **Federation Discovery**: Supports discovering OPs and their metadata.
 - **OIDC Flow**: Manages the authorization code flow, including PKCE,
 state/nonce validation, and ID Token verification.
 - **Caching**: Efficiently caches resolved trust chains and metadata to improve
@@ -131,3 +132,38 @@ exit();
 
 See the [Entity Configuration Endpoint Example](../examples/FederatedClient/FederationConfigurationController.php)
 for a sample implementation.
+
+## Federation Discovery
+
+The client can discover OPs and their metadata using the `FederationDiscovery`
+service.
+
+```php
+/** @var \Cicnavi\Oidc\FederatedClient $client */
+
+$trustAnchorId = 'https://example.com/trust-anchor';
+
+$opEntities = $client->getFederation()
+                   ->federationDiscovery()
+                   ->discover(
+                       trustAnchorId: $trustAnchorId,
+                   )->filter(
+                       criteria: ['entity_type' => ['openid_provider']],
+                   )->sort(
+                       claimPaths: [
+                           ['metadata', 'openid_provider', 'display_name'],
+                           ['metadata', 'federation_entity', 'display_name']
+                       ],
+                       sortOrder: 'asc',
+                   )->getEntities();
+
+// $opEntities is an array of OP entities that match the criteria, keyed by
+// entity ID, and sorted by display name in this case. Use it to present
+// OP available for login to the user.
+```
+
+Note that this operation can be time-consuming due to the full traversal of the
+federation under the specified Trust Anchor. The implementation uses caching
+to improve performance on subsequent calls.
+
+To warmup the cache, you can

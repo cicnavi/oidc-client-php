@@ -861,4 +861,64 @@ class FederatedClient
             fetchUserinfoClaims: $this->fetchUserinfoClaims
         );
     }
+
+    /**
+     * Discover OpenID Providers across all configured trus anchors.
+     *
+     * @return array<string, array<string,array<string, mixed>>> An associative
+     *  array where each trust anchor ID maps to its list of discovered OPs.
+     */
+    public function discoverOpenIdProviders(): array
+    {
+        return $this->discoverEntities(
+            criteria: ['entity_type' => ['openid_provider']],
+            sortClaimPaths: [
+                ['metadata', 'openid_provider', 'display_name'],
+                ['metadata', 'federation_entity', 'display_name']
+            ],
+        );
+    }
+
+    /**
+     * Discovers federated entities across all configured trust anchors based on
+     * the provided criteria and sorting options.
+     *
+     * @param array{
+     *     entity_type?: string[],
+     *     trust_mark_type?: string[],
+     *     query?: string,
+     *   } $criteria $criteria Optional criteria to filter the discovered
+     * entities. Example: ['entity_type' => ['openid_provider']]
+     * @param non-empty-array<int, non-empty-string[]> $sortClaimPaths Optional
+     * claim paths used for sorting the entities (multiple allowed). Example:
+     * [['metadata', 'federation_entity', 'display_name']]
+     * @param 'asc'|'desc' $sortOrder The sorting order, either 'asc' (ascending)
+     * or 'desc' (descending). Defaults to 'asc'.
+     * @return array<string, array<string,array<string, mixed>>> An associative
+     * array where each trust anchor ID maps to its list of discovered entities.
+     * [trustAnchorId => [entityId1 => entityPayload1, entityId2 => entityPayload2, ...]]
+     */
+    public function discoverEntities(
+        array $criteria = [],
+        array $sortClaimPaths = [['metadata', 'federation_entity', 'display_name']],
+        string $sortOrder = 'asc',
+    ): array {
+        $entities = [];
+
+        // Do entity discovery for each trust anchor.
+        foreach ($this->getEntityConfig()->getTrustAnchorBag()->getAllEntityIds() as $trustAnchorId) {
+            $entities[$trustAnchorId] = $this->getFederation()
+                ->federationDiscovery()
+                ->discover(
+                    trustAnchorId: $trustAnchorId,
+                )->filter(
+                    criteria: $criteria,
+                )->sort(
+                    claimPaths: $sortClaimPaths,
+                    sortOrder: $sortOrder,
+                )->getEntities();
+        }
+
+        return $entities;
+    }
 }

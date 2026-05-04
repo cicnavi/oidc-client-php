@@ -119,4 +119,8 @@ return [
         'https://idp.mivanci.incubator.hexaa.eu',
         'https://oidfed-op-demo.incubator.geant.org',
     ),
+
+    // Federation Discovery configuration.
+    'max_discovery_depth' => 10,
+
 ];

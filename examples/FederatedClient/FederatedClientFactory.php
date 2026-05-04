@@ -32,6 +32,11 @@ class FederatedClientFactory
 
     public function build(): FederatedClient
     {
+        // For federation discovery, we can inject our own
+        // EntityCollectionStoreInterface implementation, but in this example,
+        // we'll just use the default implementation.
+        $entityCollectionStore = null;
+
         return new FederatedClient(
             entityConfig: $this->config['entity_config'],
             relyingPartyConfig: $this->config['relying_party_config'],
@@ -40,11 +45,11 @@ class FederatedClientFactory
             maxCacheDuration: $this->config['max_cache_duration'],
             timestampValidationLeeway: $this->config['timestamp_validation_leeway'],
             supportedAlgorithms: $this->config['supported_algorithms'] ?? new SupportedAlgorithms(
-            new SignatureAlgorithmBag(
-                SignatureAlgorithmEnum::ES256,
-                SignatureAlgorithmEnum::RS256,
+                new SignatureAlgorithmBag(
+                    SignatureAlgorithmEnum::ES256,
+                    SignatureAlgorithmEnum::RS256,
+                ),
             ),
-        ),
             logger: $this->logger,
             maxTrustChainDepth: $this->config['max_trust_chain_depth'] ?? 9,
             defaultTrustMarkStatusEndpointUsagePolicyEnum: $this->config['default_trust_mark_status_endpoint_usage_policy'] ?? TrustMarkStatusEndpointUsagePolicyEnum::NotUsed,
@@ -55,6 +60,8 @@ class FederatedClientFactory
             fetchUserinfoClaims: $this->config['fetch_userinfo_claims'] ?? true,
             pkceCodeChallengeMethod: $this->config['pkce_code_challenge_method'] ?? PkceCodeChallengeMethodEnum::S256,
             defaultAuthorizationRequestMethod: $this->config['authorization_request_method'] ?? AuthorizationRequestMethodEnum::FormPost,
+            maxDiscoveryDepth: $this->config['max_discovery_depth'] ?? 10,
+            entityCollectionStore: $entityCollectionStore,
         );
     }
 }
