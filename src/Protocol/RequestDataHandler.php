@@ -159,7 +159,12 @@ class RequestDataHandler
         ?ServerRequestInterface $request = null,
         bool $useState = true,
     ): array {
-        $params = $request?->getQueryParams() ?? $_GET;
+        $queryParams = $request?->getQueryParams() ?? $_GET;
+        $parsedBody = $request?->getParsedBody() ?? $_POST;
+        $params = array_merge(
+            $queryParams,
+            is_array($parsedBody) ? $parsedBody : []
+        );
 
         $error = $params[ParamsEnum::Error->value] ?? null;
         $errorDescription = $params[ParamsEnum::ErrorDescription->value] ?? null;

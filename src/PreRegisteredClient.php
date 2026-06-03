@@ -26,6 +26,7 @@ use SimpleSAML\OpenID\Codebooks\ClaimsEnum;
 use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\ParamsEnum;
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
+use SimpleSAML\OpenID\Codebooks\ResponseModesEnum;
 use SimpleSAML\OpenID\Codebooks\ResponseTypesEnum;
 use SimpleSAML\OpenID\Core;
 use SimpleSAML\OpenID\Exceptions\InvalidValueException;
@@ -127,8 +128,11 @@ class PreRegisteredClient
         protected readonly DateInterval $maxCacheDuration = new DateInterval('PT6H'),
         // phpcs:ignore
         protected readonly AuthorizationRequestMethodEnum $defaultAuthorizationRequestMethod = AuthorizationRequestMethodEnum::FormPost,
+        protected readonly ?ResponseModesEnum $responseMode = null,
         ?RequestDataHandler $requestDataHandler = null,
     ) {
+        $this->validateResponseMode($this->responseMode);
+
         $this->cache = $cache ?? new FileCache('oprcpc-' . md5($this->clientId));
 
         $this->validateCache();
@@ -195,8 +199,12 @@ class PreRegisteredClient
     public function authorize(
         ?AuthorizationRequestMethodEnum $authorizationRequestMethod = null,
         ?ResponseInterface $response = null,
+        ?ResponseModesEnum $responseMode = null,
     ): ?ResponseInterface {
         $authorizationRequestMethod ??= $this->defaultAuthorizationRequestMethod;
+        $responseMode ??= $this->responseMode;
+
+        $this->validateResponseMode($responseMode);
 
         $state = $this->useState ? $this->requestDataHandler->getState() : null;
         $nonce = $this->useNonce ? $this->requestDataHandler->getNonce() : null;
@@ -214,6 +222,7 @@ class PreRegisteredClient
             ParamsEnum::ClientId->value => $this->clientId,
             ParamsEnum::RedirectUri->value => $this->redirectUri,
             ParamsEnum::Scope->value => $this->scope,
+            ParamsEnum::ResponseMode->value => $responseMode?->value,
 
             ParamsEnum::State->value => $state,
             ParamsEnum::Nonce->value => $nonce,
@@ -311,5 +320,18 @@ class PreRegisteredClient
     {
         $this->cache->clear();
         $this->cache->set(self::CACHE_KEY_OP_CONFIGURATION_URL, $this->opConfigurationUrl);
+    }
+
+    /**
+     * @throws OidcClientException
+     */
+    protected function validateResponseMode(?ResponseModesEnum $responseMode): void
+    {
+        if ($responseMode === ResponseModesEnum::Fragment) {
+            throw new OidcClientException(
+                "The 'fragment' response mode is not supported because URLs with fragments are " .
+                "not sent to the server and cannot be handled by a server-side PHP client."
+            );
+        }
     }
 }
