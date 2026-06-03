@@ -870,7 +870,8 @@ class FederatedClient
             clientAssertion: $clientAssertion->getToken(),
             usePkce: $this->usePkce,
             useNonce: $this->useNonce,
-            fetchUserinfoClaims: $this->fetchUserinfoClaims
+            fetchUserinfoClaims: $this->fetchUserinfoClaims,
+            expectedIssuer: $opEntityId,
         );
     }
 

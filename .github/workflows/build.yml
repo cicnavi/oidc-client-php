@@ -23,3 +23,54 @@ jobs:
         run: composer run-script pre-commit
       - name: Show PHP version
         run: php -v
+
+  conformance:
+    name: OIDC Conformance Tests
+    runs-on: ubuntu-latest
+    env:
+      SUITE_BASE_URL: https://localhost.emobix.co.uk:8443
+      VERSION: release-v5.1.40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: main
+      - name: Setup Python Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install httpx
+      - name: Conformance Suite Checkout
+        run: git clone --depth 1 --single-branch --branch $VERSION https://gitlab.com/openid/conformance-suite.git
+      - name: Conformance Suite Build
+        working-directory: ./conformance-suite
+        run: |
+          sed -i -e 's/localhost/localhost.emobix.co.uk/g' src/main/resources/application.properties
+          sed -i -e 's/-B clean/-B -DskipTests=true/g' builder-compose.yml
+          docker compose -f builder-compose.yml run builder
+      - name: Run Conformance Suite
+        working-directory: ./conformance-suite
+        run: |
+          docker compose -f docker-compose-dev.yml up -d
+          while ! curl -skfail https://localhost.emobix.co.uk:8443/api/runner/available >/dev/null; do sleep 2; done
+      - name: Start RP App Docker
+        working-directory: ./main
+        run: |
+          docker compose -f docker/docker-compose.yml --project-directory . up -d --build
+          sleep 5
+      - name: Start trigger-client daemon
+        run: |
+          python3 ./main/conformance-tests/trigger-client.py &
+          sleep 2
+      - name: Run Basic conformance tests
+        run: |
+          ./conformance-suite/scripts/run-test-plan.py --expected-failures-file ./main/conformance-tests/basic-warnings.json --expected-skips-file ./main/conformance-tests/basic-skips.json "oidcc-client-basic-certification-test-plan[client_registration=static_client][request_type=plain_http_request]" ./main/conformance-tests/conformance-basic-ci.json
+      - name: Stop RP App
+        if: always()
+        working-directory: ./main
+        run: |
+          docker compose -f docker/docker-compose.yml down
+      - name: Stop Conformance Suite
+        if: always()
+        working-directory: ./conformance-suite
+        run: |
+          docker compose -f docker-compose-dev.yml down || true
+          sudo rm -rf mongo

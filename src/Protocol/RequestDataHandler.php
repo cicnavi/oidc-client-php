@@ -119,6 +119,7 @@ class RequestDataHandler
         bool $usePkce = true,
         bool $useNonce = true,
         bool $fetchUserinfoClaims = true,
+        ?string $expectedIssuer = null,
     ): array {
 
         $tokenData = $this->requestTokenData(
@@ -145,6 +146,8 @@ class RequestDataHandler
             userinfoEndpoint: $opUserinfoEndpoint,
             useNonce: $useNonce,
             fetchUserinfoClaims: $fetchUserinfoClaims,
+            expectedIssuer: $expectedIssuer,
+            expectedClientId: $clientId,
         );
     }
 
@@ -403,6 +406,8 @@ class RequestDataHandler
         ?string $userinfoEndpoint = null,
         bool $useNonce = true,
         bool $fetchUserinfoClaims = true,
+        ?string $expectedIssuer = null,
+        ?string $expectedClientId = null,
     ): array {
         $idTokenClaims = [];
         $userInfoClaims = [];
@@ -413,6 +418,9 @@ class RequestDataHandler
                 idToken: $idToken,
                 jwksUri: $jwksUri,
                 useNonce: $useNonce,
+                refreshCache: false,
+                expectedIssuer: $expectedIssuer,
+                expectedClientId: $expectedClientId,
             );
         }
 
@@ -443,6 +451,8 @@ class RequestDataHandler
         string $jwksUri,
         bool $useNonce = true,
         bool $refreshCache = false,
+        ?string $expectedIssuer = null,
+        ?string $expectedClientId = null,
     ): array {
         $jwks = $this->getJwksUriContent($jwksUri, $refreshCache);
 
@@ -474,7 +484,65 @@ class RequestDataHandler
                 jwksUri: $jwksUri,
                 useNonce: $useNonce,
                 refreshCache: true,
+                expectedIssuer: $expectedIssuer,
+                expectedClientId: $expectedClientId,
             );
+        }
+
+        // Validate Issuer (iss)
+        if ($expectedIssuer !== null) {
+            $iss = $idTokenJws->getIssuer();
+            if ($iss !== $expectedIssuer) {
+                $error = sprintf('Issuer claim "%s" does not match expected issuer "%s".', $iss, $expectedIssuer);
+                $this->logger?->error($error);
+                throw new OidcClientException($error);
+            }
+        }
+
+        // Validate Audience (aud) and Authorized Party (azp)
+        if ($expectedClientId !== null) {
+            $aud = $idTokenJws->getAudience();
+            if ($aud !== [] && !in_array($expectedClientId, $aud, true)) {
+                $error = sprintf('Audience claim does not contain expected client ID "%s".', $expectedClientId);
+                $this->logger?->error($error);
+                throw new OidcClientException($error);
+            }
+
+            if (count($aud) > 1) {
+                $azp = $idTokenJws->getAuthorizedParty();
+                if ($azp === null) {
+                    $error = 'Authorized party claim (azp) is missing but multiple audiences are present.';
+                    $this->logger?->error($error);
+                    throw new OidcClientException($error);
+                }
+
+                if ($azp !== $expectedClientId) {
+                    $error = sprintf(
+                        'Authorized party claim "%s" does not match expected client ID "%s".',
+                        $azp,
+                        $expectedClientId,
+                    );
+                    $this->logger?->error($error);
+                    throw new OidcClientException($error);
+                }
+            }
+        }
+
+        // Validate Expiration Time (exp)
+        $exp = $idTokenJws->getExpirationTime();
+        if ($exp > 0 && time() > $exp) {
+            $error = 'ID Token has expired.';
+            $this->logger?->error($error);
+            throw new OidcClientException($error);
+        }
+
+        // Validate Issued At (iat)
+        $iat = $idTokenJws->getIssuedAt();
+        // Allow a small clock skew (e.g. 5 minutes or 300 seconds)
+        if ($iat > 0 && time() < ($iat - 300)) {
+            $error = 'ID Token was issued in the future.';
+            $this->logger?->error($error);
+            throw new OidcClientException($error);
         }
 
         if ($useNonce) {

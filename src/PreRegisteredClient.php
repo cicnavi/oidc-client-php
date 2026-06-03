@@ -288,6 +288,10 @@ class PreRegisteredClient
         $opUserinfoEndpoint = $this->metadata->get(ClaimsEnum::UserinfoEndpoint->value);
         $opUserinfoEndpoint = is_string($opUserinfoEndpoint) ? $opUserinfoEndpoint : null;
 
+        $expectedIssuer = is_string($expectedIssuer = $this->metadata->get(ClaimsEnum::Issuer->value)) ?
+        $expectedIssuer :
+        null;
+
 
         return $this->requestDataHandler->getUserData(
             clientAuthenticationMethod: ClientAuthenticationMethodsEnum::ClientSecretBasic,
@@ -301,7 +305,8 @@ class PreRegisteredClient
             clientAssertion: null,
             usePkce: $this->usePkce,
             useNonce: $this->useNonce,
-            fetchUserinfoClaims: $this->fetchUserinfoClaims
+            fetchUserinfoClaims: $this->fetchUserinfoClaims,
+            expectedIssuer: $expectedIssuer,
         );
     }
 
