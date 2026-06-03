@@ -1,0 +1,21 @@
+services:
+  oidc-rp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    hostname: rp.local.conformance.test
+    ports:
+      - "443:443"
+    environment:
+      - OP_DISCOVERY_URL=https://localhost.emobix.co.uk:8443/test/a/oidc-client-php/.well-known/openid-configuration
+      - CLIENT_ID=oidc-client-php-test
+      - CLIENT_SECRET=oidc-client-php-test-secret
+      - REDIRECT_URI=https://rp.local.conformance.test/callback
+      - SCOPE=openid profile email
+    extra_hosts:
+      - "localhost.emobix.co.uk:host-gateway"
+
+networks:
+  default:
+    name: conformance-suite_default
+    external: true

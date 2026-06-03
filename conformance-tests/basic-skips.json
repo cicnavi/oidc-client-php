@@ -1,0 +1,7 @@
+[
+  {
+    "test-name": "oidcc-client-test-idtoken-sig-none",
+    "variant": "*",
+    "configuration-filename": "*"
+  }
+]

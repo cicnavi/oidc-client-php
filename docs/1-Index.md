@@ -35,6 +35,7 @@ passed by value.
 Check the dedicated sections below for more details about each client type:
 * [Pre-registered Client](2-Pre-Registered-Client.md)
 * [Federated Client](3-Federated-Client.md)
+* [Conformance Testing](4-Conformance-Testing.md)
 
 
 ## Note on SameSite Cookie Attribute

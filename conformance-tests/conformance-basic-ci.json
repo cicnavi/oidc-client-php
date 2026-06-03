@@ -1,0 +1,24 @@
+{
+    "alias": "oidc-client-php",
+    "description": "OIDC RP conformance tests for oidc-client-php",
+    "client": {
+        "client_id": "oidc-client-php-test",
+        "client_secret": "oidc-client-php-test-secret",
+        "redirect_uri": "https://rp.local.conformance.test/callback",
+        "request_type": "plain_http_request"
+    },
+    "browser": [
+        {
+            "match": "https://rp.local.conformance.test*",
+            "tasks": [
+                {
+                    "task": "Trigger RP login and wait for completion",
+                    "match": "https://rp.local.conformance.test/",
+                    "commands": [
+                        ["wait", "id", "submission_complete", 30]
+                    ]
+                }
+            ]
+        }
+    ]
+}

@@ -275,10 +275,11 @@ final class PreRegisteredClientTest extends TestCase
                 \SimpleSAML\OpenID\Codebooks\ParamsEnum::Code->value => 'auth-code-123',
             ]);
 
-        $this->metadataMock->expects($this->exactly(3))->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(4))->method('get')->willReturnMap([
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::JwksUri->value, 'https://op.example.org/jwks'],
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::TokenEndpoint->value, 'https://op.example.org/token'],
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::UserinfoEndpoint->value, 'https://op.example.org/userinfo'],
+            [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::Issuer->value, 'https://op.example.org'],
         ]);
 
         $expected = ['sub' => 'user-1'];
