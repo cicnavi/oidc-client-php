@@ -29,8 +29,11 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 WORKDIR /var/www/html
 COPY . /var/www/html/
 
+# Fix dubious ownership warning for git
+RUN git config --global --add safe.directory /var/www/html
+
 # Install PHP dependencies
-RUN composer install --no-dev --prefer-dist --optimize-autoloader
+RUN composer install --no-dev --prefer-dist --optimize-autoloader --ignore-platform-req=ext-xdebug
 
 # Make sure index.php is loaded
 COPY docker/rp-app/index.php /var/www/html/index.php
