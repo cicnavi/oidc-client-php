@@ -30,6 +30,7 @@ You can also customize the client behavior with optional parameters:
 
 ```php
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
+use SimpleSAML\OpenID\Codebooks\ResponseModesEnum;
 use Cicnavi\Oidc\PreRegisteredClient;
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
 
@@ -50,7 +51,8 @@ $oidcClient = new PreRegisteredClient(
     fetchUserinfoClaims: true,  // Fetch claims from the userinfo endpoint
     maxCacheDuration: new \DateInterval('PT6H'),  // Cache max TTL 
     logger: null,  // \Psr\Log\LoggerInterface instance
-    defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::FormPost // Determines the default authorization request method.
+    defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::FormPost, // Determines the default authorization request method.
+    responseMode: null, // Determines the OIDC response mode (e.g., ResponseModesEnum::Query or ResponseModesEnum::FormPost. Fragment is not supported). Null by default.
 );
 ```
 
@@ -61,11 +63,17 @@ login process, you can use the `authorize()` method:
 
 ```php 
 use Cicnavi\Oidc\PreRegisteredClient;
+use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
+use SimpleSAML\OpenID\Codebooks\ResponseModesEnum;
 /** @var PreRegisteredClient $oidcClient */
 
 // File: authorize.php
 try {
-    $oidcClient->authorize();
+    // You can also explicitly pass custom authorization request method and response mode:
+    $oidcClient->authorize(
+        authorizationRequestMethod: AuthorizationRequestMethodEnum::Query,
+        responseMode: ResponseModesEnum::Query
+    );
 } catch (\Throwable $exception) {
     // In real app log the error, redirect user and show error message.
     throw $exception;
@@ -78,8 +86,9 @@ server will initiate a browser redirection to the `redirect_uri`
 which was registered with the client (this is your callback).
 
 On the callback URI, you'll receive authorization `code` and `state`
-(if state check is enabled) as GET parameters. To use that
-authorization code, you can use the `getUserData()` method.
+(if state check is enabled) as GET (for `query` response mode) or POST
+(for `form_post` response mode) parameters. The `getUserData()` method
+automatically handles both types of callbacks.
 This method will validate `state` (if `state` check is enabled) and send
 an HTTP request to token endpoint using the provided authorization `code`
 to retrieve tokens (access and ID token). After that it will try to

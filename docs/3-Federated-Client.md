@@ -68,6 +68,14 @@ use FederatedClient\FederatedClientFactory;
 $config = require 'path/to/config.php';
 $factory = new FederatedClientFactory($config, $logger, $cache);
 $client = $factory->build();
+
+// Direct instantiation with custom response mode:
+use SimpleSAML\OpenID\Codebooks\ResponseModesEnum;
+$client = new FederatedClient(
+    entityConfig: $entityConfig,
+    relyingPartyConfig: $relyingPartyConfig,
+    responseMode: ResponseModesEnum::FormPost // Optional
+);
 ```
 
 ### 2. Initiating Authentication
@@ -77,19 +85,22 @@ method takes the Entity ID of the OpenID Provider the user wants to log in with.
 
 ```php
 
+use SimpleSAML\OpenID\Codebooks\ResponseModesEnum;
+
 public function login(string $opEntityId) {
     /** @var \Cicnavi\Oidc\FederatedClient $client */
     // This will resolve the trust chain, register the client if needed,
-    // and initiate the authentication flow.
-    $client->autoRegisterAndAuthenticate($opEntityId);
+    // and initiate the authentication flow. You can optionally specify a response mode:
+    $client->autoRegisterAndAuthenticate($opEntityId, responseMode: ResponseModesEnum::FormPost);
 }
 ```
 
 ### 3. Handling the Callback
 
 After the user authenticates at the OP, they are redirected back to your
-`redirect_uri`. Use the `getUserData` method to complete the flow and
-collect user information.
+`redirect_uri` via GET (for query response mode) or POST (for form_post response mode).
+Use the `getUserData` method to complete the flow and collect user information.
+The client automatically parses and handles both GET and POST requests.
 
 ```php
 

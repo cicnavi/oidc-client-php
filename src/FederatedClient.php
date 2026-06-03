@@ -41,6 +41,7 @@ use SimpleSAML\OpenID\Codebooks\ClientRegistrationTypesEnum;
 use SimpleSAML\OpenID\Codebooks\EntityTypesEnum;
 use SimpleSAML\OpenID\Codebooks\GrantTypesEnum;
 use SimpleSAML\OpenID\Codebooks\HashAlgorithmsEnum;
+use SimpleSAML\OpenID\Codebooks\ResponseModesEnum;
 use SimpleSAML\OpenID\Codebooks\ResponseTypesEnum;
 use SimpleSAML\OpenID\Codebooks\TokenEndpointAuthMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\TrustMarkStatusEndpointUsagePolicyEnum;
@@ -141,9 +142,11 @@ class FederatedClient
         ?RequestDataHandler $requestDataHandler = null,
         // phpcs:ignore
         protected readonly AuthorizationRequestMethodEnum $defaultAuthorizationRequestMethod = AuthorizationRequestMethodEnum::FormPost,
+        protected readonly ?ResponseModesEnum $responseMode = null,
         int $maxDiscoveryDepth = 10,
         ?EntityCollectionStoreInterface $entityCollectionStore = null,
     ) {
+        $this->validateResponseMode($this->responseMode);
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
         $this->signatureKeyPairFactory = $signatureKeyPairFactory ?? new SignatureKeyPairFactory($this->jwk);
         $this->signatureKeyPairBagFactory = $signatureKeyPairBagFactory ?? new SignatureKeyPairBagFactory(
@@ -347,6 +350,10 @@ class FederatedClient
         $rpMetadata[ClaimsEnum::RequestObjectSigningAlgValuesSupported->value] =
         $this->relyingPartyConfig->getConnectSignatureKeyPairBag()->getAllAlgorithmNamesUnique();
         $rpMetadata[ClaimsEnum::Scope->value] = $this->relyingPartyConfig->getScopeBag()->toString();
+        $rpMetadata[ClaimsEnum::ResponseModesSupported->value] = [
+            ResponseModesEnum::Query->value,
+            ResponseModesEnum::FormPost->value,
+        ];
         if ($this->includeSoftwareId) {
             $rpMetadata[ClaimsEnum::SoftwareId->value] = 'https://github.com/cicnavi/oidc-client-php';
         }
@@ -512,8 +519,11 @@ class FederatedClient
         ?ResponseInterface $response = null,
         ?string $clientRedirectUri = null,
         ?AuthorizationRequestMethodEnum $authorizationRequestMethod = null,
+        ?ResponseModesEnum $responseMode = null,
     ): ?ResponseInterface {
         $authorizationRequestMethod ??= $this->defaultAuthorizationRequestMethod;
+        $responseMode ??= $this->responseMode;
+        $this->validateResponseMode($responseMode);
         $trustAnchorBag = $this->entityConfig->getTrustAnchorBag();
         if ($specificTrustAnchors instanceof TrustAnchorConfigBag) {
             $trustAnchorBag = $trustAnchorBag->getInCommonWith($specificTrustAnchors);
@@ -685,6 +695,7 @@ class FederatedClient
             ParamsEnum::ResponseType->value => ResponseTypesEnum::Code->value,
             ParamsEnum::RedirectUri->value => $clientRedirectUri,
             ParamsEnum::Scope->value => $scope,
+            ParamsEnum::ResponseMode->value => $responseMode?->value,
             ParamsEnum::State->value => $state,
             ParamsEnum::Nonce->value => $nonce,
             ParamsEnum::CodeChallenge->value => $pkceCodeChallenge,
@@ -724,6 +735,7 @@ class FederatedClient
             ParamsEnum::ResponseType->value => ResponseTypesEnum::Code->value,
             ParamsEnum::ClientId->value => $this->entityConfig->getEntityId(),
             ParamsEnum::RedirectUri->value => $clientRedirectUri,
+            ParamsEnum::ResponseMode->value => $responseMode?->value,
         ]);
 
         $this->logger?->debug(
@@ -935,5 +947,18 @@ class FederatedClient
         }
 
         return $entities;
+    }
+
+    /**
+     * @throws OidcClientException
+     */
+    protected function validateResponseMode(?ResponseModesEnum $responseMode): void
+    {
+        if ($responseMode === ResponseModesEnum::Fragment) {
+            throw new OidcClientException(
+                "The 'fragment' response mode is not supported because URLs with fragments are " .
+                "not sent to the server and cannot be handled by a server-side PHP client."
+            );
+        }
     }
 }

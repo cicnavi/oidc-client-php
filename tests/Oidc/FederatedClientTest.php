@@ -22,6 +22,7 @@ use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmBag;
 use SimpleSAML\OpenID\Algorithms\SignatureAlgorithmEnum;
 use SimpleSAML\OpenID\Codebooks\HashAlgorithmsEnum;
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
+use SimpleSAML\OpenID\Codebooks\ResponseModesEnum;
 use SimpleSAML\OpenID\Codebooks\TrustMarkStatusEndpointUsagePolicyEnum;
 use SimpleSAML\OpenID\Core;
 use SimpleSAML\OpenID\Core\ClientAssertion;
@@ -181,6 +182,7 @@ final class FederatedClientTest extends TestCase
         ?Jwks $jwks = null,
         ?RequestDataHandler $requestDataHandler = null,
         ?AuthorizationRequestMethodEnum $defaultAuthorizationRequestMethod = null,
+        ?ResponseModesEnum $responseMode = null,
     ): FederatedClient {
         $entityConfig ??= $this->entityConfigMock;
         $relyingPartyConfig ??= $this->realyingPartyConfigMock;
@@ -242,6 +244,7 @@ final class FederatedClientTest extends TestCase
             $jwks,
             $requestDataHandler,
             $defaultAuthorizationRequestMethod,
+            $responseMode,
         );
     }
 
@@ -795,5 +798,111 @@ final class FederatedClientTest extends TestCase
         $this->loggerMock->expects($this->once())->method('warning');
         $this->assertSame('https://rp.example.org/default', $method
             ->invoke($sut, 'https://rp.example.org/invalid'));
+    }
+
+    public function testConstructorThrowsIfResponseModeIsFragment(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage("The 'fragment' response mode is not supported");
+
+        $this->sut(responseMode: ResponseModesEnum::Fragment);
+    }
+
+    public function testAutoRegisterAndAuthenticateThrowsIfResponseModeIsFragment(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage("The 'fragment' response mode is not supported");
+
+        $this->sut()->autoRegisterAndAuthenticate(
+            'https://op.example.org',
+            responseMode: ResponseModesEnum::Fragment
+        );
+    }
+
+    public function testAutoRegisterAndAuthenticateSuccessRedirectWithResponseMode(): void
+    {
+        $opEntityId = 'https://op.example.org';
+        $trustAnchorId = 'https://ta.example.org';
+
+        $trustAnchorBagMock = $this->createMock(TrustAnchorConfigBag::class);
+        $trustAnchorBagMock->method('getAllEntityIds')->willReturn([$trustAnchorId]);
+        $this->entityConfigMock->method('getTrustAnchorBag')->willReturn($trustAnchorBagMock);
+        $this->entityConfigMock->method('getEntityId')->willReturn('https://rp.example.org');
+
+        $opTrustChainBagMock = $this->createMock(TrustChainBag::class);
+        $trustChainResolverMock = $this->createMock(TrustChainResolver::class);
+        $this->federationMock->method('trustChainResolver')->willReturn($trustChainResolverMock);
+        $trustChainResolverMock->method('for')->willReturn($opTrustChainBagMock);
+
+        $opTrustChainMock = $this->createMock(TrustChain::class);
+        $opTrustChainBagMock->method('getShortest')->willReturn($opTrustChainMock);
+
+        $opEntityStatementMock = $this->createMock(EntityStatement::class);
+        $opTrustChainMock->method('getResolvedLeaf')->willReturn($opEntityStatementMock);
+        $opEntityStatementMock->method('getSubject')->willReturn($opEntityId);
+        $opEntityStatementMock->method('getIssuer')->willReturn($opEntityId);
+
+        $opMetadata = [
+            'authorization_endpoint' => 'https://op.example.org/auth',
+            'issuer' => $opEntityId,
+        ];
+        $opTrustChainMock->method('getResolvedMetadata')->willReturn($opMetadata);
+
+        $keyPairResolverMock = $this->createMock(\SimpleSAML\OpenID\Utils\KeyPairResolver::class);
+        $this->federationMock->method('keyPairResolver')->willReturn($keyPairResolverMock);
+
+        $signingKeyPairMock = $this->createMock(SignatureKeyPair::class);
+        $keyPairResolverMock->method('resolveSignatureKeyPairByAlgorithm')->willReturn($signingKeyPairMock);
+
+        $trustAnchorMock = $this->createMock(EntityStatement::class);
+        $opTrustChainMock->method('getResolvedTrustAnchor')->willReturn($trustAnchorMock);
+        $trustAnchorMock->method('getIssuer')->willReturn($trustAnchorId);
+
+        $rpTrustChainBagMock = $this->createMock(TrustChainBag::class);
+        $rpTrustChainBagMock->method('getShortest')->willReturn($this->createStub(TrustChain::class));
+        $trustChainResolverMock->method('for')
+            ->willReturnOnConsecutiveCalls($opTrustChainBagMock, $rpTrustChainBagMock);
+
+        $helpersMock = $this->createMock(\SimpleSAML\OpenID\Helpers::class);
+        $this->federationMock->method('helpers')->willReturn($helpersMock);
+        $dateTimeHelperMock = $this->createMock(\SimpleSAML\OpenID\Helpers\DateTime::class);
+        $helpersMock->method('dateTime')->willReturn($dateTimeHelperMock);
+        $dateTimeHelperMock->method('getUtc')->willReturn(new \DateTimeImmutable());
+        $randomHelperMock = $this->createMock(\SimpleSAML\OpenID\Helpers\Random::class);
+        $helpersMock->method('random')->willReturn($randomHelperMock);
+        $randomHelperMock->method('string')->willReturn('random_jti');
+
+        $redirectUriBagMock = $this->createMock(RedirectUriBag::class);
+        $redirectUriBagMock->method('getDefaultRedirectUri')
+            ->willReturn('https://rp.example.org/callback');
+        $this->realyingPartyConfigMock->method('getRedirectUriBag')->willReturn($redirectUriBagMock);
+        $this->realyingPartyConfigMock->method('getScopeBag')->willReturn(new ScopeBag('openid'));
+
+        $this->requestDataHandlerMock->method('getState')->willReturn('state123');
+        $this->requestDataHandlerMock->method('getNonce')->willReturn('nonce123');
+
+        $innerKeyPairMock = $this->createMock(\SimpleSAML\OpenID\ValueAbstracts\KeyPair::class);
+        $signingKeyPairMock->method('getKeyPair')->willReturn($innerKeyPairMock);
+        $innerKeyPairMock->method('getKeyId')->willReturn('kid1');
+        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createStub(JwkDecorator::class));
+        $signingKeyPairMock->method('getSignatureAlgorithm')->willReturn(SignatureAlgorithmEnum::ES256);
+
+        $requestObjectFactoryMock = $this->createMock(RequestObjectFactory::class);
+        $this->federationMock->method('requestObjectFactory')->willReturn($requestObjectFactoryMock);
+        $requestObjectMock = $this->createMock(\SimpleSAML\OpenID\Federation\RequestObject::class);
+        $requestObjectFactoryMock->method('fromData')->willReturn($requestObjectMock);
+        $requestObjectMock->method('getToken')->willReturn('signed_request_object');
+
+        $responseMock = $this->createMock(ResponseInterface::class);
+        $responseMock->method('withHeader')->with('Location', $this->callback(fn(string $url): bool =>
+            str_contains($url, 'response_mode=form_post')))->willReturn($responseMock);
+
+        $result = $this->sut(defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::Query)
+            ->autoRegisterAndAuthenticate(
+                $opEntityId,
+                response: $responseMock,
+                responseMode: ResponseModesEnum::FormPost
+            );
+        $this->assertSame($responseMock, $result);
     }
 }

@@ -313,6 +313,27 @@ final class RequestDataHandlerTest extends TestCase
         ], $result);
     }
 
+    public function testValidateAuthorizationCallbackResponseVerifiesStateFromParsedBody(): void
+    {
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getQueryParams')->willReturn([]);
+        $request->method('getParsedBody')->willReturn([
+            'code' => 'some-code',
+            'state' => 'some-state',
+        ]);
+
+        $this->stateNonceDataHandlerMock->expects($this->once())
+            ->method('verify')
+            ->with(StateNonce::STATE_KEY, 'some-state');
+
+        $result = $this->sut()->validateAuthorizationCallbackResponse($request, true);
+
+        $this->assertSame([
+            'code' => 'some-code',
+            'state' => 'some-state',
+        ], $result);
+    }
+
     public function testValidateHttpResponseOkThrowsOnNon200(): void
     {
         $response = $this->createMock(ResponseInterface::class);

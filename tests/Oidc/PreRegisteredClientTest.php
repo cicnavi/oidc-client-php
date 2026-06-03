@@ -9,11 +9,13 @@ use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use Cicnavi\Oidc\PreRegisteredClient;
 use Cicnavi\Oidc\Protocol\RequestDataHandler;
+use DateInterval;
 use GuzzleHttp\Client;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
+use SimpleSAML\OpenID\Codebooks\ResponseModesEnum;
 use SimpleSAML\OpenID\SupportedAlgorithms;
 use SimpleSAML\OpenID\SupportedSerializers;
 use Cicnavi\Oidc\Helpers\HttpHelper;
@@ -119,8 +121,9 @@ final class PreRegisteredClientTest extends TestCase
         ?MetadataInterface $metadata = null,
         ?\SimpleSAML\OpenID\Core $core = null,
         ?\SimpleSAML\OpenID\Jwks $jwks = null,
-        ?\DateInterval $maxCacheDuration = null,
+        ?DateInterval $maxCacheDuration = null,
         ?AuthorizationRequestMethodEnum $defaultAuthorizationRequestMethod = null,
+        ?ResponseModesEnum $responseMode = null,
         ?RequestDataHandler $requestDataHandler = null,
     ): PreRegisteredClient {
         return new PreRegisteredClient(
@@ -146,6 +149,7 @@ final class PreRegisteredClientTest extends TestCase
             $jwks ?? $this->jwksMock,
             $maxCacheDuration ?? $this->maxCacheDuration,
             $defaultAuthorizationRequestMethod ?? $this->defaultAuthorizationRequestMethod,
+            $responseMode,
             $requestDataHandler ?? $this->requestDataHandlerMock,
         );
     }
@@ -317,5 +321,89 @@ final class PreRegisteredClientTest extends TestCase
         $this->expectExceptionMessage('Token endpoint not found in OP metadata.');
 
         $this->sut()->getUserData();
+    }
+
+    public function testConstructorThrowsIfResponseModeIsFragment(): void
+    {
+        $this->expectException(\Cicnavi\Oidc\Exceptions\OidcClientException::class);
+        $this->expectExceptionMessage("The 'fragment' response mode is not supported");
+
+        $this->sut(responseMode: ResponseModesEnum::Fragment);
+    }
+
+    public function testAuthorizeThrowsIfResponseModeIsFragment(): void
+    {
+        $this->expectException(\Cicnavi\Oidc\Exceptions\OidcClientException::class);
+        $this->expectExceptionMessage("The 'fragment' response mode is not supported");
+
+        $this->sut()->authorize(
+            authorizationRequestMethod: AuthorizationRequestMethodEnum::Query,
+            responseMode: ResponseModesEnum::Fragment
+        );
+    }
+
+    public function testAuthorizeQueryWithResponseMode(): void
+    {
+        $this->metadataMock->expects($this->once())->method('get')->willReturnMap([
+            ['authorization_endpoint', 'https://auth.example.org/authorize'],
+        ]);
+
+        $this->requestDataHandlerMock->method('getState')->willReturn('state-abc');
+        $this->requestDataHandlerMock->method('getNonce')->willReturn('nonce-abc');
+        $this->requestDataHandlerMock->method('getCodeVerifier')->willReturn('code-verifier');
+        $this->requestDataHandlerMock
+            ->method('generateCodeChallengeFromCodeVerifier')
+            ->willReturn('code-challenge');
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with(
+                'Location',
+                $this->callback(fn(string $location): bool =>
+                    str_contains($location, 'response_mode=query'))
+            )
+            ->willReturn($response);
+
+        $result = $this->sut()->authorize(
+            AuthorizationRequestMethodEnum::Query,
+            $response,
+            ResponseModesEnum::Query
+        );
+        $this->assertSame($response, $result);
+    }
+
+    public function testAuthorizeFormPostWithResponseMode(): void
+    {
+        $this->metadataMock->expects($this->once())->method('get')->willReturnMap([
+            ['authorization_endpoint', 'https://auth.example.org/authorize'],
+        ]);
+
+        $this->requestDataHandlerMock->method('getState')->willReturn('state-123');
+        $this->requestDataHandlerMock->method('getNonce')->willReturn('nonce-123');
+        $this->requestDataHandlerMock->method('getCodeVerifier')->willReturn('code-verifier');
+        $this->requestDataHandlerMock
+            ->method('generateCodeChallengeFromCodeVerifier')
+            ->willReturn('code-challenge');
+
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->callback(fn(string $html): bool =>
+                str_contains($html, 'name="response_mode"') && str_contains($html, 'value="form_post"')));
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->method('getBody')->willReturn($body);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with('Content-Type', 'text/html')
+            ->willReturn($response);
+
+        $result = $this->sut()->authorize(
+            AuthorizationRequestMethodEnum::FormPost,
+            $response,
+            ResponseModesEnum::FormPost
+        );
+        $this->assertSame($response, $result);
     }
 }
