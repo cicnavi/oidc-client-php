@@ -54,7 +54,7 @@ jobs:
       - name: Start RP App Docker
         working-directory: ./main
         run: |
-          docker compose -f docker/docker-compose.yml --project-directory . up -d --build
+          docker compose -f docker/docker-compose.yml up -d --build
           sleep 5
       - name: Start trigger-client daemon
         run: |
