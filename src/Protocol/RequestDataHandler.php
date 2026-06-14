@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Cicnavi\Oidc\Protocol;
 
 use Cicnavi\Oidc\Bridges\GuzzleBridge;
+use Cicnavi\Oidc\CodeBooks\ParModeEnum;
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\PkceDataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\StateNonceDataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Pkce;
@@ -232,26 +233,14 @@ class RequestDataHandler
             'Content-Type' => 'application/x-www-form-urlencoded',
         ];
 
-        if ($clientAuthenticationMethod === ClientAuthenticationMethodsEnum::ClientSecretBasic) {
-            if (!is_string($clientSecret)) {
-                throw new OidcClientException(
-                    'Client secret must be provided for client authentication method "client_secret_basic".',
-                );
-            }
-
-            $headers['Authorization'] = 'Basic ' . base64_encode($clientId . ':' . $clientSecret);
-        }
-
-        if ($clientAuthenticationMethod === ClientAuthenticationMethodsEnum::PrivateKeyJwt) {
-            if (!is_string($clientAssertion)) {
-                throw new OidcClientException(
-                    'Client assertion must be provided for client authentication method "private_key_jwt".',
-                );
-            }
-
-            $params[ParamsEnum::ClientAssertionType->value] = ClientAssertionTypesEnum::JwtBaerer->value;
-            $params[ParamsEnum::ClientAssertion->value] = $clientAssertion;
-        }
+        $clientAuthentication = $this->buildClientAuthentication(
+            $clientAuthenticationMethod,
+            $clientId,
+            $clientSecret,
+            $clientAssertion,
+        );
+        $params = array_merge($params, $clientAuthentication['params']);
+        $headers = array_merge($headers, $clientAuthentication['headers']);
 
         if ($usePkce) {
             $params[ParamsEnum::CodeVerifier->value] = $this->pkceDataHandler->getCodeVerifier();
@@ -280,6 +269,235 @@ class RequestDataHandler
                 $throwable,
             );
         }
+    }
+
+    /**
+     * Build client authentication params/headers for a back-channel request
+     * (token endpoint, PAR endpoint...). Supports the same methods as the token
+     * endpoint: 'client_secret_basic' (Authorization header) and
+     * 'private_key_jwt' (client_assertion params).
+     *
+     * @return array{params: array<string,string>, headers: array<string,string>}
+     * @throws OidcClientException
+     */
+    protected function buildClientAuthentication(
+        ClientAuthenticationMethodsEnum $clientAuthenticationMethod,
+        string $clientId,
+        ?string $clientSecret,
+        ?string $clientAssertion,
+    ): array {
+        $params = [];
+        $headers = [];
+
+        if ($clientAuthenticationMethod === ClientAuthenticationMethodsEnum::ClientSecretBasic) {
+            if (!is_string($clientSecret)) {
+                throw new OidcClientException(
+                    'Client secret must be provided for client authentication method "client_secret_basic".',
+                );
+            }
+
+            $headers['Authorization'] = 'Basic ' . base64_encode($clientId . ':' . $clientSecret);
+        }
+
+        if ($clientAuthenticationMethod === ClientAuthenticationMethodsEnum::PrivateKeyJwt) {
+            if (!is_string($clientAssertion)) {
+                throw new OidcClientException(
+                    'Client assertion must be provided for client authentication method "private_key_jwt".',
+                );
+            }
+
+            $params[ParamsEnum::ClientAssertionType->value] = ClientAssertionTypesEnum::JwtBaerer->value;
+            $params[ParamsEnum::ClientAssertion->value] = $clientAssertion;
+        }
+
+        return ['params' => $params, 'headers' => $headers];
+    }
+
+    /**
+     * Decide whether Pushed Authorization Requests (PAR, RFC 9126) should be
+     * used for the given OP and, if so, return the PAR endpoint to push to.
+     *
+     * @param array<string,mixed> $opMetadata Resolved OP metadata. The keys of
+     * interest are 'pushed_authorization_request_endpoint' and
+     * 'require_pushed_authorization_requests'.
+     * @return ?non-empty-string The PAR endpoint to push to, or null when PAR
+     * should not be used for this OP under the given mode.
+     * @throws OidcClientException When PAR must be used but the OP does not
+     * advertise a 'pushed_authorization_request_endpoint'.
+     */
+    public function resolvePushedAuthorizationRequestEndpoint(
+        array $opMetadata,
+        ParModeEnum $parMode,
+    ): ?string {
+        if ($parMode === ParModeEnum::Off) {
+            return null;
+        }
+
+        $endpoint = $opMetadata[ClaimsEnum::PushedAuthorizationRequestEndpoint->value] ?? null;
+        $endpoint = (is_string($endpoint) && $endpoint !== '') ? $endpoint : null;
+
+        $opRequiresPar =
+        ($opMetadata[ClaimsEnum::RequirePushedAuthorizationRequests->value] ?? false) === true;
+
+        // In 'auto' mode PAR is used only when the OP requires it.
+        if ($parMode === ParModeEnum::Auto && !$opRequiresPar) {
+            return null;
+        }
+
+        // From here PAR must be used (mode 'required', or 'auto' and the OP
+        // requires it). A PAR endpoint is therefore mandatory.
+        if ($endpoint === null) {
+            throw new OidcClientException(
+                'Pushed Authorization Requests must be used for this OpenID Provider, but it does not ' .
+                'advertise a "pushed_authorization_request_endpoint".',
+            );
+        }
+
+        return $endpoint;
+    }
+
+    /**
+     * Push an authorization request (RFC 9126) to the OP's PAR endpoint and
+     * return the resulting one-time 'request_uri'.
+     *
+     * The request is a back-channel POST (application/x-www-form-urlencoded)
+     * carrying every authorization-request parameter the RP would otherwise put
+     * in the front-channel redirect, plus client authentication (the same
+     * methods as the token endpoint). The 'request_uri' parameter MUST NOT be
+     * part of the pushed parameters.
+     *
+     * @param array<string,string> $parameters Authorization-request parameters
+     * to push (response_type, redirect_uri, scope, state, nonce,
+     * code_challenge...). 'client_id' is set from $clientId; any 'request_uri'
+     * is rejected.
+     * @return array{request_uri: non-empty-string, expires_in: int}
+     * @throws OidcClientException
+     */
+    public function pushAuthorizationRequest(
+        ClientAuthenticationMethodsEnum $clientAuthenticationMethod,
+        string $pushedAuthorizationRequestEndpoint,
+        array $parameters,
+        string $clientId,
+        ?string $clientSecret = null, // For client_secret_basic client authentication
+        ?string $clientAssertion = null, // For private_key_jwt client authentication
+    ): array {
+        if (array_key_exists(ParamsEnum::RequestUri->value, $parameters)) {
+            throw new OidcClientException(
+                'The "request_uri" parameter must not be sent in a pushed authorization request.',
+            );
+        }
+
+        // client_id is a required authorization-request parameter in the PAR body.
+        $parameters[ParamsEnum::ClientId->value] = $clientId;
+
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/x-www-form-urlencoded',
+        ];
+
+        $clientAuthentication = $this->buildClientAuthentication(
+            $clientAuthenticationMethod,
+            $clientId,
+            $clientSecret,
+            $clientAssertion,
+        );
+        $parameters = array_merge($parameters, $clientAuthentication['params']);
+        $headers = array_merge($headers, $clientAuthentication['headers']);
+
+        try {
+            $bodyStream = $this->guzzleBridge->psr7StreamFor(http_build_query($parameters));
+
+            $parRequest = $this->httpRequestFactory
+                ->createRequest(HttpMethodsEnum::POST->value, $pushedAuthorizationRequestEndpoint)
+                ->withBody($bodyStream);
+
+            foreach ($headers as $key => $value) {
+                $parRequest = $parRequest->withHeader($key, $value);
+            }
+
+            $response = $this->httpClient->sendRequest($parRequest);
+
+            $this->validatePushedAuthorizationResponse($response);
+
+            return $this->validatePushedAuthorizationResponseData(
+                $this->getDecodedHttpResponseJson($response),
+            );
+        } catch (OidcClientException $oidcClientException) {
+            // Already a meaningful error (rejection, invalid response...); surface as-is.
+            throw $oidcClientException;
+        } catch (Throwable $throwable) {
+            throw new OidcClientException(
+                'Pushed authorization request error. ' . $throwable->getMessage(),
+                $throwable->getCode(),
+                $throwable,
+            );
+        }
+    }
+
+    /**
+     * Ensure that the PAR endpoint response indicates success (HTTP 201).
+     * Errors are returned in the token-endpoint error format (JSON), never as a
+     * redirect, so surface 'error' / 'error_description' when present.
+     *
+     * @throws OidcClientException If the response does not indicate success.
+     */
+    public function validatePushedAuthorizationResponse(ResponseInterface $response): void
+    {
+        $httpStatusCode = $response->getStatusCode();
+        if ($httpStatusCode === 201) {
+            return;
+        }
+
+        $message = sprintf(
+            'Pushed authorization request was not successful (HTTP %s - %s).',
+            $httpStatusCode,
+            $response->getReasonPhrase(),
+        );
+
+        try {
+            $errorData = $this->decodeJsonOrThrow((string) $response->getBody());
+            $error = $errorData[ParamsEnum::Error->value] ?? null;
+            $errorDescription = $errorData[ParamsEnum::ErrorDescription->value] ?? null;
+            if (is_string($error)) {
+                $message = sprintf(
+                    'Pushed authorization request rejected by OpenID Provider - error "%s"%s',
+                    $error,
+                    is_string($errorDescription) ? ': ' . $errorDescription . '.' : '.',
+                );
+            }
+        } catch (Throwable) {
+            // Body was not a JSON error object; keep the generic status message.
+        }
+
+        $this->logger?->error($message);
+        throw new OidcClientException($message);
+    }
+
+    /**
+     * Validate the decoded PAR success response body.
+     *
+     * @param mixed[] $data Decoded JSON from the PAR endpoint response.
+     * @return array{request_uri: non-empty-string, expires_in: int}
+     * @throws OidcClientException
+     */
+    public function validatePushedAuthorizationResponseData(array $data): array
+    {
+        $requestUri = $data[ParamsEnum::RequestUri->value] ?? null;
+        if (!is_string($requestUri) || $requestUri === '') {
+            throw new OidcClientException(
+                'Pushed authorization response does not contain a valid "request_uri".',
+            );
+        }
+
+        // expires_in is informational for the RP (the redirect is issued
+        // immediately), so treat it as best-effort.
+        $expiresIn = $data[ParamsEnum::ExpiresIn->value] ?? null;
+        $expiresIn = is_numeric($expiresIn) ? (int) $expiresIn : 0;
+
+        return [
+            ParamsEnum::RequestUri->value => $requestUri,
+            ParamsEnum::ExpiresIn->value => $expiresIn,
+        ];
     }
 
     /**

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Cicnavi\Tests\Oidc;
 
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
+use Cicnavi\Oidc\CodeBooks\ParModeEnum;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
+use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use Cicnavi\Oidc\PreRegisteredClient;
 use Cicnavi\Oidc\Protocol\RequestDataHandler;
@@ -202,8 +204,10 @@ final class PreRegisteredClientTest extends TestCase
 
     public function testAuthorizeFormPostWithResponse(): void
     {
-        $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(3))->method('get')->willReturnMap([
             ['authorization_endpoint', 'https://auth.example.org/authorize'],
+            ['pushed_authorization_request_endpoint', null],
+            ['require_pushed_authorization_requests', null],
         ]);
 
         $this->requestDataHandlerMock->expects($this->once())->method('getState')->willReturn('state-123');
@@ -237,8 +241,10 @@ final class PreRegisteredClientTest extends TestCase
 
     public function testAuthorizeRedirectGetWithResponse(): void
     {
-        $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(3))->method('get')->willReturnMap([
             ['authorization_endpoint', 'https://auth.example.org/authorize'],
+            ['pushed_authorization_request_endpoint', null],
+            ['require_pushed_authorization_requests', null],
         ]);
 
         $this->requestDataHandlerMock->method('getState')->willReturn('state-abc');
@@ -345,8 +351,10 @@ final class PreRegisteredClientTest extends TestCase
 
     public function testAuthorizeQueryWithResponseMode(): void
     {
-        $this->metadataMock->expects($this->once())->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(3))->method('get')->willReturnMap([
             ['authorization_endpoint', 'https://auth.example.org/authorize'],
+            ['pushed_authorization_request_endpoint', null],
+            ['require_pushed_authorization_requests', null],
         ]);
 
         $this->requestDataHandlerMock->method('getState')->willReturn('state-abc');
@@ -374,10 +382,103 @@ final class PreRegisteredClientTest extends TestCase
         $this->assertSame($response, $result);
     }
 
+    public function testGetParModeDefaultsToAuto(): void
+    {
+        $this->assertSame(ParModeEnum::Auto, $this->sut()->getParMode());
+    }
+
+    public function testAuthorizeUsesParAndReducesFrontChannelRequest(): void
+    {
+        $this->metadataMock->expects($this->exactly(3))->method('get')->willReturnMap([
+            ['authorization_endpoint', 'https://auth.example.org/authorize'],
+            ['pushed_authorization_request_endpoint', 'https://auth.example.org/par'],
+            ['require_pushed_authorization_requests', true],
+        ]);
+
+        $this->requestDataHandlerMock->method('getState')->willReturn('state-123');
+        $this->requestDataHandlerMock->method('getNonce')->willReturn('nonce-123');
+        $this->requestDataHandlerMock->method('getCodeVerifier')->willReturn('code-verifier');
+        $this->requestDataHandlerMock->method('generateCodeChallengeFromCodeVerifier')
+            ->willReturn('code-challenge');
+
+        $this->requestDataHandlerMock->method('resolvePushedAuthorizationRequestEndpoint')
+            ->willReturn('https://auth.example.org/par');
+
+        // The full authorization parameter set must be pushed (with client auth).
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('pushAuthorizationRequest')
+            ->with(
+                ClientAuthenticationMethodsEnum::ClientSecretBasic,
+                'https://auth.example.org/par',
+                $this->callback(function (array $parameters): bool {
+                    $this->assertSame('code', $parameters['response_type'] ?? null);
+                    $this->assertSame($this->clientId, $parameters['client_id'] ?? null);
+                    $this->assertSame($this->scope, $parameters['scope'] ?? null);
+                    $this->assertSame('code-challenge', $parameters['code_challenge'] ?? null);
+                    return true;
+                }),
+                $this->clientId,
+                $this->clientSecret,
+            )
+            ->willReturn(['request_uri' => 'urn:par:abc', 'expires_in' => 60]);
+
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->callback(fn(string $html): bool =>
+                // Only client_id + request_uri are delivered in the front channel.
+                str_contains($html, 'name="client_id"') &&
+                str_contains($html, 'name="request_uri"') &&
+                str_contains($html, 'value="urn:par:abc"') &&
+                !str_contains($html, 'name="response_type"') &&
+                !str_contains($html, 'name="scope"')));
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->method('getBody')->willReturn($body);
+        $response->method('withHeader')->with('Content-Type', 'text/html')->willReturn($response);
+
+        $result = $this->sut()->authorize(AuthorizationRequestMethodEnum::FormPost, $response);
+        $this->assertSame($response, $result);
+    }
+
+    public function testAuthorizeDoesNotUseParWhenResolverReturnsNull(): void
+    {
+        $this->metadataMock->expects($this->exactly(3))->method('get')->willReturnMap([
+            ['authorization_endpoint', 'https://auth.example.org/authorize'],
+            ['pushed_authorization_request_endpoint', null],
+            ['require_pushed_authorization_requests', null],
+        ]);
+
+        $this->requestDataHandlerMock->method('getState')->willReturn('state-abc');
+        $this->requestDataHandlerMock->method('getNonce')->willReturn('nonce-abc');
+        $this->requestDataHandlerMock->method('getCodeVerifier')->willReturn('code-verifier');
+        $this->requestDataHandlerMock->method('generateCodeChallengeFromCodeVerifier')
+            ->willReturn('code-challenge');
+
+        $this->requestDataHandlerMock->method('resolvePushedAuthorizationRequestEndpoint')->willReturn(null);
+        $this->requestDataHandlerMock->expects($this->never())->method('pushAuthorizationRequest');
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with(
+                'Location',
+                $this->callback(fn(string $location): bool =>
+                    str_contains($location, 'response_type=code') &&
+                    !str_contains($location, 'request_uri'))
+            )
+            ->willReturn($response);
+
+        $result = $this->sut()->authorize(AuthorizationRequestMethodEnum::Query, $response);
+        $this->assertSame($response, $result);
+    }
+
     public function testAuthorizeFormPostWithResponseMode(): void
     {
-        $this->metadataMock->expects($this->once())->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(3))->method('get')->willReturnMap([
             ['authorization_endpoint', 'https://auth.example.org/authorize'],
+            ['pushed_authorization_request_endpoint', null],
+            ['require_pushed_authorization_requests', null],
         ]);
 
         $this->requestDataHandlerMock->method('getState')->willReturn('state-123');

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Cicnavi\Tests\Oidc\Protocol;
 
 use Cicnavi\Oidc\Bridges\GuzzleBridge;
+use Cicnavi\Oidc\CodeBooks\ParModeEnum;
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\PkceDataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\StateNonceDataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
@@ -1128,5 +1129,229 @@ final class RequestDataHandlerTest extends TestCase
         $this->expectExceptionMessage('HTTP request JSON response is not valid.');
 
         $this->sut()->getDecodedHttpResponseJson($response);
+    }
+
+    public function testResolveParEndpointReturnsNullWhenModeOff(): void
+    {
+        $this->assertNull(
+            $this->sut()->resolvePushedAuthorizationRequestEndpoint(
+                ['pushed_authorization_request_endpoint' => 'https://op.example.com/par'],
+                ParModeEnum::Off,
+            ),
+        );
+    }
+
+    public function testResolveParEndpointAutoReturnsNullWhenOpDoesNotRequirePar(): void
+    {
+        // OP advertises the endpoint but does not require PAR: 'auto' does not use it.
+        $this->assertNull(
+            $this->sut()->resolvePushedAuthorizationRequestEndpoint(
+                ['pushed_authorization_request_endpoint' => 'https://op.example.com/par'],
+                ParModeEnum::Auto,
+            ),
+        );
+    }
+
+    public function testResolveParEndpointAutoReturnsEndpointWhenOpRequiresPar(): void
+    {
+        $this->assertSame(
+            'https://op.example.com/par',
+            $this->sut()->resolvePushedAuthorizationRequestEndpoint(
+                [
+                    'pushed_authorization_request_endpoint' => 'https://op.example.com/par',
+                    'require_pushed_authorization_requests' => true,
+                ],
+                ParModeEnum::Auto,
+            ),
+        );
+    }
+
+    public function testResolveParEndpointAutoThrowsWhenRequiredButEndpointMissing(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not advertise a "pushed_authorization_request_endpoint"');
+
+        $this->sut()->resolvePushedAuthorizationRequestEndpoint(
+            ['require_pushed_authorization_requests' => true],
+            ParModeEnum::Auto,
+        );
+    }
+
+    public function testResolveParEndpointRequiredReturnsEndpoint(): void
+    {
+        $this->assertSame(
+            'https://op.example.com/par',
+            $this->sut()->resolvePushedAuthorizationRequestEndpoint(
+                ['pushed_authorization_request_endpoint' => 'https://op.example.com/par'],
+                ParModeEnum::Required,
+            ),
+        );
+    }
+
+    public function testResolveParEndpointRequiredThrowsWhenEndpointMissing(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not advertise a "pushed_authorization_request_endpoint"');
+
+        $this->sut()->resolvePushedAuthorizationRequestEndpoint([], ParModeEnum::Required);
+    }
+
+    public function testPushAuthorizationRequestRejectsRequestUriInParameters(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('"request_uri" parameter must not be sent');
+
+        $this->sut()->pushAuthorizationRequest(
+            ClientAuthenticationMethodsEnum::ClientSecretBasic,
+            'https://op.example.com/par',
+            ['request_uri' => 'urn:should:not:be:here'],
+            'client-id',
+            'client-secret',
+        );
+    }
+
+    public function testPushAuthorizationRequestSuccessWithPrivateKeyJwt(): void
+    {
+        $this->guzzleBridgeMock->expects($this->once())
+            ->method('psr7StreamFor')
+            ->willReturnCallback(
+                function (
+                    callable|float|StreamInterface|bool|\Iterator|int|string|null $body,
+                ): MockObject&StreamInterface {
+                    parse_str((string) $body, $params);
+                    // client_id is forced into the body.
+                    $this->assertSame('client-id', $params['client_id']);
+                    // response_type is pushed.
+                    $this->assertSame('code', $params['response_type']);
+                    // private_key_jwt client authentication params are present.
+                    $this->assertSame(
+                        ClientAssertionTypesEnum::JwtBaerer->value,
+                        $params['client_assertion_type'],
+                    );
+                    $this->assertSame('assertion', $params['client_assertion']);
+                    // request_uri must not be in the body.
+                    $this->assertArrayNotHasKey('request_uri', $params);
+                    return $this->createMock(StreamInterface::class);
+                }
+            );
+
+        $request = $this->createMock(RequestInterface::class);
+        $this->requestFactoryMock->method('createRequest')->willReturn($request);
+        $request->method('withBody')->willReturn($request);
+        $request->method('withHeader')->willReturn($request);
+
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(201);
+        $responseBody = $this->createMock(StreamInterface::class);
+        $responseBody->method('__toString')->willReturn(
+            '{"request_uri": "urn:ietf:params:oauth:request_uri:abc", "expires_in": 60}'
+        );
+        $response->method('getBody')->willReturn($responseBody);
+
+        $this->httpClientMock->method('sendRequest')->willReturn($response);
+
+        $result = $this->sut()->pushAuthorizationRequest(
+            ClientAuthenticationMethodsEnum::PrivateKeyJwt,
+            'https://op.example.com/par',
+            [
+                'response_type' => 'code',
+                'redirect_uri' => 'https://client.example.com/cb',
+                'scope' => 'openid',
+            ],
+            'client-id',
+            null,
+            'assertion',
+        );
+
+        $this->assertSame(
+            ['request_uri' => 'urn:ietf:params:oauth:request_uri:abc', 'expires_in' => 60],
+            $result,
+        );
+    }
+
+    public function testPushAuthorizationRequestWithClientSecretBasicAddsHeader(): void
+    {
+        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createStub(StreamInterface::class));
+
+        $request = $this->createMock(RequestInterface::class);
+        $this->requestFactoryMock->method('createRequest')->willReturn($request);
+        $request->method('withBody')->willReturn($request);
+        $request->expects($this->exactly(3))
+            ->method('withHeader')
+            ->willReturnCallback(function (string $name, $value) use ($request): MockObject {
+                if ($name === 'Authorization') {
+                    $this->assertSame('Basic ' . base64_encode('client-id:client-secret'), $value);
+                }
+
+                return $request;
+            });
+
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(201);
+        $responseBody = $this->createMock(StreamInterface::class);
+        $responseBody->method('__toString')->willReturn('{"request_uri": "urn:abc", "expires_in": 90}');
+        $response->method('getBody')->willReturn($responseBody);
+
+        $this->httpClientMock->method('sendRequest')->willReturn($response);
+
+        $result = $this->sut()->pushAuthorizationRequest(
+            ClientAuthenticationMethodsEnum::ClientSecretBasic,
+            'https://op.example.com/par',
+            ['response_type' => 'code'],
+            'client-id',
+            'client-secret',
+        );
+
+        $this->assertSame(['request_uri' => 'urn:abc', 'expires_in' => 90], $result);
+    }
+
+    public function testPushAuthorizationRequestSurfacesJsonError(): void
+    {
+        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createStub(StreamInterface::class));
+
+        $request = $this->createMock(RequestInterface::class);
+        $this->requestFactoryMock->method('createRequest')->willReturn($request);
+        $request->method('withBody')->willReturn($request);
+        $request->method('withHeader')->willReturn($request);
+
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(400);
+        $response->method('getReasonPhrase')->willReturn('Bad Request');
+        $responseBody = $this->createMock(StreamInterface::class);
+        $responseBody->method('__toString')->willReturn(
+            '{"error": "invalid_request", "error_description": "client_id is missing"}'
+        );
+        $response->method('getBody')->willReturn($responseBody);
+
+        $this->httpClientMock->method('sendRequest')->willReturn($response);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage(
+            'Pushed authorization request rejected by OpenID Provider - error "invalid_request": client_id is missing.'
+        );
+
+        $this->sut()->pushAuthorizationRequest(
+            ClientAuthenticationMethodsEnum::ClientSecretBasic,
+            'https://op.example.com/par',
+            ['response_type' => 'code'],
+            'client-id',
+            'client-secret',
+        );
+    }
+
+    public function testValidatePushedAuthorizationResponseDataThrowsOnMissingRequestUri(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not contain a valid "request_uri"');
+
+        $this->sut()->validatePushedAuthorizationResponseData(['expires_in' => 60]);
+    }
+
+    public function testValidatePushedAuthorizationResponseDataDefaultsExpiresInToZero(): void
+    {
+        $this->assertSame(
+            ['request_uri' => 'urn:abc', 'expires_in' => 0],
+            $this->sut()->validatePushedAuthorizationResponseData(['request_uri' => 'urn:abc']),
+        );
     }
 }

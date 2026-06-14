@@ -6,6 +6,7 @@ namespace Cicnavi\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
+use Cicnavi\Oidc\CodeBooks\ParModeEnum;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
@@ -145,6 +146,7 @@ class FederatedClient
         protected readonly ?ResponseModesEnum $responseMode = null,
         int $maxDiscoveryDepth = 10,
         ?EntityCollectionStoreInterface $entityCollectionStore = null,
+        protected readonly ParModeEnum $parMode = ParModeEnum::Auto,
     ) {
         $this->validateResponseMode($this->responseMode);
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
@@ -299,6 +301,11 @@ class FederatedClient
     public function getDefaultAuthorizationRequestMethod(): AuthorizationRequestMethodEnum
     {
         return $this->defaultAuthorizationRequestMethod;
+    }
+
+    public function getParMode(): ParModeEnum
+    {
+        return $this->parMode;
     }
 
     public function buildEntityStatement(): EntityStatement
@@ -520,9 +527,11 @@ class FederatedClient
         ?string $clientRedirectUri = null,
         ?AuthorizationRequestMethodEnum $authorizationRequestMethod = null,
         ?ResponseModesEnum $responseMode = null,
+        ?ParModeEnum $parMode = null,
     ): ?ResponseInterface {
         $authorizationRequestMethod ??= $this->defaultAuthorizationRequestMethod;
         $responseMode ??= $this->responseMode;
+        $parMode ??= $this->parMode;
         $this->validateResponseMode($responseMode);
         $trustAnchorBag = $this->entityConfig->getTrustAnchorBag();
         if ($specificTrustAnchors instanceof TrustAnchorConfigBag) {
@@ -633,6 +642,69 @@ class FederatedClient
             throw new OidcClientException('OpenID Provider authorization endpoint not available.');
         }
 
+        $currentTimeUtc = $this->federation->helpers()->dateTime()->getUtc();
+        $clientRedirectUri = $this->resolveClientRedirectUriForAuthorizationRequest($clientRedirectUri);
+        $state = $this->requestDataHandler->getState();
+        $nonce = $this->useNonce ? $this->requestDataHandler->getNonce() : null;
+        $pkceCodeChallenge = $this->usePkce ?
+        $this->requestDataHandler->generateCodeChallengeFromCodeVerifier(
+            $this->requestDataHandler->getCodeVerifier(),
+            $this->pkceCodeChallengeMethod,
+        ) :
+        null;
+        $pkceCodeChallengeMethod = $this->usePkce ? $this->pkceCodeChallengeMethod->value : null;
+        $scope = $this->relyingPartyConfig->getScopeBag()->toString();
+
+        // Set resolved OP metadata for the state, so we can fetch it on callback.
+        $this->requestDataHandler->setResolvedOpMetadataForState($state, $opResolvedMetadata);
+        // Set used redirect URI for state, so we can fetch it on callback.
+        $this->requestDataHandler->setClientRedirectUriForState($state, $clientRedirectUri);
+
+        $parEndpoint = $this->requestDataHandler->resolvePushedAuthorizationRequestEndpoint(
+            $opResolvedMetadata,
+            $parMode,
+        );
+
+        if (is_string($parEndpoint)) {
+            $this->logger?->debug('Delivering authorization request via PAR.', ['parEndpoint' => $parEndpoint]);
+
+            // PAR pushes plain authorization parameters (no Request Object),
+            // authenticating the client with 'private_key_jwt'.
+            $parParameters = array_filter([
+                ParamsEnum::ResponseType->value => ResponseTypesEnum::Code->value,
+                ParamsEnum::ClientId->value => $this->entityConfig->getEntityId(),
+                ParamsEnum::RedirectUri->value => $clientRedirectUri,
+                ParamsEnum::Scope->value => $scope,
+                ParamsEnum::ResponseMode->value => $responseMode?->value,
+                ParamsEnum::State->value => $state,
+                ParamsEnum::Nonce->value => $nonce,
+                ParamsEnum::CodeChallenge->value => $pkceCodeChallenge,
+                ParamsEnum::CodeChallengeMethod->value => $pkceCodeChallengeMethod,
+                ParamsEnum::LoginHint->value => $loginHint,
+            ]);
+
+            $parResponse = $this->requestDataHandler->pushAuthorizationRequest(
+                clientAuthenticationMethod: ClientAuthenticationMethodsEnum::PrivateKeyJwt,
+                pushedAuthorizationRequestEndpoint: $parEndpoint,
+                parameters: $parParameters,
+                clientId: $this->entityConfig->getEntityId(),
+                clientAssertion: $this->buildClientAssertion($opResolvedMetadata, $openIdProviderEntityId),
+            );
+
+            // The front-channel request now carries only client_id + request_uri.
+            $authorizationParameters = [
+                ParamsEnum::ClientId->value => $this->entityConfig->getEntityId(),
+                ParamsEnum::RequestUri->value => $parResponse[ParamsEnum::RequestUri->value],
+            ];
+
+            return $this->dispatchAuthorizationRequest(
+                $opAuthorizationEndpoint,
+                $authorizationParameters,
+                $authorizationRequestMethod,
+                $response,
+            );
+        }
+
         $signingKeyPair = $this->federation->keyPairResolver()->resolveSignatureKeyPairByAlgorithm(
             signatureKeyPairBag: $this->connectSignatureKeyPairBag,
             receiverEntityMetadata: $opResolvedMetadata,
@@ -665,24 +737,6 @@ class FederatedClient
             'RP Trust Chain resolved: ',
             $rpTrustChain->jsonSerialize(),
         );
-
-        $currentTimeUtc = $this->federation->helpers()->dateTime()->getUtc();
-        $clientRedirectUri = $this->resolveClientRedirectUriForAuthorizationRequest($clientRedirectUri);
-        $state = $this->requestDataHandler->getState();
-        $nonce = $this->useNonce ? $this->requestDataHandler->getNonce() : null;
-        $pkceCodeChallenge = $this->usePkce ?
-        $this->requestDataHandler->generateCodeChallengeFromCodeVerifier(
-            $this->requestDataHandler->getCodeVerifier(),
-            $this->pkceCodeChallengeMethod,
-        ) :
-        null;
-        $pkceCodeChallengeMethod = $this->usePkce ? $this->pkceCodeChallengeMethod->value : null;
-        $scope = $this->relyingPartyConfig->getScopeBag()->toString();
-
-        // Set resolved OP metadata for the state, so we can fetch it on callback.
-        $this->requestDataHandler->setResolvedOpMetadataForState($state, $opResolvedMetadata);
-        // Set used redirect URI for state, so we can fetch it on callback.
-        $this->requestDataHandler->setClientRedirectUriForState($state, $clientRedirectUri);
 
         $requestObjectPayload = array_filter([
             ClaimsEnum::Aud->value => $openIdProviderEntityId,
@@ -743,6 +797,26 @@ class FederatedClient
             $authorizationParameters,
         );
 
+        return $this->dispatchAuthorizationRequest(
+            $opAuthorizationEndpoint,
+            $authorizationParameters,
+            $authorizationRequestMethod,
+            $response,
+        );
+    }
+
+    /**
+     * Deliver the front-channel authorization request to the OP, either as an
+     * auto-submitting POST form or as a redirect, depending on the method.
+     *
+     * @param array<string,string> $authorizationParameters
+     */
+    protected function dispatchAuthorizationRequest(
+        string $opAuthorizationEndpoint,
+        array $authorizationParameters,
+        AuthorizationRequestMethodEnum $authorizationRequestMethod,
+        ?ResponseInterface $response,
+    ): ?ResponseInterface {
         if ($authorizationRequestMethod === AuthorizationRequestMethodEnum::FormPost) {
             $formHtml = HttpHelper::generateAutoSubmitPostForm($opAuthorizationEndpoint, $authorizationParameters);
             if ($response instanceof ResponseInterface) {
@@ -829,9 +903,38 @@ class FederatedClient
             throw new OidcClientException('OpenID Provider entity ID not available.');
         }
 
+        return $this->requestDataHandler->getUserData(
+            clientAuthenticationMethod: ClientAuthenticationMethodsEnum::PrivateKeyJwt,
+            authorizationCode: $authorizationCode,
+            clientId: $this->entityConfig->getEntityId(),
+            clientRedirectUri: $clientRedirectUri,
+            opJwksUri: $opJwksUri,
+            opTokenEndpoint: $opTokenEndpoint,
+            opUserinfoEndpoint: $opUserinfoEndpoint,
+            clientSecret: null,
+            clientAssertion: $this->buildClientAssertion($resolvedOpMetadata, $opEntityId),
+            usePkce: $this->usePkce,
+            useNonce: $this->useNonce,
+            fetchUserinfoClaims: $this->fetchUserinfoClaims,
+            expectedIssuer: $opEntityId,
+        );
+    }
+
+    /**
+     * Build a signed 'private_key_jwt' client assertion for back-channel client
+     * authentication (token endpoint, PAR endpoint...). The audience is the
+     * OP's issuer identifier, which the OP also accepts at its token / PAR
+     * endpoints per RFC 9126 §2.
+     *
+     * @param array<mixed> $opResolvedMetadata Resolved OP metadata.
+     * @param string $opEntityId OP issuer identifier, used as the assertion audience.
+     * @return string The serialized client assertion JWT.
+     */
+    protected function buildClientAssertion(array $opResolvedMetadata, string $opEntityId): string
+    {
         $signingKeyPair = $this->federation->keyPairResolver()->resolveSignatureKeyPairByAlgorithm(
             signatureKeyPairBag: $this->connectSignatureKeyPairBag,
-            receiverEntityMetadata: $resolvedOpMetadata,
+            receiverEntityMetadata: $opResolvedMetadata,
             receiverSupportedSignatureAlgorithmsMetadataKey:
             ClaimsEnum::TokenEndpointAuthSigningAlgValuesSupported->value,
         );
@@ -851,28 +954,12 @@ class FederatedClient
             ClaimsEnum::Kid->value => $signingKeyPair->getKeyPair()->getKeyId(),
         ];
 
-        $clientAssertion = $this->core->clientAssertionFactory()->fromData(
+        return $this->core->clientAssertionFactory()->fromData(
             $signingKeyPair->getKeyPair()->getPrivateKey(),
             $signingKeyPair->getSignatureAlgorithm(),
             $clientAssertionPayload,
             $clientAssertionHeader,
-        );
-
-        return $this->requestDataHandler->getUserData(
-            clientAuthenticationMethod: ClientAuthenticationMethodsEnum::PrivateKeyJwt,
-            authorizationCode: $authorizationCode,
-            clientId: $this->entityConfig->getEntityId(),
-            clientRedirectUri: $clientRedirectUri,
-            opJwksUri: $opJwksUri,
-            opTokenEndpoint: $opTokenEndpoint,
-            opUserinfoEndpoint: $opUserinfoEndpoint,
-            clientSecret: null,
-            clientAssertion: $clientAssertion->getToken(),
-            usePkce: $this->usePkce,
-            useNonce: $this->useNonce,
-            fetchUserinfoClaims: $this->fetchUserinfoClaims,
-            expectedIssuer: $opEntityId,
-        );
+        )->getToken();
     }
 
     /**

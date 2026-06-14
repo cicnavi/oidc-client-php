@@ -71,12 +71,34 @@ $client = $factory->build();
 
 // Direct instantiation with custom response mode:
 use SimpleSAML\OpenID\Codebooks\ResponseModesEnum;
+use Cicnavi\Oidc\CodeBooks\ParModeEnum;
 $client = new FederatedClient(
     entityConfig: $entityConfig,
     relyingPartyConfig: $relyingPartyConfig,
-    responseMode: ResponseModesEnum::FormPost // Optional
+    responseMode: ResponseModesEnum::FormPost, // Optional
+    parMode: ParModeEnum::Auto // Optional; Pushed Authorization Requests (RFC 9126) mode. See below.
 );
 ```
+
+### Pushed Authorization Requests (PAR, RFC 9126)
+
+The Federated Client can deliver the authorization request via PAR: the
+authorization parameters are POSTed directly to the OP's
+`pushed_authorization_request_endpoint`, authenticated with `private_key_jwt`,
+and the browser is then sent to the authorization endpoint carrying only
+`client_id` and the returned one-time `request_uri`. In this PAR flow plain
+authorization parameters are pushed (no signed Request Object is used).
+
+The `parMode` option (`ParModeEnum`) controls when PAR is used:
+
+- `ParModeEnum::Off` — never use PAR (the OP rejects the request if it requires PAR).
+- `ParModeEnum::Auto` (default) — use PAR only when the OP advertises
+  `require_pushed_authorization_requests = true`.
+- `ParModeEnum::Required` — always use PAR; throws if the OP advertises no
+  `pushed_authorization_request_endpoint`.
+
+The mode can also be overridden per call:
+`$client->autoRegisterAndAuthenticate($opEntityId, parMode: ParModeEnum::Required)`.
 
 ### 2. Initiating Authentication
 
