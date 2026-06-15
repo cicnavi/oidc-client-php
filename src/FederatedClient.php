@@ -303,6 +303,11 @@ class FederatedClient
         return $this->defaultAuthorizationRequestMethod;
     }
 
+    public function getResponseMode(): ?ResponseModesEnum
+    {
+        return $this->responseMode;
+    }
+
     public function getParMode(): ParModeEnum
     {
         return $this->parMode;
