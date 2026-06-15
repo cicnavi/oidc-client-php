@@ -6,6 +6,7 @@ namespace Cicnavi\Oidc;
 
 use Cicnavi\Oidc\Cache\FileCache;
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
+use Cicnavi\Oidc\CodeBooks\ParModeEnum;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
@@ -130,6 +131,7 @@ class PreRegisteredClient
         protected readonly AuthorizationRequestMethodEnum $defaultAuthorizationRequestMethod = AuthorizationRequestMethodEnum::FormPost,
         protected readonly ?ResponseModesEnum $responseMode = null,
         ?RequestDataHandler $requestDataHandler = null,
+        protected readonly ParModeEnum $parMode = ParModeEnum::Auto,
     ) {
         $this->validateResponseMode($this->responseMode);
 
@@ -200,9 +202,11 @@ class PreRegisteredClient
         ?AuthorizationRequestMethodEnum $authorizationRequestMethod = null,
         ?ResponseInterface $response = null,
         ?ResponseModesEnum $responseMode = null,
+        ?ParModeEnum $parMode = null,
     ): ?ResponseInterface {
         $authorizationRequestMethod ??= $this->defaultAuthorizationRequestMethod;
         $responseMode ??= $this->responseMode;
+        $parMode ??= $this->parMode;
 
         $this->validateResponseMode($responseMode);
 
@@ -234,6 +238,29 @@ class PreRegisteredClient
 
         if (!is_string($authorizationEndpoint = $this->metadata->get('authorization_endpoint'))) {
             throw new OidcClientException('Authorization endpoint not found in OP metadata.');
+        }
+
+        $parEndpoint = $this->requestDataHandler->resolvePushedAuthorizationRequestEndpoint(
+            $this->collectParRelatedOpMetadata(),
+            $parMode,
+        );
+
+        if (is_string($parEndpoint)) {
+            $this->logger?->debug('Delivering authorization request via PAR.', ['parEndpoint' => $parEndpoint]);
+
+            $parResponse = $this->requestDataHandler->pushAuthorizationRequest(
+                clientAuthenticationMethod: ClientAuthenticationMethodsEnum::ClientSecretBasic,
+                pushedAuthorizationRequestEndpoint: $parEndpoint,
+                parameters: $parameters,
+                clientId: $this->clientId,
+                clientSecret: $this->clientSecret,
+            );
+
+            // The front-channel request now carries only client_id + request_uri.
+            $parameters = [
+                ParamsEnum::ClientId->value => $this->clientId,
+                ParamsEnum::RequestUri->value => $parResponse[ParamsEnum::RequestUri->value],
+            ];
         }
 
         if ($authorizationRequestMethod === AuthorizationRequestMethodEnum::FormPost) {
@@ -316,6 +343,37 @@ class PreRegisteredClient
     public function getMetadata(): MetadataInterface
     {
         return $this->metadata;
+    }
+
+    public function getParMode(): ParModeEnum
+    {
+        return $this->parMode;
+    }
+
+    /**
+     * Read the PAR-related OP metadata values used to decide whether to use PAR.
+     * Missing values are simply omitted (the OP does not support / require PAR).
+     *
+     * @return array<string,mixed>
+     */
+    protected function collectParRelatedOpMetadata(): array
+    {
+        $parRelatedOpMetadata = [];
+
+        foreach (
+            [
+            ClaimsEnum::PushedAuthorizationRequestEndpoint->value,
+            ClaimsEnum::RequirePushedAuthorizationRequests->value,
+            ] as $key
+        ) {
+            try {
+                $parRelatedOpMetadata[$key] = $this->metadata->get($key);
+            } catch (OidcClientException) {
+                // Not advertised by this OP; leave it out.
+            }
+        }
+
+        return $parRelatedOpMetadata;
     }
 
     /**

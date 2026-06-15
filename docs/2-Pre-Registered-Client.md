@@ -33,6 +33,7 @@ use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 use SimpleSAML\OpenID\Codebooks\ResponseModesEnum;
 use Cicnavi\Oidc\PreRegisteredClient;
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
+use Cicnavi\Oidc\CodeBooks\ParModeEnum;
 
 $oidcClient = new PreRegisteredClient(
     // Required parameters
@@ -53,8 +54,31 @@ $oidcClient = new PreRegisteredClient(
     logger: null,  // \Psr\Log\LoggerInterface instance
     defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::FormPost, // Determines the default authorization request method.
     responseMode: null, // Determines the OIDC response mode (e.g., ResponseModesEnum::Query or ResponseModesEnum::FormPost. Fragment is not supported). Null by default.
+    parMode: ParModeEnum::Auto, // Pushed Authorization Requests (RFC 9126) mode. See below.
 );
 ```
+
+### Pushed Authorization Requests (PAR, RFC 9126)
+
+With PAR, the authorization request parameters are first POSTed directly to the
+OP's `pushed_authorization_request_endpoint` (a back-channel, client-authenticated
+call). The OP returns a short-lived, one-time `request_uri`, and the browser is
+then sent to the authorization endpoint carrying only `client_id` and
+`request_uri`. Client authentication uses the same `client_secret_basic`
+credentials as the token endpoint, and PKCE / state / nonce are unchanged — only
+the *delivery* of the request differs. PAR is orthogonal to
+`AuthorizationRequestMethodEnum` (Query / FormPost).
+
+The `parMode` option (`ParModeEnum`) controls when PAR is used:
+
+- `ParModeEnum::Off` — never use PAR. Note: if the OP requires PAR
+  (`require_pushed_authorization_requests = true`), it will reject the request.
+- `ParModeEnum::Auto` (default) — use PAR only when the OP requires it. Otherwise
+  the authorization request is delivered as usual.
+- `ParModeEnum::Required` — always use PAR; an exception is thrown if the OP does
+  not advertise a `pushed_authorization_request_endpoint`.
+
+The mode can also be overridden per call: `$oidcClient->authorize(parMode: ParModeEnum::Required)`.
 
 ## Client usage
 

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Cicnavi\Tests\Oidc;
 
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
+use Cicnavi\Oidc\CodeBooks\ParModeEnum;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
+use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\FederatedClient;
 use Cicnavi\Oidc\Helpers\HttpHelper;
@@ -903,6 +905,121 @@ final class FederatedClientTest extends TestCase
                 response: $responseMock,
                 responseMode: ResponseModesEnum::FormPost
             );
+        $this->assertSame($responseMock, $result);
+    }
+
+    public function testGetParModeDefaultsToAuto(): void
+    {
+        $this->assertSame(ParModeEnum::Auto, $this->sut()->getParMode());
+    }
+
+    public function testAutoRegisterAndAuthenticateUsesParWithPlainParameters(): void
+    {
+        $opEntityId = 'https://op.example.org';
+        $trustAnchorId = 'https://ta.example.org';
+
+        $trustAnchorBagMock = $this->createMock(TrustAnchorConfigBag::class);
+        $trustAnchorBagMock->method('getAllEntityIds')->willReturn([$trustAnchorId]);
+        $this->entityConfigMock->method('getTrustAnchorBag')->willReturn($trustAnchorBagMock);
+        $this->entityConfigMock->method('getEntityId')->willReturn('https://rp.example.org');
+
+        $opTrustChainBagMock = $this->createMock(TrustChainBag::class);
+        $trustChainResolverMock = $this->createMock(TrustChainResolver::class);
+        $this->federationMock->method('trustChainResolver')->willReturn($trustChainResolverMock);
+        // Only the OP trust chain is resolved; the RP trust chain is not needed for PAR plain params.
+        $trustChainResolverMock->method('for')->willReturn($opTrustChainBagMock);
+
+        $opTrustChainMock = $this->createMock(TrustChain::class);
+        $opTrustChainBagMock->method('getShortest')->willReturn($opTrustChainMock);
+
+        $opEntityStatementMock = $this->createMock(EntityStatement::class);
+        $opTrustChainMock->method('getResolvedLeaf')->willReturn($opEntityStatementMock);
+        $opEntityStatementMock->method('getSubject')->willReturn($opEntityId);
+        $opEntityStatementMock->method('getIssuer')->willReturn($opEntityId);
+
+        $opMetadata = [
+            'authorization_endpoint' => 'https://op.example.org/auth',
+            'pushed_authorization_request_endpoint' => 'https://op.example.org/par',
+            'require_pushed_authorization_requests' => true,
+            'issuer' => $opEntityId,
+        ];
+        $opTrustChainMock->method('getResolvedMetadata')->willReturn($opMetadata);
+
+        // buildClientAssertion dependencies.
+        $keyPairResolverMock = $this->createMock(\SimpleSAML\OpenID\Utils\KeyPairResolver::class);
+        $this->federationMock->method('keyPairResolver')->willReturn($keyPairResolverMock);
+        $signingKeyPairMock = $this->createMock(SignatureKeyPair::class);
+        $keyPairResolverMock->method('resolveSignatureKeyPairByAlgorithm')->willReturn($signingKeyPairMock);
+        $innerKeyPairMock = $this->createMock(\SimpleSAML\OpenID\ValueAbstracts\KeyPair::class);
+        $signingKeyPairMock->method('getKeyPair')->willReturn($innerKeyPairMock);
+        $innerKeyPairMock->method('getKeyId')->willReturn('kid1');
+        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createStub(JwkDecorator::class));
+        $signingKeyPairMock->method('getSignatureAlgorithm')->willReturn(SignatureAlgorithmEnum::ES256);
+
+        $clientAssertionMock = $this->createMock(ClientAssertion::class);
+        $clientAssertionFactoryMock = $this->createMock(ClientAssertionFactory::class);
+        $this->coreMock->method('clientAssertionFactory')->willReturn($clientAssertionFactoryMock);
+        $clientAssertionFactoryMock->method('fromData')->willReturn($clientAssertionMock);
+        $clientAssertionMock->method('getToken')->willReturn('client-assertion-token');
+
+        $helpersMock = $this->createMock(\SimpleSAML\OpenID\Helpers::class);
+        $this->federationMock->method('helpers')->willReturn($helpersMock);
+        $dateTimeHelperMock = $this->createMock(\SimpleSAML\OpenID\Helpers\DateTime::class);
+        $helpersMock->method('dateTime')->willReturn($dateTimeHelperMock);
+        $dateTimeHelperMock->method('getUtc')->willReturn(new \DateTimeImmutable());
+        $randomHelperMock = $this->createMock(\SimpleSAML\OpenID\Helpers\Random::class);
+        $helpersMock->method('random')->willReturn($randomHelperMock);
+        $randomHelperMock->method('string')->willReturn('random_jti');
+
+        $redirectUriBagMock = $this->createMock(RedirectUriBag::class);
+        $redirectUriBagMock->method('getDefaultRedirectUri')->willReturn('https://rp.example.org/callback');
+        $this->realyingPartyConfigMock->method('getRedirectUriBag')->willReturn($redirectUriBagMock);
+        $this->realyingPartyConfigMock->method('getScopeBag')->willReturn(new ScopeBag('openid'));
+
+        $this->requestDataHandlerMock->method('getState')->willReturn('state123');
+        $this->requestDataHandlerMock->method('getNonce')->willReturn('nonce123');
+
+        $this->requestDataHandlerMock->method('resolvePushedAuthorizationRequestEndpoint')
+            ->willReturn('https://op.example.org/par');
+
+        // PAR must push plain params with private_key_jwt client authentication.
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('pushAuthorizationRequest')
+            ->with(
+                ClientAuthenticationMethodsEnum::PrivateKeyJwt,
+                'https://op.example.org/par',
+                $this->callback(fn(array $parameters): bool =>
+                    ($parameters['response_type'] ?? null) === 'code' &&
+                    ($parameters['client_id'] ?? null) === 'https://rp.example.org' &&
+                    ($parameters['redirect_uri'] ?? null) === 'https://rp.example.org/callback' &&
+                    ($parameters['scope'] ?? null) === 'openid' &&
+                    !array_key_exists('request', $parameters)),
+                'https://rp.example.org',
+                null,
+                'client-assertion-token',
+            )
+            ->willReturn(['request_uri' => 'urn:par:xyz', 'expires_in' => 60]);
+
+        // The request object factory must NOT be used in the PAR plain-params path.
+        $requestObjectFactoryMock = $this->createMock(RequestObjectFactory::class);
+        $this->federationMock->method('requestObjectFactory')->willReturn($requestObjectFactoryMock);
+        $requestObjectFactoryMock->expects($this->never())->method('fromData');
+
+        $body = $this->createMock(StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->callback(fn(string $html): bool =>
+                str_contains($html, 'name="client_id"') &&
+                str_contains($html, 'name="request_uri"') &&
+                str_contains($html, 'value="urn:par:xyz"') &&
+                !str_contains($html, 'name="request"') &&
+                !str_contains($html, 'name="scope"')));
+
+        $responseMock = $this->createMock(ResponseInterface::class);
+        $responseMock->method('getBody')->willReturn($body);
+        $responseMock->method('withHeader')->with('Content-Type', 'text/html')->willReturn($responseMock);
+
+        $result = $this->sut()->autoRegisterAndAuthenticate($opEntityId, response: $responseMock);
         $this->assertSame($responseMock, $result);
     }
 }
