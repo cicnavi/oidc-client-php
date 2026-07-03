@@ -299,7 +299,10 @@ class RequestDataHandler
                 );
             }
 
-            $headers['Authorization'] = 'Basic ' . base64_encode($clientId . ':' . $clientSecret);
+            // Per RFC 6749 section 2.3.1, the client ID and secret must be
+            // form-urlencoded before being used as Basic auth credentials.
+            $headers['Authorization'] = 'Basic ' .
+            base64_encode(urlencode($clientId) . ':' . urlencode($clientSecret));
         }
 
         if ($clientAuthenticationMethod === ClientAuthenticationMethodsEnum::PrivateKeyJwt) {
