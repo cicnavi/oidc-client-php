@@ -348,7 +348,7 @@ class FederatedClient
             ->getAll();
         // https://openid.net/specs/openid-connect-registration-1_0.html#ClientMetadata
         $rpMetadata[ClaimsEnum::TokenEndpointAuthMethod->value] = TokenEndpointAuthMethodsEnum::PrivateKeyJwt->value;
-        https: //openid.net/specs/openid-connect-rp-metadata-choices-1_0-01.html
+        // https://openid.net/specs/openid-connect-rp-metadata-choices-1_0-01.html
         $rpMetadata[ClaimsEnum::TokenEndpointAuthMethodsSupported->value] = [
             TokenEndpointAuthMethodsEnum::PrivateKeyJwt->value,
         ];
