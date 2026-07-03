@@ -90,7 +90,10 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
         $this->assertInstanceOf(ClientRegistrationStoreInterface::class, $registrationStore);
         $this->assertInstanceOf(ClientRegistrationHandler::class, $registrationHandler);
-        $this->assertInstanceOf(SessionStoreInterface::class, $this->createStub(\Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface::class));
+        $this->assertInstanceOf(
+            SessionStoreInterface::class,
+            $this->createStub(\Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface::class),
+        );
         $this->assertInstanceOf(Client::class, $this->createStub(\GuzzleHttp\Client::class));
 
         return new DynamicallyRegisteredClient(

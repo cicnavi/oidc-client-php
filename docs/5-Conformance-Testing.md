@@ -4,6 +4,7 @@ The `oidc-client-php` library has been fully tested and verified against the off
 
 Specifically, currently we run the following OpenID Conformance Tests:
 * **Basic RP profile** (`oidcc-client-basic-certification-test-plan` plan using static client registration and plain HTTP request authorization).
+* **Basic RP profile with dynamic client registration** (`oidcc-client-basic-certification-test-plan` plan using dynamic client registration and plain HTTP request authorization).
 
 ---
 
@@ -52,6 +53,18 @@ Specifically, currently we run the following OpenID Conformance Tests:
    docker compose -f docker/docker-compose.yml up --build -d
    ```
 
+The RP test application uses static client registration (`PreRegisteredClient` with the
+`CLIENT_ID` / `CLIENT_SECRET` values from `docker/docker-compose.yml`) by default. To run it
+with dynamic client registration instead (`DynamicallyRegisteredClient`, which registers itself
+on the OP's registration endpoint), set the `CLIENT_REGISTRATION` environment variable when
+starting the container:
+   ```bash
+   CLIENT_REGISTRATION=dynamic_client docker compose -f docker/docker-compose.yml up --build -d
+   ```
+Since every conformance test module is a fresh OP instance served on the same issuer URL, the
+RP test application performs a new client registration each time an authorization flow is
+started (any previously persisted registration would be stale).
+
 ---
 
 ### Step 3: Run the Conformance Tests
@@ -67,6 +80,16 @@ Specifically, currently we run the following OpenID Conformance Tests:
      --expected-skips-file conformance-tests/basic-skips.json \
      "oidcc-client-basic-certification-test-plan[client_registration=static_client][request_type=plain_http_request]" \
      conformance-tests/conformance-basic-ci.json
+   ```
+3. For the dynamic client registration variant (with the RP test application started using
+   `CLIENT_REGISTRATION=dynamic_client`, see Step 2), run the plan with the `dynamic_client`
+   variant and the dynamic configuration file (which contains no static client credentials):
+   ```bash
+   python3 /path/to/conformance-suite/scripts/run-test-plan.py \
+     --expected-failures-file conformance-tests/basic-warnings.json \
+     --expected-skips-file conformance-tests/basic-skips.json \
+     "oidcc-client-basic-certification-test-plan[client_registration=dynamic_client][request_type=plain_http_request]" \
+     conformance-tests/conformance-basic-dynamic-ci.json
    ```
 
 All test modules should complete and pass cleanly.

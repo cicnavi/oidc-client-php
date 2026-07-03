@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/vendor/autoload.php';
 
+use Cicnavi\Oidc\DynamicallyRegisteredClient;
 use Cicnavi\Oidc\PreRegisteredClient;
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
 use GuzzleHttp\Client as GuzzleClient;
@@ -15,6 +16,7 @@ error_reporting(E_ALL);
 
 // Read configurations from environment variables or use default test values matching the JSON config
 $opConfigurationUrl = getenv('OP_DISCOVERY_URL') ?: 'https://localhost.emobix.co.uk:8443/test/a/oidc-client-php/.well-known/openid-configuration';
+$clientRegistration = getenv('CLIENT_REGISTRATION') ?: 'static_client';
 $clientId = getenv('CLIENT_ID') ?: 'oidc-client-php-test';
 $clientSecret = getenv('CLIENT_SECRET') ?: 'oidc-client-php-test-secret';
 $redirectUri = getenv('REDIRECT_URI') ?: 'https://rp.local.conformance.test/callback';
@@ -24,28 +26,47 @@ try {
     // Disable SSL verification for internal Guzzle client because conformance-suite uses a self-signed cert
     $httpClient = new GuzzleClient(['verify' => false]);
 
-    $client = new PreRegisteredClient(
-        opConfigurationUrl: $opConfigurationUrl,
-        clientId: $clientId,
-        clientSecret: $clientSecret,
-        redirectUri: $redirectUri,
-        scope: $scope,
-        httpClient: $httpClient,
-        defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::Query
-    );
+    if ($clientRegistration === 'dynamic_client') {
+        $client = new DynamicallyRegisteredClient(
+            opConfigurationUrl: $opConfigurationUrl,
+            redirectUri: $redirectUri,
+            scope: $scope,
+            clientName: 'oidc-client-php',
+            httpClient: $httpClient,
+            defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::Query
+        );
+    } else {
+        $client = new PreRegisteredClient(
+            opConfigurationUrl: $opConfigurationUrl,
+            clientId: $clientId,
+            clientSecret: $clientSecret,
+            redirectUri: $redirectUri,
+            scope: $scope,
+            httpClient: $httpClient,
+            defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::Query
+        );
+    }
 
     $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
     if ($path === '/callback') {
         // Exchange authorization code for token and fetch user data
         $userData = $client->getUserData();
-        
+
         // Print success div for automated browser/curl matching
         echo '<html><head><title>OIDC RP Test Completion</title></head><body>';
         echo '<div id="submission_complete">OIDC Flow Successful!</div>';
         echo '<h1>User Data</h1><pre>' . htmlspecialchars(json_encode($userData, JSON_PRETTY_PRINT)) . '</pre>';
         echo '</body></html>';
     } else {
+        if ($client instanceof DynamicallyRegisteredClient) {
+            // Each conformance test module is a fresh OP instance served on the
+            // same issuer URL, so a registration persisted during a previous
+            // test module is stale — always register anew when starting a flow.
+            // The callback request then reuses the persisted registration.
+            $client->register(forceNewRegistration: true);
+        }
+
         // Initiate OIDC authorization flow
         $client->authorize();
     }
