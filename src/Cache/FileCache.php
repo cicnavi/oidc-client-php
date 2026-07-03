@@ -7,6 +7,9 @@ namespace Cicnavi\Oidc\Cache;
 use Cicnavi\SimpleFileCache\Exceptions\CacheException;
 use Cicnavi\SimpleFileCache\SimpleFileCache;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\Cache\FileCacheTest
+ */
 class FileCache extends SimpleFileCache
 {
     /**

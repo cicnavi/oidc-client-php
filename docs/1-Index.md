@@ -24,18 +24,23 @@ composer require cicnavi/oidc-client-php
 
 ## Client Usage
 
-There are two ways to instantiate an OIDC client:
+There are three ways to instantiate an OIDC client:
 * Pre-registered Client (`Cicnavi\Oidc\PreRegisteredClient`) - can be used if 
 the client is already registered with the OpenID Provider.
 * Federated Client (`Cicnavi\Oidc\FederatedClient`) - can be used in federated
 environments (as per OpenID Federation specification). This client type
 currently supports Automatic Client Registration flow using Request Object
 passed by value.
+* Dynamically Registered Client (`Cicnavi\Oidc\DynamicallyRegisteredClient`) -
+can be used if the OpenID Provider supports OpenID Connect Dynamic Client
+Registration 1.0. The client registers itself with the OpenID Provider and
+uses the issued client credentials.
 
 Check the dedicated sections below for more details about each client type:
 * [Pre-registered Client](2-Pre-Registered-Client.md)
 * [Federated Client](3-Federated-Client.md)
-* [Conformance Testing](4-Conformance-Testing.md)
+* [Dynamically Registered Client](4-Dynamically-Registered-Client.md)
+* [Conformance Testing](5-Conformance-Testing.md)
 
 
 ## Note on SameSite Cookie Attribute

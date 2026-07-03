@@ -57,6 +57,9 @@ use SimpleSAML\OpenID\SupportedAlgorithms;
 use SimpleSAML\OpenID\SupportedSerializers;
 use SimpleSAML\OpenID\ValueAbstracts\TrustAnchorConfigBag;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\FederatedClientTest
+ */
 class FederatedClient
 {
     protected readonly CacheInterface $cache;
@@ -713,7 +716,6 @@ class FederatedClient
         $signingKeyPair = $this->federation->keyPairResolver()->resolveSignatureKeyPairByAlgorithm(
             signatureKeyPairBag: $this->connectSignatureKeyPairBag,
             receiverEntityMetadata: $opResolvedMetadata,
-            receiverDesignatedSignatureAlgorithmMetadataKey: null,
             receiverSupportedSignatureAlgorithmsMetadataKey: ClaimsEnum::RequestObjectSigningAlgValuesSupported->value,
         );
 
@@ -916,7 +918,6 @@ class FederatedClient
             opJwksUri: $opJwksUri,
             opTokenEndpoint: $opTokenEndpoint,
             opUserinfoEndpoint: $opUserinfoEndpoint,
-            clientSecret: null,
             clientAssertion: $this->buildClientAssertion($resolvedOpMetadata, $opEntityId),
             usePkce: $this->usePkce,
             useNonce: $this->useNonce,

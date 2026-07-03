@@ -8,6 +8,9 @@ use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\StateNonceDataHandlerInterfac
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Helpers\StringHelper;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\DataStore\DataHandlers\StateNonceTest
+ */
 class StateNonce extends AbstractDataHandler implements StateNonceDataHandlerInterface
 {
     /**

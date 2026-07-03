@@ -10,6 +10,9 @@ use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairConfigBag;
 use SimpleSAML\OpenID\ValueAbstracts\UniqueStringBag;
 use SimpleSAML\OpenID\ValueAbstracts\TrustAnchorConfigBag;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\Federation\EntityConfigTest
+ */
 class EntityConfig
 {
     /**

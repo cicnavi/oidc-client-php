@@ -7,6 +7,9 @@ namespace Cicnavi\Oidc\Bridges;
 use GuzzleHttp\Psr7\Utils;
 use Psr\Http\Message\StreamInterface;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\Bridges\GuzzleBridgeTest
+ */
 class GuzzleBridge
 {
     /**

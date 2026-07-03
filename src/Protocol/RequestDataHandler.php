@@ -32,6 +32,9 @@ use SimpleSAML\OpenID\Exceptions\JwsException;
 use SimpleSAML\OpenID\Jwks;
 use Throwable;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\Protocol\RequestDataHandlerTest
+ */
 class RequestDataHandler
 {
     public const KEY_OP_METADATA_FOR_STATE = 'op_metadata_for_state_';
