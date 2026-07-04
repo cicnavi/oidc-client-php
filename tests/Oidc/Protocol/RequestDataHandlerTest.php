@@ -1389,9 +1389,10 @@ final class RequestDataHandlerTest extends TestCase
                 'sub' => 'user-1',
                 'sid' => 'op-session-1',
                 'end_session_endpoint' => 'https://op.example.org/end-session',
+                'client_id' => 'client-id',
             ]);
 
-        $this->sut()->storeLoginData('id-token', 'https://op.example.org/end-session');
+        $this->sut()->storeLoginData('id-token', 'https://op.example.org/end-session', 'client-id');
     }
 
     public function testStoreLoginDataStoresRawIdTokenOnClaimExtractionError(): void
@@ -1410,6 +1411,7 @@ final class RequestDataHandlerTest extends TestCase
                 'sub' => null,
                 'sid' => null,
                 'end_session_endpoint' => null,
+                'client_id' => null,
             ]);
 
         $this->sut()->storeLoginData('id-token');
@@ -1427,9 +1429,10 @@ final class RequestDataHandlerTest extends TestCase
                 'sub' => null,
                 'sid' => null,
                 'end_session_endpoint' => 'https://op.example.org/end-session',
+                'client_id' => 'client-id',
             ]);
 
-        $this->sut()->storeLoginData(null, 'https://op.example.org/end-session');
+        $this->sut()->storeLoginData(null, 'https://op.example.org/end-session', 'client-id');
     }
 
     public function testLoginDataGetters(): void
@@ -1442,6 +1445,7 @@ final class RequestDataHandlerTest extends TestCase
                 'sub' => 'user-1',
                 'sid' => 'op-session-1',
                 'end_session_endpoint' => 'https://op.example.org/end-session',
+                'client_id' => 'client-id',
             ]);
 
         $sut = $this->sut();
@@ -1451,6 +1455,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->assertSame('user-1', $sut->getLoginSubject());
         $this->assertSame('op-session-1', $sut->getLoginSessionId());
         $this->assertSame('https://op.example.org/end-session', $sut->getLoginEndSessionEndpoint());
+        $this->assertSame('client-id', $sut->getLoginClientId());
     }
 
     public function testLoginDataGettersReturnNullWhenNoLoginData(): void
@@ -1465,6 +1470,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->assertNull($sut->getLoginSubject());
         $this->assertNull($sut->getLoginSessionId());
         $this->assertNull($sut->getLoginEndSessionEndpoint());
+        $this->assertNull($sut->getLoginClientId());
     }
 
     public function testClearLoginData(): void
@@ -1538,6 +1544,7 @@ final class RequestDataHandlerTest extends TestCase
                 'sub' => 'sub1',
                 'sid' => 'op-session-1',
                 'end_session_endpoint' => 'https://op.example.org/end-session',
+                'client_id' => 'client-id',
             ]);
 
         $this->sut()->getUserData(

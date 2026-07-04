@@ -637,6 +637,37 @@ final class PreRegisteredClientTest extends TestCase
         $this->assertSame($response, $result);
     }
 
+    public function testLogoutPrefersLoginTimeClientId(): void
+    {
+        $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([
+            ['end_session_endpoint', 'https://op.example.org/end-session'],
+        ]);
+
+        // The client registration changed between login and logout, so the
+        // 'client_id' logout parameter must match the one the stored ID
+        // token (id_token_hint) was issued to.
+        $this->requestDataHandlerMock->method('getLoginClientId')->willReturn('login-time-client-id');
+        $this->requestDataHandlerMock->method('getLoginIdToken')->willReturn('id-token');
+        $this->requestDataHandlerMock->method('getLogoutState')->willReturn('logout-state');
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('buildEndSessionParameters')
+            ->with(
+                'id-token',
+                'login-time-client-id',
+                null,
+                'logout-state',
+                null,
+                null,
+            )
+            ->willReturn([]);
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->method('withHeader')->willReturn($response);
+
+        $result = $this->sut()->logout(response: $response);
+        $this->assertSame($response, $result);
+    }
+
     public function testLogoutWithoutStateOmitsLogoutState(): void
     {
         $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([

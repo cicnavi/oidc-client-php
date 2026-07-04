@@ -981,7 +981,9 @@ class FederatedClient
 
         $parameters = $this->requestDataHandler->buildEndSessionParameters(
             idTokenHint: $this->requestDataHandler->getLoginIdToken(),
-            clientId: $this->entityConfig->getEntityId(),
+            // Prefer the client ID the login was performed with, so it
+            // matches the 'id_token_hint'.
+            clientId: $this->requestDataHandler->getLoginClientId() ?? $this->entityConfig->getEntityId(),
             postLogoutRedirectUri: $postLogoutRedirectUri,
             state: $this->requestDataHandler->getLogoutState(),
             logoutHint: $logoutHint,

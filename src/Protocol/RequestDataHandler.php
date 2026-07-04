@@ -165,6 +165,7 @@ class RequestDataHandler
         $this->storeLoginData(
             $tokenData[ParamsEnum::IdToken->value],
             $opEndSessionEndpoint,
+            $clientId,
         );
 
         return $claims;
@@ -946,16 +947,22 @@ class RequestDataHandler
      * Persist login data needed for logout in the session store: the raw ID
      * token (used as 'id_token_hint' in RP-Initiated Logout), its 'iss',
      * 'sub' and 'sid' claims (used to correlate OIDC Back-Channel Logout
-     * requests with this login), and the OP's end session endpoint (so
-     * logout can be performed even when OP metadata is no longer at hand,
-     * e.g. for OPs resolved per authorization flow).
+     * requests with this login), the OP's end session endpoint (so logout
+     * can be performed even when OP metadata is no longer at hand, e.g. for
+     * OPs resolved per authorization flow), and the client ID the login was
+     * performed with (so the logout request 'client_id' matches the
+     * 'id_token_hint' even if the client registration changes in the
+     * meantime, e.g. for dynamically registered clients).
      *
      * Claim extraction is best-effort: the ID token was already validated
      * during login, so an extraction error is only logged and the raw ID
      * token is stored anyway.
      */
-    public function storeLoginData(?string $idToken, ?string $opEndSessionEndpoint = null): void
-    {
+    public function storeLoginData(
+        ?string $idToken,
+        ?string $opEndSessionEndpoint = null,
+        ?string $clientId = null,
+    ): void {
         $claims = [];
 
         if (is_string($idToken)) {
@@ -974,6 +981,7 @@ class RequestDataHandler
             ClaimsEnum::Sub->value => is_string($sub = $claims[ClaimsEnum::Sub->value] ?? null) ? $sub : null,
             ClaimsEnum::Sid->value => is_string($sid = $claims[ClaimsEnum::Sid->value] ?? null) ? $sid : null,
             ClaimsEnum::EndSessionEndpoint->value => $opEndSessionEndpoint,
+            ParamsEnum::ClientId->value => $clientId,
         ]);
     }
 
@@ -1031,6 +1039,17 @@ class RequestDataHandler
     public function getLoginEndSessionEndpoint(): ?string
     {
         return $this->getLoginDataStringValue(ClaimsEnum::EndSessionEndpoint->value);
+    }
+
+    /**
+     * The client ID the login was performed with (the one the ID token was
+     * issued to). Used as the 'client_id' logout request parameter, so it
+     * matches the 'id_token_hint' even if the client registration changes
+     * between login and logout.
+     */
+    public function getLoginClientId(): ?string
+    {
+        return $this->getLoginDataStringValue(ParamsEnum::ClientId->value);
     }
 
     /**

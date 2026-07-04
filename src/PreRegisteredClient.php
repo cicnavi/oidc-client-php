@@ -405,7 +405,10 @@ class PreRegisteredClient
 
         $parameters = $this->requestDataHandler->buildEndSessionParameters(
             idTokenHint: $this->requestDataHandler->getLoginIdToken(),
-            clientId: $this->clientId,
+            // Prefer the client ID the login was performed with, so it
+            // matches the 'id_token_hint' even if the client registration
+            // changed in the meantime (dynamically registered clients).
+            clientId: $this->requestDataHandler->getLoginClientId() ?? $this->clientId,
             postLogoutRedirectUri: $postLogoutRedirectUri,
             state: $this->useState ? $this->requestDataHandler->getLogoutState() : null,
             logoutHint: $logoutHint,
