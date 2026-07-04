@@ -8,6 +8,8 @@ services:
       - "443:443"
     environment:
       - OP_DISCOVERY_URL=https://localhost.emobix.co.uk:8443/test/a/oidc-client-php/.well-known/openid-configuration
+      # static_client uses CLIENT_ID / CLIENT_SECRET below; dynamic_client registers itself on the OP.
+      - CLIENT_REGISTRATION=${CLIENT_REGISTRATION:-static_client}
       - CLIENT_ID=oidc-client-php-test
       - CLIENT_SECRET=oidc-client-php-test-secret
       - REDIRECT_URI=https://rp.local.conformance.test/callback

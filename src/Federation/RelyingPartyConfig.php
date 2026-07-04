@@ -9,6 +9,9 @@ use SimpleSAML\OpenID\ValueAbstracts\ScopeBag;
 use SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairConfigBag;
 use SimpleSAML\OpenID\ValueAbstracts\RedirectUriBag;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\Federation\RelyingPartyConfigTest
+ */
 class RelyingPartyConfig
 {
     /**

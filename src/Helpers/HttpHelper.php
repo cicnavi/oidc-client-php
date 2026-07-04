@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Cicnavi\Oidc\Helpers;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\Helpers\HttpHelperTest
+ */
 class HttpHelper
 {
     /**

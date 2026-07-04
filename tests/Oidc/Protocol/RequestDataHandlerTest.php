@@ -856,7 +856,9 @@ final class RequestDataHandlerTest extends TestCase
             ->method('withHeader')
             ->willReturnCallback(function (string $name, $value) use ($request): MockObject {
                 if ($name === 'Authorization') {
-                    $this->assertSame('Basic ' . base64_encode('client-id:client-secret'), $value);
+                    // Per RFC 6749 section 2.3.1, client ID and secret must be
+                    // form-urlencoded before being used as Basic credentials.
+                    $this->assertSame('Basic ' . base64_encode('client-id:secret_w%3Ai%2Bt%25h+spec%2Fals'), $value);
                 }
 
                 return $request;
@@ -876,7 +878,7 @@ final class RequestDataHandlerTest extends TestCase
             'auth-code',
             'client-id',
             'https://client.example.com/cb',
-            'client-secret'
+            'secret_w:i+t%h spec/als'
         );
     }
 
@@ -1280,7 +1282,9 @@ final class RequestDataHandlerTest extends TestCase
             ->method('withHeader')
             ->willReturnCallback(function (string $name, $value) use ($request): MockObject {
                 if ($name === 'Authorization') {
-                    $this->assertSame('Basic ' . base64_encode('client-id:client-secret'), $value);
+                    // Per RFC 6749 section 2.3.1, client ID and secret must be
+                    // form-urlencoded before being used as Basic credentials.
+                    $this->assertSame('Basic ' . base64_encode('client-id:secret_w%3Ai%2Bt%25h+spec%2Fals'), $value);
                 }
 
                 return $request;
@@ -1299,7 +1303,7 @@ final class RequestDataHandlerTest extends TestCase
             'https://op.example.com/par',
             ['response_type' => 'code'],
             'client-id',
-            'client-secret',
+            'secret_w:i+t%h spec/als',
         );
 
         $this->assertSame(['request_uri' => 'urn:abc', 'expires_in' => 90], $result);

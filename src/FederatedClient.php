@@ -57,6 +57,9 @@ use SimpleSAML\OpenID\SupportedAlgorithms;
 use SimpleSAML\OpenID\SupportedSerializers;
 use SimpleSAML\OpenID\ValueAbstracts\TrustAnchorConfigBag;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\FederatedClientTest
+ */
 class FederatedClient
 {
     protected readonly CacheInterface $cache;
@@ -345,7 +348,7 @@ class FederatedClient
             ->getAll();
         // https://openid.net/specs/openid-connect-registration-1_0.html#ClientMetadata
         $rpMetadata[ClaimsEnum::TokenEndpointAuthMethod->value] = TokenEndpointAuthMethodsEnum::PrivateKeyJwt->value;
-        https: //openid.net/specs/openid-connect-rp-metadata-choices-1_0-01.html
+        // https://openid.net/specs/openid-connect-rp-metadata-choices-1_0-01.html
         $rpMetadata[ClaimsEnum::TokenEndpointAuthMethodsSupported->value] = [
             TokenEndpointAuthMethodsEnum::PrivateKeyJwt->value,
         ];
@@ -713,7 +716,6 @@ class FederatedClient
         $signingKeyPair = $this->federation->keyPairResolver()->resolveSignatureKeyPairByAlgorithm(
             signatureKeyPairBag: $this->connectSignatureKeyPairBag,
             receiverEntityMetadata: $opResolvedMetadata,
-            receiverDesignatedSignatureAlgorithmMetadataKey: null,
             receiverSupportedSignatureAlgorithmsMetadataKey: ClaimsEnum::RequestObjectSigningAlgValuesSupported->value,
         );
 
@@ -916,7 +918,6 @@ class FederatedClient
             opJwksUri: $opJwksUri,
             opTokenEndpoint: $opTokenEndpoint,
             opUserinfoEndpoint: $opUserinfoEndpoint,
-            clientSecret: null,
             clientAssertion: $this->buildClientAssertion($resolvedOpMetadata, $opEntityId),
             usePkce: $this->usePkce,
             useNonce: $this->useNonce,

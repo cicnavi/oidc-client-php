@@ -37,6 +37,9 @@ use SimpleSAML\OpenID\SupportedAlgorithms;
 use SimpleSAML\OpenID\SupportedSerializers;
 use Throwable;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\PreRegisteredClientTest
+ */
 class PreRegisteredClient
 {
     /**
@@ -329,7 +332,6 @@ class PreRegisteredClient
             opTokenEndpoint: $opTokenEndpoint,
             opUserinfoEndpoint: $opUserinfoEndpoint,
             clientSecret: $this->clientSecret,
-            clientAssertion: null,
             usePkce: $this->usePkce,
             useNonce: $this->useNonce,
             fetchUserinfoClaims: $this->fetchUserinfoClaims,

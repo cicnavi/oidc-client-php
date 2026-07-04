@@ -32,6 +32,9 @@ use SimpleSAML\OpenID\Exceptions\JwsException;
 use SimpleSAML\OpenID\Jwks;
 use Throwable;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\Protocol\RequestDataHandlerTest
+ */
 class RequestDataHandler
 {
     public const KEY_OP_METADATA_FOR_STATE = 'op_metadata_for_state_';
@@ -296,7 +299,10 @@ class RequestDataHandler
                 );
             }
 
-            $headers['Authorization'] = 'Basic ' . base64_encode($clientId . ':' . $clientSecret);
+            // Per RFC 6749 section 2.3.1, the client ID and secret must be
+            // form-urlencoded before being used as Basic auth credentials.
+            $headers['Authorization'] = 'Basic ' .
+            base64_encode(urlencode($clientId) . ':' . urlencode($clientSecret));
         }
 
         if ($clientAuthenticationMethod === ClientAuthenticationMethodsEnum::PrivateKeyJwt) {

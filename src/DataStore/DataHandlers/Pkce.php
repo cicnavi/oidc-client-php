@@ -11,6 +11,9 @@ use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 
 use function preg_match;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\DataStore\DataHandlers\PkceTest
+ */
 class Pkce extends AbstractDataHandler implements PkceDataHandlerInterface
 {
     /**

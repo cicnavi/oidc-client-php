@@ -7,6 +7,9 @@ namespace Cicnavi\Oidc\Helpers;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Throwable;
 
+/**
+ * @see \Cicnavi\Tests\Oidc\Helpers\StringHelperTest
+ */
 class StringHelper
 {
     /**
