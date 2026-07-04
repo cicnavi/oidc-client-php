@@ -76,6 +76,14 @@ class DynamicallyRegisteredClient
      */
     protected const SESSION_KEY_FLOW_CLIENT_ID = 'OIDC_DCR_FLOW_CLIENT_ID';
 
+    /**
+     * @var string Claim used to persist the fingerprint of the requested
+     * client metadata alongside the client registration claims, so client
+     * metadata changes (configuration drift) can be detected. Library
+     * specific, never sent to the OP.
+     */
+    public const CLAIM_REQUESTED_METADATA_FINGERPRINT = 'oidc_client_php_requested_metadata_fingerprint';
+
     protected readonly ClientRegistrationStoreInterface $registrationStore;
 
     protected readonly ClientRegistrationHandler $registrationHandler;
@@ -239,6 +247,11 @@ class DynamicallyRegisteredClient
      * its client secret has not expired. When the persisted client secret has
      * expired, a new registration is performed automatically.
      *
+     * When the persisted registration was made with different client metadata
+     * than this client would currently send (configuration change), the
+     * client registration is updated on the OP (RFC 7592) when possible, or
+     * replaced with a new registration.
+     *
      * @param bool $forceNewRegistration Perform a new registration even if a
      * persisted registration exists. Note that this abandons the existing
      * registration on the OP. Its per-client store entry is kept (so
@@ -252,13 +265,30 @@ class DynamicallyRegisteredClient
 
         if (!$forceNewRegistration && $existingRegistrationData instanceof ClientRegistrationData) {
             if (!$existingRegistrationData->isClientSecretExpired()) {
-                return $existingRegistrationData;
-            }
+                if ($this->isRegistrationMetadataInSync($existingRegistrationData)) {
+                    return $existingRegistrationData;
+                }
 
-            $this->logger?->notice(
-                'Persisted client secret has expired, performing new client registration.',
-                ['clientId' => $existingRegistrationData->getClientId()],
-            );
+                $this->logger?->notice(
+                    'Client metadata has changed since registration, updating client registration.',
+                    ['clientId' => $existingRegistrationData->getClientId()],
+                );
+
+                try {
+                    return $this->updateRegistration();
+                } catch (Throwable $throwable) {
+                    $this->logger?->warning(
+                        'Client registration update failed, performing new client registration. ' .
+                        $throwable->getMessage(),
+                        ['clientId' => $existingRegistrationData->getClientId()],
+                    );
+                }
+            } else {
+                $this->logger?->notice(
+                    'Persisted client secret has expired, performing new client registration.',
+                    ['clientId' => $existingRegistrationData->getClientId()],
+                );
+            }
         }
 
         $claims = $this->registrationHandler->register(
@@ -266,6 +296,8 @@ class DynamicallyRegisteredClient
             $this->buildClientRegistrationMetadata(),
             $this->initialAccessToken,
         );
+
+        $claims[self::CLAIM_REQUESTED_METADATA_FINGERPRINT] = $this->buildClientRegistrationMetadataFingerprint();
 
         $registrationData = new ClientRegistrationData($claims);
 
@@ -334,6 +366,10 @@ class DynamicallyRegisteredClient
      * provided in constructor), with provided client metadata claims taking
      * precedence.
      *
+     * Note that the persisted requested-metadata fingerprint (used to detect
+     * configuration drift) always reflects the constructor-derived client
+     * metadata, not one-off $clientMetadata overrides provided here.
+     *
      * @param mixed[] $clientMetadata Client metadata claims to override the
      * prepared client metadata set with.
      * @throws OidcClientException
@@ -353,6 +389,9 @@ class DynamicallyRegisteredClient
             $this->requireRegistrationAccessToken($registrationData),
             $updateMetadata,
         );
+
+        // The update carried the current client metadata set.
+        $claims[self::CLAIM_REQUESTED_METADATA_FINGERPRINT] = $this->buildClientRegistrationMetadataFingerprint();
 
         return $this->persistRegistrationClaims($claims, $registrationData);
     }
@@ -491,6 +530,42 @@ class DynamicallyRegisteredClient
         }
 
         return array_merge($clientMetadata, $this->additionalClientMetadata);
+    }
+
+    /**
+     * Fingerprint of the client metadata set this client would currently send
+     * at registration. Persisted with the client registration claims, and
+     * used to detect client metadata changes (configuration drift) on
+     * subsequent runs.
+     *
+     * @throws OidcClientException
+     */
+    public function buildClientRegistrationMetadataFingerprint(): string
+    {
+        try {
+            return hash(
+                'sha256',
+                json_encode($this->buildClientRegistrationMetadata(), JSON_THROW_ON_ERROR),
+            );
+        } catch (Throwable $throwable) {
+            throw new OidcClientException(
+                'Could not build client registration metadata fingerprint. ' . $throwable->getMessage(),
+                $throwable->getCode(),
+                $throwable,
+            );
+        }
+    }
+
+    /**
+     * Check if the provided (persisted) client registration was requested
+     * with the same client metadata set this client would currently send.
+     *
+     * @throws OidcClientException
+     */
+    protected function isRegistrationMetadataInSync(ClientRegistrationData $registrationData): bool
+    {
+        return ($registrationData->getClaims()[self::CLAIM_REQUESTED_METADATA_FINGERPRINT] ?? null) ===
+        $this->buildClientRegistrationMetadataFingerprint();
     }
 
     /**

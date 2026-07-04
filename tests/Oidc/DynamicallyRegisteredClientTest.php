@@ -117,6 +117,21 @@ final class DynamicallyRegisteredClientTest extends TestCase
         );
     }
 
+    /**
+     * Client information response carrying the fingerprint of the metadata
+     * the default sut() would currently send, so register() considers the
+     * persisted registration in sync (no drift update / re-registration).
+     *
+     * @return mixed[]
+     */
+    protected function clientInformationResponseWithCurrentFingerprint(): array
+    {
+        return array_merge($this->clientInformationResponse, [
+            DynamicallyRegisteredClient::CLAIM_REQUESTED_METADATA_FINGERPRINT =>
+                $this->sut()->buildClientRegistrationMetadataFingerprint(),
+        ]);
+    }
+
     public function testCanCreateInstance(): void
     {
         $this->assertInstanceOf(DynamicallyRegisteredClient::class, $this->sut());
@@ -190,7 +205,21 @@ final class DynamicallyRegisteredClientTest extends TestCase
         // Registration is persisted under the current key and per client ID.
         $this->registrationStoreMock->expects($this->exactly(2))
             ->method('set')
-            ->with($this->isString(), $this->clientInformationResponse);
+            ->with(
+                $this->isString(),
+                $this->callback(
+                    function (array $claims): bool {
+                        $this->assertSame('client-id', $claims['client_id']);
+                        // Requested metadata fingerprint is persisted for
+                        // configuration drift detection.
+                        $this->assertArrayHasKey(
+                            DynamicallyRegisteredClient::CLAIM_REQUESTED_METADATA_FINGERPRINT,
+                            $claims,
+                        );
+                        return true;
+                    },
+                ),
+            );
 
         $registrationData = $this->sut()->register();
 
@@ -214,8 +243,11 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     public function testRegisterReturnsPersistedRegistration(): void
     {
-        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
         $this->registrationHandlerMock->expects($this->never())->method('register');
+        $this->registrationHandlerMock->expects($this->never())->method('update');
 
         $registrationData = $this->sut()->register();
 
@@ -250,7 +282,9 @@ final class DynamicallyRegisteredClientTest extends TestCase
     public function testCanForceNewRegistration(): void
     {
         // A valid (non-expired) registration exists, but a new one is forced.
-        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
         $this->metadataMock->method('get')->with('registration_endpoint')
             ->willReturn($this->registrationEndpoint);
 
@@ -267,6 +301,66 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $this->assertSame('forced-client-id', $registrationData->getClientId());
     }
 
+    public function testRegisterUpdatesRegistrationOnClientMetadataChange(): void
+    {
+        // Persisted registration was requested with different (stale) metadata.
+        $staleClaims = array_merge($this->clientInformationResponse, [
+            DynamicallyRegisteredClient::CLAIM_REQUESTED_METADATA_FINGERPRINT => 'stale-fingerprint',
+        ]);
+        $this->registrationStoreMock->method('get')->willReturn($staleClaims);
+
+        $this->registrationHandlerMock->expects($this->never())->method('register');
+        $this->registrationHandlerMock->expects($this->once())
+            ->method('update')
+            ->with(
+                $this->clientInformationResponse['registration_client_uri'],
+                $this->clientInformationResponse['registration_access_token'],
+                $this->isArray(),
+            )
+            ->willReturn($this->clientInformationResponse);
+
+        // Refreshed fingerprint is persisted with the updated registration.
+        $this->registrationStoreMock->expects($this->exactly(2))
+            ->method('set')
+            ->with(
+                $this->isString(),
+                $this->callback(
+                    function (array $claims): bool {
+                        $this->assertNotSame(
+                            'stale-fingerprint',
+                            $claims[DynamicallyRegisteredClient::CLAIM_REQUESTED_METADATA_FINGERPRINT],
+                        );
+                        return true;
+                    },
+                ),
+            );
+
+        $registrationData = $this->sut()->register();
+
+        $this->assertSame('client-id', $registrationData->getClientId());
+    }
+
+    public function testRegisterPerformsNewRegistrationWhenMetadataChangeUpdateNotPossible(): void
+    {
+        // Persisted registration with stale metadata and no management claims
+        // (no registration_client_uri / registration_access_token).
+        $this->registrationStoreMock->method('get')->willReturn([
+            'client_id' => 'client-id',
+            'client_secret' => 'client-secret',
+            'client_secret_expires_at' => 0,
+        ]);
+        $this->metadataMock->method('get')->with('registration_endpoint')
+            ->willReturn($this->registrationEndpoint);
+
+        $this->registrationHandlerMock->expects($this->once())
+            ->method('register')
+            ->willReturn(array_merge($this->clientInformationResponse, ['client_id' => 'new-client-id']));
+
+        $registrationData = $this->sut()->register();
+
+        $this->assertSame('new-client-id', $registrationData->getClientId());
+    }
+
     public function testRegisterThrowsWhenRegistrationEndpointNotAvailable(): void
     {
         $this->registrationStoreMock->method('get')->willReturn(null);
@@ -281,7 +375,9 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     public function testAuthorizeDelegatesToPreRegisteredClient(): void
     {
-        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
 
         $this->preRegisteredClientMock->expects($this->once())
             ->method('authorize')
@@ -292,7 +388,9 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     public function testGetUserDataDelegatesToPreRegisteredClient(): void
     {
-        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
 
         $this->preRegisteredClientMock->expects($this->once())
             ->method('getUserData')
@@ -303,7 +401,9 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     public function testGetUserDataWrapsErrors(): void
     {
-        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
 
         $this->preRegisteredClientMock->expects($this->once())
             ->method('getUserData')
@@ -317,7 +417,9 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     public function testAuthorizeBindsFlowClientIdToSession(): void
     {
-        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
 
         // Only the (public) client ID is bound to the session, never claims
         // containing client credentials.
@@ -386,7 +488,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
             ->willReturnCallback(
                 fn (string $key): ?array => str_contains($key, 'flow-client-id') ?
                 null :
-                $this->clientInformationResponse,
+                $this->clientInformationResponseWithCurrentFingerprint(),
             );
 
         $this->preRegisteredClientMock->expects($this->once())
@@ -408,7 +510,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
             ->willReturnCallback(
                 fn (string $key): array => str_contains($key, 'flow-client-id') ?
                 ['client_id' => ''] :
-                $this->clientInformationResponse,
+                $this->clientInformationResponseWithCurrentFingerprint(),
             );
 
         $this->preRegisteredClientMock->expects($this->once())
@@ -420,7 +522,9 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     public function testResolvePreRegisteredClientBuildsNewInstanceOnEachCall(): void
     {
-        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
 
         $sut = $this->sut(injectPreRegisteredClient: false);
 
@@ -430,7 +534,11 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     public function testResolvePreRegisteredClientThrowsWhenNoClientSecretIssued(): void
     {
-        $clientInformationWithoutSecret = ['client_id' => 'client-id'];
+        $clientInformationWithoutSecret = [
+            'client_id' => 'client-id',
+            DynamicallyRegisteredClient::CLAIM_REQUESTED_METADATA_FINGERPRINT =>
+                $this->sut()->buildClientRegistrationMetadataFingerprint(),
+        ];
         $this->registrationStoreMock->method('get')->willReturn($clientInformationWithoutSecret);
 
         $this->expectException(OidcClientException::class);
@@ -441,7 +549,9 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     public function testCanReadRegistration(): void
     {
-        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
 
         // Simulate OP not repeating registration management claims in read response.
         $readResponse = [
@@ -481,7 +591,9 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     public function testCanUpdateRegistration(): void
     {
-        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
 
         $this->registrationHandlerMock->expects($this->once())
             ->method('update')
@@ -507,7 +619,9 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     public function testCanDeleteRegistration(): void
     {
-        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
 
         $this->registrationHandlerMock->expects($this->once())
             ->method('delete')
