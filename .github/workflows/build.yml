@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [ master, v3.x, v3.x-dcr ]
+    branches: [ master, v3.x ]
   pull_request:
     branches: [ master ]
 
