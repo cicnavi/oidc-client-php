@@ -70,6 +70,12 @@ class DynamicallyRegisteredClient
      */
     protected const CACHE_KEY_OP_CONFIGURATION_URL = 'OIDC_OP_CONFIGURATION_URL';
 
+    /**
+     * @var string Key used to store the client ID bound to the current
+     * authorization flow in the session store.
+     */
+    protected const SESSION_KEY_FLOW_CLIENT_ID = 'OIDC_DCR_FLOW_CLIENT_ID';
+
     protected readonly ClientRegistrationStoreInterface $registrationStore;
 
     protected readonly ClientRegistrationHandler $registrationHandler;
@@ -94,6 +100,14 @@ class DynamicallyRegisteredClient
      * to persist the client registration between requests. Defaults to a
      * simple file-based store. Note that losing a stored registration means
      * losing the issued client credentials, forcing a new registration.
+     * Registrations are persisted under a "current" key and under a
+     * per-client-ID key (used to resolve the registration an authorization
+     * flow was initiated with, see authorize()), so the store normally holds
+     * two entries. Per-client entries of replaced registrations with expired
+     * client secrets are removed automatically; other stale per-client
+     * entries (forced replacement, concurrent registrations) are kept so
+     * in-flight authorization flows can complete - they are not reused
+     * afterwards and are safe to remove externally.
      * @param mixed[] $additionalClientMetadata Any additional client metadata
      * claims to send during client registration. Values provided here
      * override the claims prepared by this client (redirect_uris,
@@ -199,12 +213,24 @@ class DynamicallyRegisteredClient
     }
 
     /**
-     * Key under which the client registration is persisted in the client
-     * registration store. Unique per OP configuration URL and redirect URI.
+     * Key under which the current client registration is persisted in the
+     * client registration store. Unique per OP configuration URL and redirect
+     * URI.
      */
     public function getRegistrationStoreKey(): string
     {
         return $this->opConfigurationUrl . '|' . $this->redirectUri;
+    }
+
+    /**
+     * Key under which the client registration for a particular client ID is
+     * persisted in the client registration store. Used to resolve the client
+     * registration an authorization flow was initiated with, even if the
+     * current registration is replaced in the meantime (see authorize()).
+     */
+    public function getClientRegistrationStoreKey(string $clientId): string
+    {
+        return $this->getRegistrationStoreKey() . '|' . $clientId;
     }
 
     /**
@@ -215,24 +241,24 @@ class DynamicallyRegisteredClient
      *
      * @param bool $forceNewRegistration Perform a new registration even if a
      * persisted registration exists. Note that this abandons the existing
-     * registration on the OP.
+     * registration on the OP. Its per-client store entry is kept (so
+     * in-flight authorization flows initiated with it can still complete),
+     * but is not reused afterwards and is safe to remove externally.
      * @throws OidcClientException
      */
     public function register(bool $forceNewRegistration = false): ClientRegistrationData
     {
-        if (!$forceNewRegistration) {
-            $existingRegistrationData = $this->loadRegistrationData();
+        $existingRegistrationData = $this->loadRegistrationData();
 
-            if ($existingRegistrationData instanceof ClientRegistrationData) {
-                if (!$existingRegistrationData->isClientSecretExpired()) {
-                    return $existingRegistrationData;
-                }
-
-                $this->logger?->notice(
-                    'Persisted client secret has expired, performing new client registration.',
-                    ['clientId' => $existingRegistrationData->getClientId()],
-                );
+        if (!$forceNewRegistration && $existingRegistrationData instanceof ClientRegistrationData) {
+            if (!$existingRegistrationData->isClientSecretExpired()) {
+                return $existingRegistrationData;
             }
+
+            $this->logger?->notice(
+                'Persisted client secret has expired, performing new client registration.',
+                ['clientId' => $existingRegistrationData->getClientId()],
+            );
         }
 
         $claims = $this->registrationHandler->register(
@@ -244,13 +270,21 @@ class DynamicallyRegisteredClient
         $registrationData = new ClientRegistrationData($claims);
 
         $this->registrationStore->set($this->getRegistrationStoreKey(), $claims);
+        // Also persist per client ID, so authorization flows can resolve the
+        // registration they were initiated with (see authorize()).
+        $this->registrationStore->set(
+            $this->getClientRegistrationStoreKey($registrationData->getClientId()),
+            $claims,
+        );
+
+        $this->clearReplacedClientRegistration($existingRegistrationData, $registrationData);
 
         $this->logger?->info(
             'Client registered on OpenID Provider.',
             ['clientId' => $registrationData->getClientId()],
         );
 
-        // Make sure the underlying client is rebuilt with the new credentials.
+        // Discard any provided client instance so the new credentials are used.
         $this->preRegisteredClient = null;
 
         return $this->registrationData = $registrationData;
@@ -341,6 +375,9 @@ class DynamicallyRegisteredClient
         );
 
         $this->registrationStore->delete($this->getRegistrationStoreKey());
+        $this->registrationStore->delete(
+            $this->getClientRegistrationStoreKey($registrationData->getClientId()),
+        );
         $this->registrationData = null;
         $this->preRegisteredClient = null;
 
@@ -352,6 +389,15 @@ class DynamicallyRegisteredClient
      * authorization code grant flow. Client registration is performed first
      * if needed.
      *
+     * The client ID used to initiate the flow is bound to the user session,
+     * so the callback request (handled by getUserData()) can resolve the same
+     * client registration (persisted per client ID) even if the current
+     * persisted registration is replaced by another process in the meantime
+     * (concurrent first-use registration, client secret expiry rollover...).
+     * Only the client ID - which the user agent sees in the authorization
+     * request anyway - is bound to the session; client credentials never
+     * leave the client registration store.
+     *
      * @throws OidcClientException If something goes wrong :)
      */
     public function authorize(
@@ -360,7 +406,14 @@ class DynamicallyRegisteredClient
         ?ResponseModesEnum $responseMode = null,
         ?ParModeEnum $parMode = null,
     ): ?ResponseInterface {
-        return $this->resolvePreRegisteredClient()->authorize(
+        $registrationData = $this->register();
+
+        $this->sessionStore->put(
+            self::SESSION_KEY_FLOW_CLIENT_ID,
+            $registrationData->getClientId(),
+        );
+
+        return $this->resolvePreRegisteredClientFor($registrationData)->authorize(
             $authorizationRequestMethod,
             $response,
             $responseMode,
@@ -372,13 +425,24 @@ class DynamicallyRegisteredClient
      * Get user data by performing an HTTP request to a token endpoint first
      * and then to the userinfo endpoint using tokens to get user data.
      *
+     * Uses the client registration bound to the current authorization flow
+     * (per user session), falling back to the persisted registration. The
+     * flow registration is removed from the session after successful use, so
+     * a transiently failed callback can be retried with the same credentials.
+     *
      * @return mixed[] User data.
      * @throws OidcClientException
      */
     public function getUserData(?ServerRequestInterface $request = null): array
     {
         try {
-            return $this->resolvePreRegisteredClient()->getUserData($request);
+            $registrationData = $this->loadFlowRegistrationData() ?? $this->register();
+
+            $userData = $this->resolvePreRegisteredClientFor($registrationData)->getUserData($request);
+
+            $this->clearFlowRegistrationData();
+
+            return $userData;
         } catch (OidcClientException $oidcClientException) {
             throw $oidcClientException;
         } catch (Throwable $throwable) {
@@ -438,8 +502,20 @@ class DynamicallyRegisteredClient
      */
     public function resolvePreRegisteredClient(): PreRegisteredClient
     {
-        $registrationData = $this->register();
+        return $this->resolvePreRegisteredClientFor($this->register());
+    }
 
+    /**
+     * Get the underlying pre-registered client instance built using the
+     * client credentials from the provided client registration. A new
+     * instance is built on each call, so the provided (current) registration
+     * is always honored. A pre-built client instance provided in the
+     * constructor (intended primarily for testing) takes precedence.
+     *
+     * @throws OidcClientException
+     */
+    protected function resolvePreRegisteredClientFor(ClientRegistrationData $registrationData): PreRegisteredClient
+    {
         if ($this->preRegisteredClient instanceof PreRegisteredClient) {
             return $this->preRegisteredClient;
         }
@@ -451,7 +527,7 @@ class DynamicallyRegisteredClient
             );
         }
 
-        return $this->preRegisteredClient = new PreRegisteredClient(
+        return new PreRegisteredClient(
             opConfigurationUrl: $this->opConfigurationUrl,
             clientId: $registrationData->getClientId(),
             clientSecret: $clientSecret,
@@ -478,6 +554,93 @@ class DynamicallyRegisteredClient
             requestDataHandler: $this->requestDataHandler,
             parMode: $this->parMode,
         );
+    }
+
+    /**
+     * Load the client registration bound to the current authorization flow,
+     * using the client ID from the session store to resolve the registration
+     * from the client registration store. Returns null when not resolvable
+     * (so the current persisted registration can be used as fallback);
+     * errors are logged and the session entry is discarded.
+     */
+    protected function loadFlowRegistrationData(): ?ClientRegistrationData
+    {
+        try {
+            $clientId = $this->sessionStore->get(self::SESSION_KEY_FLOW_CLIENT_ID);
+
+            if (!is_string($clientId) || $clientId === '') {
+                return null;
+            }
+
+            $claims = $this->registrationStore->get($this->getClientRegistrationStoreKey($clientId));
+
+            if (is_array($claims)) {
+                return new ClientRegistrationData($claims);
+            }
+        } catch (Throwable $throwable) {
+            $this->logger?->error(
+                'Error loading client registration bound to the current authorization flow, falling back ' .
+                'to the persisted registration. ' . $throwable->getMessage(),
+            );
+            $this->clearFlowRegistrationData();
+        }
+
+        return null;
+    }
+
+    /**
+     * Remove the client ID bound to the current authorization flow from the
+     * session store (best-effort).
+     */
+    protected function clearFlowRegistrationData(): void
+    {
+        try {
+            $this->sessionStore->delete(self::SESSION_KEY_FLOW_CLIENT_ID);
+        } catch (Throwable $throwable) {
+            $this->logger?->warning(
+                'Error removing client ID bound to the current authorization flow from session. ' .
+                $throwable->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * Remove the per-client store entry of a replaced client registration
+     * (best-effort), so the store does not accumulate superseded
+     * registrations. Only registrations whose client secret has expired are
+     * removed - authorization flows initiated with them could not complete
+     * anyway. Replaced registrations with a still-valid client secret
+     * (forced replacement) are kept, so in-flight authorization flows
+     * initiated with them can still complete; such entries are not reused
+     * afterwards and are safe to remove externally.
+     */
+    protected function clearReplacedClientRegistration(
+        ?ClientRegistrationData $replacedRegistrationData,
+        ClientRegistrationData $newRegistrationData,
+    ): void {
+        if (!$replacedRegistrationData instanceof ClientRegistrationData) {
+            return;
+        }
+
+        if ($replacedRegistrationData->getClientId() === $newRegistrationData->getClientId()) {
+            return;
+        }
+
+        if (!$replacedRegistrationData->isClientSecretExpired()) {
+            return;
+        }
+
+        try {
+            $this->registrationStore->delete(
+                $this->getClientRegistrationStoreKey($replacedRegistrationData->getClientId()),
+            );
+        } catch (Throwable $throwable) {
+            $this->logger?->warning(
+                'Error removing replaced client registration from the client registration store. ' .
+                $throwable->getMessage(),
+                ['replacedClientId' => $replacedRegistrationData->getClientId()],
+            );
+        }
     }
 
     /**
@@ -573,8 +736,14 @@ class DynamicallyRegisteredClient
         $registrationData = new ClientRegistrationData($claims);
 
         $this->registrationStore->set($this->getRegistrationStoreKey(), $claims);
+        // Also persist per client ID, so authorization flows can resolve the
+        // registration they were initiated with (see authorize()).
+        $this->registrationStore->set(
+            $this->getClientRegistrationStoreKey($registrationData->getClientId()),
+            $claims,
+        );
 
-        // Make sure the underlying client is rebuilt in case credentials changed.
+        // Discard any provided client instance in case credentials changed.
         $this->preRegisteredClient = null;
 
         return $this->registrationData = $registrationData;

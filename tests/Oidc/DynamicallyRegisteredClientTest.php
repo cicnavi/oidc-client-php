@@ -20,6 +20,9 @@ use PHPUnit\Framework\TestCase;
 
 #[CoversClass(DynamicallyRegisteredClient::class)]
 #[UsesClass(ClientRegistrationData::class)]
+#[UsesClass(PreRegisteredClient::class)]
+#[UsesClass(\Cicnavi\Oidc\DataStore\DataHandlers\AbstractDataHandler::class)]
+#[UsesClass(\Cicnavi\Oidc\Protocol\RequestDataHandler::class)]
 final class DynamicallyRegisteredClientTest extends TestCase
 {
     protected string $opConfigurationUrl = 'https://op.example.org/.well-known/openid-configuration';
@@ -51,6 +54,8 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     protected MockObject $preRegisteredClientMock;
 
+    protected MockObject $sessionStoreMock;
+
     protected function setUp(): void
     {
         $this->registrationStoreMock = $this->createMock(ClientRegistrationStoreInterface::class);
@@ -58,6 +63,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $this->metadataMock = $this->createMock(MetadataInterface::class);
         $this->cacheMock = $this->createMock(\Psr\SimpleCache\CacheInterface::class);
         $this->preRegisteredClientMock = $this->createMock(PreRegisteredClient::class);
+        $this->sessionStoreMock = $this->createMock(SessionStoreInterface::class);
 
         // By default, keep cache valid to avoid side-effects in most tests.
         $this->cacheMock->method('get')->with('OIDC_OP_CONFIGURATION_URL')
@@ -90,10 +96,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
         $this->assertInstanceOf(ClientRegistrationStoreInterface::class, $registrationStore);
         $this->assertInstanceOf(ClientRegistrationHandler::class, $registrationHandler);
-        $this->assertInstanceOf(
-            SessionStoreInterface::class,
-            $this->createStub(\Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface::class),
-        );
+        $this->assertInstanceOf(SessionStoreInterface::class, $this->sessionStoreMock);
         $this->assertInstanceOf(Client::class, $this->createStub(\GuzzleHttp\Client::class));
 
         return new DynamicallyRegisteredClient(
@@ -106,7 +109,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
             additionalClientMetadata: $additionalClientMetadata,
             includeSoftwareId: $includeSoftwareId,
             cache: $cache,
-            sessionStore: $this->createStub(\Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface::class),
+            sessionStore: $this->sessionStoreMock,
             httpClient: $this->createStub(\GuzzleHttp\Client::class),
             metadata: $metadata,
             registrationHandler: $registrationHandler,
@@ -184,7 +187,8 @@ final class DynamicallyRegisteredClientTest extends TestCase
             )
             ->willReturn($this->clientInformationResponse);
 
-        $this->registrationStoreMock->expects($this->once())
+        // Registration is persisted under the current key and per client ID.
+        $this->registrationStoreMock->expects($this->exactly(2))
             ->method('set')
             ->with($this->isString(), $this->clientInformationResponse);
 
@@ -230,24 +234,37 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
         $this->registrationHandlerMock->expects($this->once())
             ->method('register')
-            ->willReturn($this->clientInformationResponse);
+            ->willReturn(array_merge($this->clientInformationResponse, ['client_id' => 'renewed-client-id']));
+
+        // Replaced (expired) registration's per-client entry is removed.
+        $this->registrationStoreMock->expects($this->once())
+            ->method('delete')
+            ->with($this->stringEndsWith('|client-id'));
 
         $registrationData = $this->sut()->register();
 
         $this->assertFalse($registrationData->isClientSecretExpired());
+        $this->assertSame('renewed-client-id', $registrationData->getClientId());
     }
 
     public function testCanForceNewRegistration(): void
     {
+        // A valid (non-expired) registration exists, but a new one is forced.
+        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
         $this->metadataMock->method('get')->with('registration_endpoint')
             ->willReturn($this->registrationEndpoint);
 
-        $this->registrationStoreMock->expects($this->never())->method('get');
         $this->registrationHandlerMock->expects($this->once())
             ->method('register')
-            ->willReturn($this->clientInformationResponse);
+            ->willReturn(array_merge($this->clientInformationResponse, ['client_id' => 'forced-client-id']));
 
-        $this->sut()->register(forceNewRegistration: true);
+        // Replaced registration's client secret is still valid, so its
+        // per-client entry is kept for in-flight authorization flows.
+        $this->registrationStoreMock->expects($this->never())->method('delete');
+
+        $registrationData = $this->sut()->register(forceNewRegistration: true);
+
+        $this->assertSame('forced-client-id', $registrationData->getClientId());
     }
 
     public function testRegisterThrowsWhenRegistrationEndpointNotAvailable(): void
@@ -298,6 +315,119 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $this->sut()->getUserData();
     }
 
+    public function testAuthorizeBindsFlowClientIdToSession(): void
+    {
+        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+
+        // Only the (public) client ID is bound to the session, never claims
+        // containing client credentials.
+        $this->sessionStoreMock->expects($this->once())
+            ->method('put')
+            ->with($this->isString(), 'client-id');
+
+        $this->preRegisteredClientMock->expects($this->once())->method('authorize');
+
+        $this->sut()->authorize();
+    }
+
+    public function testGetUserDataUsesFlowRegistrationBoundToSession(): void
+    {
+        $this->sessionStoreMock->method('get')->willReturn('flow-client-id');
+        // Flow client ID binding is removed from session after successful use.
+        $this->sessionStoreMock->expects($this->once())->method('delete');
+
+        // Flow registration is resolved per client ID, taking precedence over
+        // the current persisted registration.
+        $this->registrationStoreMock->expects($this->once())
+            ->method('get')
+            ->with($this->stringContains('flow-client-id'))
+            ->willReturn([
+                'client_id' => 'flow-client-id',
+                'client_secret' => 'flow-client-secret',
+                'client_secret_expires_at' => 0,
+            ]);
+
+        $this->preRegisteredClientMock->expects($this->once())
+            ->method('getUserData')
+            ->willReturn(['sub' => 'user-id']);
+
+        $this->assertSame(['sub' => 'user-id'], $this->sut()->getUserData());
+    }
+
+    public function testGetUserDataKeepsFlowRegistrationOnError(): void
+    {
+        $this->sessionStoreMock->method('get')->willReturn('flow-client-id');
+        // Flow binding is kept in session, so the callback can be retried.
+        $this->sessionStoreMock->expects($this->never())->method('delete');
+
+        $this->registrationStoreMock->method('get')->willReturn([
+            'client_id' => 'flow-client-id',
+            'client_secret' => 'flow-client-secret',
+            'client_secret_expires_at' => 0,
+        ]);
+
+        $this->preRegisteredClientMock->expects($this->once())
+            ->method('getUserData')
+            ->willThrowException(new \Exception('Token error.'));
+
+        $this->expectException(OidcClientException::class);
+
+        $this->sut()->getUserData();
+    }
+
+    public function testGetUserDataFallsBackToPersistedRegistrationOnUnresolvableFlowClientId(): void
+    {
+        $this->sessionStoreMock->method('get')->willReturn('flow-client-id');
+
+        // No per-client registration available for the flow client ID, so the
+        // current persisted registration is used.
+        $this->registrationStoreMock->expects($this->exactly(2))
+            ->method('get')
+            ->willReturnCallback(
+                fn (string $key): ?array => str_contains($key, 'flow-client-id') ?
+                null :
+                $this->clientInformationResponse,
+            );
+
+        $this->preRegisteredClientMock->expects($this->once())
+            ->method('getUserData')
+            ->willReturn(['sub' => 'user-id']);
+
+        $this->assertSame(['sub' => 'user-id'], $this->sut()->getUserData());
+    }
+
+    public function testGetUserDataFallsBackToPersistedRegistrationOnInvalidFlowRegistration(): void
+    {
+        $this->sessionStoreMock->method('get')->willReturn('flow-client-id');
+        // Invalid flow binding is discarded, and session is cleared after success.
+        $this->sessionStoreMock->expects($this->exactly(2))->method('delete');
+
+        // Per-client registration entry is invalid (no valid client_id).
+        $this->registrationStoreMock->expects($this->exactly(2))
+            ->method('get')
+            ->willReturnCallback(
+                fn (string $key): array => str_contains($key, 'flow-client-id') ?
+                ['client_id' => ''] :
+                $this->clientInformationResponse,
+            );
+
+        $this->preRegisteredClientMock->expects($this->once())
+            ->method('getUserData')
+            ->willReturn(['sub' => 'user-id']);
+
+        $this->assertSame(['sub' => 'user-id'], $this->sut()->getUserData());
+    }
+
+    public function testResolvePreRegisteredClientBuildsNewInstanceOnEachCall(): void
+    {
+        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+
+        $sut = $this->sut(injectPreRegisteredClient: false);
+
+        // No memoization, so the current registration is always honored.
+        $this->assertNotSame($sut->resolvePreRegisteredClient(), $sut->resolvePreRegisteredClient());
+    }
+
     public function testResolvePreRegisteredClientThrowsWhenNoClientSecretIssued(): void
     {
         $clientInformationWithoutSecret = ['client_id' => 'client-id'];
@@ -328,7 +458,8 @@ final class DynamicallyRegisteredClientTest extends TestCase
             )
             ->willReturn($readResponse);
 
-        $this->registrationStoreMock->expects($this->once())
+        // Registration is persisted under the current key and per client ID.
+        $this->registrationStoreMock->expects($this->exactly(2))
             ->method('set')
             ->with(
                 $this->isString(),
@@ -367,7 +498,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
             )
             ->willReturn(array_merge($this->clientInformationResponse, ['client_name' => 'Updated Client']));
 
-        $this->registrationStoreMock->expects($this->once())->method('set');
+        $this->registrationStoreMock->expects($this->exactly(2))->method('set');
 
         $registrationData = $this->sut()->updateRegistration(['client_name' => 'Updated Client']);
 
@@ -385,7 +516,8 @@ final class DynamicallyRegisteredClientTest extends TestCase
                 $this->clientInformationResponse['registration_access_token'],
             );
 
-        $this->registrationStoreMock->expects($this->once())
+        // Current and per-client registration entries are deleted.
+        $this->registrationStoreMock->expects($this->exactly(2))
             ->method('delete')
             ->with($this->isString());
 
