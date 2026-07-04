@@ -174,11 +174,11 @@ final class DynamicallyRegisteredClientTest extends TestCase
     public function testAdditionalClientMetadataOverridesPreparedClaims(): void
     {
         $clientMetadata = $this->sut(additionalClientMetadata: [
-            'scope' => 'openid custom-scope',
+            'scope' => 'openid profile custom-scope',
             'contacts' => ['admin@example.org'],
         ])->buildClientRegistrationMetadata();
 
-        $this->assertSame('openid custom-scope', $clientMetadata['scope']);
+        $this->assertSame('openid profile custom-scope', $clientMetadata['scope']);
         $this->assertSame(['admin@example.org'], $clientMetadata['contacts']);
     }
 
@@ -228,6 +228,24 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $this->expectExceptionMessage('response_types');
 
         $this->sut(additionalClientMetadata: ['response_types' => ['token']]);
+    }
+
+    public function testAllowsScopeSupersetOverride(): void
+    {
+        $clientMetadata = $this->sut(additionalClientMetadata: [
+            'scope' => $this->scope . ' offline_access',
+        ])->buildClientRegistrationMetadata();
+
+        $this->assertSame($this->scope . ' offline_access', $clientMetadata['scope']);
+    }
+
+    public function testThrowsWhenScopeOverrideExcludesRuntimeScope(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('scope');
+
+        // Runtime scope is 'openid profile' - override drops 'profile'.
+        $this->sut(additionalClientMetadata: ['scope' => 'openid custom-scope']);
     }
 
     public function testUpdateRegistrationThrowsOnRuntimeIncompatibleOverride(): void

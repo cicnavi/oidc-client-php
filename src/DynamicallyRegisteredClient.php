@@ -122,10 +122,11 @@ class DynamicallyRegisteredClient
      * correct format for the particular claim. Claims which affect protocol
      * operations are validated against what this client actually uses at
      * runtime: "token_endpoint_auth_method" can only be
-     * "client_secret_basic", and "redirect_uris", "grant_types" and
+     * "client_secret_basic", "redirect_uris", "grant_types" and
      * "response_types" overrides must contain the values this client uses
      * (the configured redirect URI, "authorization_code" and "code",
-     * respectively).
+     * respectively), and a "scope" override must contain every configured
+     * runtime scope value.
      * @param bool $includeSoftwareId Whether to include the "software_id"
      * claim during client registration.
      * @param ?PreRegisteredClient $preRegisteredClient Pre-built client
@@ -242,6 +243,43 @@ class DynamicallyRegisteredClient
             $clientMetadata,
             ClaimsEnum::ResponseTypes->value,
             ResponseTypesEnum::Code->value,
+        );
+        $this->validateClientMetadataScope($clientMetadata);
+    }
+
+    /**
+     * Ensure that a "scope" client metadata claim, when provided, is a
+     * (space-delimited) scope string containing every scope value this
+     * client uses at runtime (overrides may register supersets, but not
+     * exclude scopes in actual use).
+     *
+     * @param mixed[] $clientMetadata
+     * @throws OidcClientException
+     */
+    protected function validateClientMetadataScope(array $clientMetadata): void
+    {
+        if (!array_key_exists(ClaimsEnum::Scope->value, $clientMetadata)) {
+            return;
+        }
+
+        $scopeOverride = $clientMetadata[ClaimsEnum::Scope->value];
+
+        if (is_string($scopeOverride)) {
+            $overrideScopes = preg_split('/\s+/', $scopeOverride, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $runtimeScopes = preg_split('/\s+/', $this->scope, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+            if (array_diff($runtimeScopes, $overrideScopes) === []) {
+                return;
+            }
+        }
+
+        throw new OidcClientException(
+            sprintf(
+                'Client metadata claim "%s" must be a scope string containing every scope value this ' .
+                'client uses at runtime ("%s").',
+                ClaimsEnum::Scope->value,
+                $this->scope,
+            ),
         );
     }
 
