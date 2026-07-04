@@ -103,6 +103,73 @@ final class FileClientRegistrationStoreTest extends TestCase
         $sut->get('key');
     }
 
+    public function testDefaultStorageDirectoryIsDedicatedPerUser(): void
+    {
+        $sut = new FileClientRegistrationStore();
+
+        $this->assertStringContainsString(
+            FileClientRegistrationStore::DEFAULT_DIRECTORY_NAME,
+            $sut->getStorageDirectory(),
+        );
+
+        if (function_exists('posix_geteuid')) {
+            $this->assertStringEndsWith('-' . posix_geteuid(), $sut->getStorageDirectory());
+        }
+    }
+
+    public function testSetWritesAtomicallyAndRestrictsFilePermissions(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('POSIX permissions are not applicable on Windows.');
+        }
+
+        $this->sut()->set('key', ['client_id' => 'client-id']);
+
+        // No temporary file leftovers, only the final registration file.
+        $files = glob($this->storageDirectory . DIRECTORY_SEPARATOR . '*');
+        $this->assertIsArray($files);
+        $this->assertCount(1, $files);
+        $this->assertStringEndsWith('.json', $files[0]);
+
+        // Contains client credentials, so access is restricted to the owner.
+        $this->assertSame(0o600, fileperms($files[0]) & 0o777);
+    }
+
+    public function testTightensPermissiveStorageDirectoryPermissions(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('POSIX permissions are not applicable on Windows.');
+        }
+
+        mkdir($this->storageDirectory, 0777, true);
+        chmod($this->storageDirectory, 0777);
+
+        $this->sut();
+
+        clearstatcache(true, $this->storageDirectory);
+        $this->assertSame(0o700, fileperms($this->storageDirectory) & 0o777);
+    }
+
+    public function testRejectsSymlinkedStorageDirectory(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            $this->markTestSkipped('Symbolic link handling is not applicable on Windows.');
+        }
+
+        $realDirectory = $this->storageDirectory . '-real';
+        mkdir($realDirectory, 0700, true);
+        symlink($realDirectory, $this->storageDirectory);
+
+        try {
+            $this->expectException(OidcClientException::class);
+            $this->expectExceptionMessage('symbolic link');
+            $this->sut();
+        } finally {
+            unlink($this->storageDirectory);
+            rmdir($realDirectory);
+        }
+    }
+
     public function testThrowsOnNonWritableStorageDirectory(): void
     {
         mkdir($this->storageDirectory, 0500, true);
