@@ -118,9 +118,14 @@ class DynamicallyRegisteredClient
      * afterwards and are safe to remove externally.
      * @param mixed[] $additionalClientMetadata Any additional client metadata
      * claims to send during client registration. Values provided here
-     * override the claims prepared by this client (redirect_uris,
-     * grant_types, response_types, token_endpoint_auth_method, scope...), so
-     * make sure to use the correct format for the particular claim.
+     * override the claims prepared by this client, so make sure to use the
+     * correct format for the particular claim. Claims which affect protocol
+     * operations are validated against what this client actually uses at
+     * runtime: "token_endpoint_auth_method" can only be
+     * "client_secret_basic", and "redirect_uris", "grant_types" and
+     * "response_types" overrides must contain the values this client uses
+     * (the configured redirect URI, "authorization_code" and "code",
+     * respectively).
      * @param bool $includeSoftwareId Whether to include the "software_id"
      * claim during client registration.
      * @param ?PreRegisteredClient $preRegisteredClient Pre-built client
@@ -192,6 +197,84 @@ class DynamicallyRegisteredClient
         $this->registrationHandler = $registrationHandler ?? new ClientRegistrationHandler(
             httpClient: $this->httpClient,
             logger: $this->logger,
+        );
+
+        $this->validateClientMetadata($this->additionalClientMetadata);
+    }
+
+    /**
+     * Ensure that provided client metadata claims which affect protocol
+     * operations are compatible with what this client actually uses at
+     * runtime. Registering different values would make the OP enforce
+     * behavior this client can not deliver, causing hard-to-trace errors
+     * during authorization flows (e.g., registering
+     * "token_endpoint_auth_method" other than "client_secret_basic" while
+     * token requests always authenticate using "client_secret_basic").
+     *
+     * @param mixed[] $clientMetadata
+     * @throws OidcClientException
+     */
+    protected function validateClientMetadata(array $clientMetadata): void
+    {
+        $tokenEndpointAuthMethod = $clientMetadata[ClaimsEnum::TokenEndpointAuthMethod->value] ?? null;
+
+        if (
+            $tokenEndpointAuthMethod !== null &&
+            $tokenEndpointAuthMethod !== TokenEndpointAuthMethodsEnum::ClientSecretBasic->value
+        ) {
+            throw new OidcClientException(
+                sprintf(
+                    'Client metadata claim "%s" can only be "%s", since this client always uses that ' .
+                    'client authentication method.',
+                    ClaimsEnum::TokenEndpointAuthMethod->value,
+                    TokenEndpointAuthMethodsEnum::ClientSecretBasic->value,
+                ),
+            );
+        }
+
+        $this->validateClientMetadataContains($clientMetadata, ClaimsEnum::RedirectUris->value, $this->redirectUri);
+        $this->validateClientMetadataContains(
+            $clientMetadata,
+            ClaimsEnum::GrantTypes->value,
+            GrantTypesEnum::AuthorizationCode->value,
+        );
+        $this->validateClientMetadataContains(
+            $clientMetadata,
+            ClaimsEnum::ResponseTypes->value,
+            ResponseTypesEnum::Code->value,
+        );
+    }
+
+    /**
+     * Ensure that a client metadata claim, when provided, is an array
+     * containing the value this client uses at runtime (overrides may
+     * register supersets, but not exclude the value in actual use).
+     *
+     * @param mixed[] $clientMetadata
+     * @throws OidcClientException
+     */
+    protected function validateClientMetadataContains(
+        array $clientMetadata,
+        string $claim,
+        string $requiredValue,
+    ): void {
+        if (!array_key_exists($claim, $clientMetadata)) {
+            return;
+        }
+
+        $value = $clientMetadata[$claim];
+
+        if (is_array($value) && in_array($requiredValue, $value, true)) {
+            return;
+        }
+
+        throw new OidcClientException(
+            sprintf(
+                'Client metadata claim "%s" must be an array containing "%s", since this client uses that ' .
+                'value at runtime.',
+                $claim,
+                $requiredValue,
+            ),
         );
     }
 
@@ -383,6 +466,9 @@ class DynamicallyRegisteredClient
             $this->buildClientRegistrationMetadata(),
             $clientMetadata,
         );
+
+        // Overrides must not register behavior this client can not deliver.
+        $this->validateClientMetadata($updateMetadata);
 
         $claims = $this->registrationHandler->update(
             $this->requireRegistrationClientUri($registrationData),

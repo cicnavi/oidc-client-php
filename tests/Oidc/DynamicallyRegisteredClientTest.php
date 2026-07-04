@@ -174,12 +174,74 @@ final class DynamicallyRegisteredClientTest extends TestCase
     public function testAdditionalClientMetadataOverridesPreparedClaims(): void
     {
         $clientMetadata = $this->sut(additionalClientMetadata: [
-            'token_endpoint_auth_method' => 'client_secret_post',
+            'scope' => 'openid custom-scope',
             'contacts' => ['admin@example.org'],
         ])->buildClientRegistrationMetadata();
 
-        $this->assertSame('client_secret_post', $clientMetadata['token_endpoint_auth_method']);
+        $this->assertSame('openid custom-scope', $clientMetadata['scope']);
         $this->assertSame(['admin@example.org'], $clientMetadata['contacts']);
+    }
+
+    public function testAdditionalClientMetadataAllowsRuntimeCompatibleOverrides(): void
+    {
+        $clientMetadata = $this->sut(additionalClientMetadata: [
+            'token_endpoint_auth_method' => 'client_secret_basic',
+            'redirect_uris' => [$this->redirectUri, 'https://rp.example.org/other-callback'],
+            'grant_types' => ['authorization_code', 'refresh_token'],
+            'response_types' => ['code'],
+        ])->buildClientRegistrationMetadata();
+
+        $this->assertSame(
+            [$this->redirectUri, 'https://rp.example.org/other-callback'],
+            $clientMetadata['redirect_uris'],
+        );
+        $this->assertSame(['authorization_code', 'refresh_token'], $clientMetadata['grant_types']);
+    }
+
+    public function testThrowsOnUnsupportedTokenEndpointAuthMethodOverride(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('token_endpoint_auth_method');
+
+        $this->sut(additionalClientMetadata: ['token_endpoint_auth_method' => 'client_secret_post']);
+    }
+
+    public function testThrowsWhenRedirectUrisOverrideExcludesConfiguredRedirectUri(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('redirect_uris');
+
+        $this->sut(additionalClientMetadata: ['redirect_uris' => ['https://other.example.org/callback']]);
+    }
+
+    public function testThrowsWhenGrantTypesOverrideExcludesAuthorizationCode(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('grant_types');
+
+        $this->sut(additionalClientMetadata: ['grant_types' => ['client_credentials']]);
+    }
+
+    public function testThrowsWhenResponseTypesOverrideExcludesCode(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('response_types');
+
+        $this->sut(additionalClientMetadata: ['response_types' => ['token']]);
+    }
+
+    public function testUpdateRegistrationThrowsOnRuntimeIncompatibleOverride(): void
+    {
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
+
+        $this->registrationHandlerMock->expects($this->never())->method('update');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('token_endpoint_auth_method');
+
+        $this->sut()->updateRegistration(['token_endpoint_auth_method' => 'client_secret_post']);
     }
 
     public function testCanRegisterClient(): void
