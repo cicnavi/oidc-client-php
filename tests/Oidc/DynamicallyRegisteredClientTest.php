@@ -84,6 +84,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
         ?ClientRegistrationHandler $registrationHandler = null,
         ?PreRegisteredClient $preRegisteredClient = null,
         bool $injectPreRegisteredClient = true,
+        array $postLogoutRedirectUris = [],
     ): DynamicallyRegisteredClient {
         $registrationStore ??= $this->registrationStoreMock;
         $cache ??= $this->cacheMock;
@@ -114,6 +115,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
             metadata: $metadata,
             registrationHandler: $registrationHandler,
             preRegisteredClient: $preRegisteredClient,
+            postLogoutRedirectUris: $postLogoutRedirectUris,
         );
     }
 
@@ -464,6 +466,103 @@ final class DynamicallyRegisteredClientTest extends TestCase
             ->willReturn(null);
 
         $this->assertNotInstanceOf(\Psr\Http\Message\ResponseInterface::class, $this->sut()->authorize());
+    }
+
+    public function testPostLogoutRedirectUrisAreIncludedInClientRegistrationMetadata(): void
+    {
+        $clientMetadata = $this->sut(
+            postLogoutRedirectUris: ['https://rp.example.org/logged-out'],
+        )->buildClientRegistrationMetadata();
+
+        $this->assertSame(
+            ['https://rp.example.org/logged-out'],
+            $clientMetadata['post_logout_redirect_uris'],
+        );
+    }
+
+    public function testPostLogoutRedirectUrisAreAbsentByDefault(): void
+    {
+        $this->assertArrayNotHasKey(
+            'post_logout_redirect_uris',
+            $this->sut()->buildClientRegistrationMetadata(),
+        );
+    }
+
+    public function testThrowsForInvalidPostLogoutRedirectUri(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Post logout redirect URIs must be non-empty strings.');
+
+        $this->sut(postLogoutRedirectUris: ['']);
+    }
+
+    public function testThrowsWhenPostLogoutRedirectUrisOverrideExcludesConfiguredUri(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('post_logout_redirect_uris');
+
+        $this->sut(
+            additionalClientMetadata: [
+                'post_logout_redirect_uris' => ['https://rp.example.org/other'],
+            ],
+            postLogoutRedirectUris: ['https://rp.example.org/logged-out'],
+        );
+    }
+
+    public function testLogoutDelegatesToPreRegisteredClient(): void
+    {
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
+
+        $this->preRegisteredClientMock->expects($this->once())
+            ->method('logout')
+            ->with(
+                'https://rp.example.org/logged-out',
+                null,
+                null,
+                \Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum::Query,
+                null,
+            )
+            ->willReturn(null);
+
+        $this->assertNotInstanceOf(
+            \Psr\Http\Message\ResponseInterface::class,
+            $this->sut()->logout('https://rp.example.org/logged-out'),
+        );
+    }
+
+    public function testValidateLogoutCallbackDelegatesToPreRegisteredClient(): void
+    {
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
+
+        $this->preRegisteredClientMock->expects($this->once())->method('validateLogoutCallback');
+
+        $this->sut()->validateLogoutCallback();
+    }
+
+    public function testGetIdTokenDelegatesToPreRegisteredClient(): void
+    {
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
+
+        $this->preRegisteredClientMock->method('getIdToken')->willReturn('id-token');
+
+        $this->assertSame('id-token', $this->sut()->getIdToken());
+    }
+
+    public function testGetLoginDataDelegatesToPreRegisteredClient(): void
+    {
+        $this->registrationStoreMock->method('get')->willReturn(
+            $this->clientInformationResponseWithCurrentFingerprint(),
+        );
+
+        $this->preRegisteredClientMock->method('getLoginData')->willReturn(['id_token' => 'id-token']);
+
+        $this->assertSame(['id_token' => 'id-token'], $this->sut()->getLoginData());
     }
 
     public function testGetUserDataDelegatesToPreRegisteredClient(): void

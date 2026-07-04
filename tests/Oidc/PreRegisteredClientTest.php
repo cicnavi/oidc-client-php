@@ -281,11 +281,15 @@ final class PreRegisteredClientTest extends TestCase
                 \SimpleSAML\OpenID\Codebooks\ParamsEnum::Code->value => 'auth-code-123',
             ]);
 
-        $this->metadataMock->expects($this->exactly(4))->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(5))->method('get')->willReturnMap([
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::JwksUri->value, 'https://op.example.org/jwks'],
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::TokenEndpoint->value, 'https://op.example.org/token'],
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::UserinfoEndpoint->value, 'https://op.example.org/userinfo'],
             [\SimpleSAML\OpenID\Codebooks\ClaimsEnum::Issuer->value, 'https://op.example.org'],
+            [
+                \SimpleSAML\OpenID\Codebooks\ClaimsEnum::EndSessionEndpoint->value,
+                'https://op.example.org/end-session',
+            ],
         ]);
 
         $expected = ['sub' => 'user-1'];
@@ -507,5 +511,182 @@ final class PreRegisteredClientTest extends TestCase
             ResponseModesEnum::FormPost
         );
         $this->assertSame($response, $result);
+    }
+
+    public function testLogoutRedirectWithResponse(): void
+    {
+        $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([
+            ['end_session_endpoint', 'https://op.example.org/end-session'],
+        ]);
+
+        $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')->willReturn(null);
+        $this->requestDataHandlerMock->method('getLoginIdToken')->willReturn('id-token');
+        $this->requestDataHandlerMock->method('getLogoutState')->willReturn('logout-state');
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('buildEndSessionParameters')
+            ->with(
+                'id-token',
+                $this->clientId,
+                'https://rp.example.org/logged-out',
+                'logout-state',
+                null,
+                null,
+            )
+            ->willReturn([
+                'id_token_hint' => 'id-token',
+                'client_id' => $this->clientId,
+                'post_logout_redirect_uri' => 'https://rp.example.org/logged-out',
+                'state' => 'logout-state',
+            ]);
+
+        $this->requestDataHandlerMock->expects($this->once())->method('clearLoginData');
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with(
+                'Location',
+                $this->callback(fn(string $location): bool => str_starts_with(
+                    $location,
+                    'https://op.example.org/end-session?'
+                ) &&
+                    str_contains($location, 'id_token_hint=id-token') &&
+                    str_contains($location, 'client_id=' . urlencode($this->clientId)) &&
+                    str_contains(
+                        $location,
+                        'post_logout_redirect_uri=' . urlencode('https://rp.example.org/logged-out')
+                    ) &&
+                    str_contains($location, 'state=logout-state'))
+            )
+            ->willReturn($response);
+
+        $result = $this->sut()->logout(
+            postLogoutRedirectUri: 'https://rp.example.org/logged-out',
+            response: $response,
+        );
+        $this->assertSame($response, $result);
+    }
+
+    public function testLogoutUsesEndSessionEndpointFromLoginData(): void
+    {
+        $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')
+            ->willReturn('https://op.example.org/end-session-from-login');
+        $this->metadataMock->expects($this->never())->method('get');
+
+        $this->requestDataHandlerMock->method('getLogoutState')->willReturn('logout-state');
+        $this->requestDataHandlerMock->method('buildEndSessionParameters')->willReturn([]);
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with(
+                'Location',
+                $this->callback(fn(string $location): bool => str_starts_with(
+                    $location,
+                    'https://op.example.org/end-session-from-login'
+                ))
+            )
+            ->willReturn($response);
+
+        $result = $this->sut()->logout(response: $response);
+        $this->assertSame($response, $result);
+    }
+
+    public function testLogoutThrowsWhenEndSessionEndpointNotAvailable(): void
+    {
+        $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')->willReturn(null);
+        $this->metadataMock->method('get')->willThrowException(
+            new \Cicnavi\Oidc\Exceptions\OidcClientException('OIDC metadata parameter not supported'),
+        );
+
+        $this->expectException(\Cicnavi\Oidc\Exceptions\OidcClientException::class);
+        $this->expectExceptionMessage('End session endpoint not found in OP metadata');
+
+        $this->sut()->logout();
+    }
+
+    public function testLogoutFormPostWithResponse(): void
+    {
+        $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([
+            ['end_session_endpoint', 'https://op.example.org/end-session'],
+        ]);
+
+        $this->requestDataHandlerMock->method('getLogoutState')->willReturn('logout-state');
+        $this->requestDataHandlerMock->method('buildEndSessionParameters')->willReturn([
+            'id_token_hint' => 'id-token',
+        ]);
+
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->callback(fn(string $html): bool => str_contains($html, '<form') &&
+                str_contains($html, 'action="https://op.example.org/end-session"') &&
+                str_contains($html, 'name="id_token_hint"')));
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->method('getBody')->willReturn($body);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with('Content-Type', 'text/html')
+            ->willReturn($response);
+
+        $result = $this->sut()->logout(
+            logoutRequestMethod: AuthorizationRequestMethodEnum::FormPost,
+            response: $response,
+        );
+        $this->assertSame($response, $result);
+    }
+
+    public function testLogoutWithoutStateOmitsLogoutState(): void
+    {
+        $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([
+            ['end_session_endpoint', 'https://op.example.org/end-session'],
+        ]);
+
+        $this->requestDataHandlerMock->expects($this->never())->method('getLogoutState');
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('buildEndSessionParameters')
+            ->with(null, $this->clientId, null, null, null, null)
+            ->willReturn([]);
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->method('withHeader')->willReturn($response);
+
+        $result = $this->sut(useState: false)->logout(response: $response);
+        $this->assertSame($response, $result);
+    }
+
+    public function testValidateLogoutCallbackDelegates(): void
+    {
+        $request = $this->createStub(\Psr\Http\Message\ServerRequestInterface::class);
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutCallbackResponse')
+            ->with($request, true);
+
+        $this->sut()->validateLogoutCallback($request);
+    }
+
+    public function testValidateLogoutCallbackHonorsUseStateSetting(): void
+    {
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutCallbackResponse')
+            ->with(null, false);
+
+        $this->sut(useState: false)->validateLogoutCallback();
+    }
+
+    public function testGetIdTokenDelegates(): void
+    {
+        $this->requestDataHandlerMock->method('getLoginIdToken')->willReturn('id-token');
+
+        $this->assertSame('id-token', $this->sut()->getIdToken());
+    }
+
+    public function testGetLoginDataDelegates(): void
+    {
+        $this->requestDataHandlerMock->method('getLoginData')->willReturn(['id_token' => 'id-token']);
+
+        $this->assertSame(['id_token' => 'id-token'], $this->sut()->getLoginData());
     }
 }

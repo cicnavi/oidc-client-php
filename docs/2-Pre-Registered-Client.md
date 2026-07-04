@@ -206,6 +206,65 @@ claims that have multiple values, for example:
   ),
 ```
 
+## RP-Initiated Logout
+
+If the OpenID Provider advertises an `end_session_endpoint` in its metadata,
+you can use the `logout()` method to perform
+[OpenID Connect RP-Initiated Logout](https://openid.net/specs/openid-connect-rpinitiated-1_0.html).
+
+After a successful login (`getUserData()`), the client persists the raw ID
+token and related login data in the session store. On `logout()`, the client
+removes that login data (local logout) and delivers a logout request to the
+OP's end session endpoint, carrying the ID token as `id_token_hint`, the
+`client_id`, and a `state` parameter (if state check is enabled). Note that
+destroying the application session itself (for example, `session_destroy()`)
+remains the application's responsibility.
+
+```php
+use Cicnavi\Oidc\PreRegisteredClient;
+/** @var PreRegisteredClient $oidcClient */
+
+// File: logout.php
+try {
+    // Destroy your own application session as appropriate, then:
+    $oidcClient->logout(
+        // Optional. Must be registered on the OP as one of the client's
+        // 'post_logout_redirect_uris':
+        postLogoutRedirectUri: 'https://client.example.org/logged-out.php',
+    );
+} catch (\Throwable $exception) {
+    // In a real app log the error, redirect the user and show an error message.
+    throw $exception;
+}
+```
+
+If a `post_logout_redirect_uri` was provided, the OP will redirect the user
+back to it after logout, returning the `state` parameter. Validate it using
+`validateLogoutCallback()`:
+
+```php
+use Cicnavi\Oidc\PreRegisteredClient;
+/** @var PreRegisteredClient $oidcClient */
+
+// File: logged-out.php
+try {
+    $oidcClient->validateLogoutCallback();
+    // Show a "logged out" page...
+} catch (\Throwable $exception) {
+    // In a real app log the error and show an error message.
+    throw $exception;
+}
+```
+
+The `logout()` method also accepts optional `logoutHint` and `uiLocales`
+parameters, a `logoutRequestMethod` (HTTP GET redirect by default), and a
+PSR-7 `response` instance which will be populated with proper headers and
+returned (instead of performing an immediate redirect).
+
+The raw ID token received at login is also available using the
+`getIdToken()` method (and related login data using `getLoginData()`), for
+example, if you need to build a custom logout request yourself.
+
 ## Note on Caching
 
 OIDC client uses caching to avoid sending HTTP requests to fetch OIDC

@@ -133,6 +133,11 @@ class DynamicallyRegisteredClient
      * instance to delegate protocol operations to. If not provided (default),
      * one will be built after registration using the issued client
      * credentials. Intended primarily for testing.
+     * @param string[] $postLogoutRedirectUris URIs to register as
+     * 'post_logout_redirect_uris' during client registration, so they can be
+     * used as the post logout redirect URI in RP-Initiated Logout (see
+     * logout()). Note that providing this changes the client metadata set,
+     * so an existing registration will be updated (or replaced) accordingly.
      *
      * For other parameters, refer to PreRegisteredClient - they are forwarded
      * to the underlying client instance which is built after registration.
@@ -184,6 +189,7 @@ class DynamicallyRegisteredClient
         protected readonly ParModeEnum $parMode = ParModeEnum::Auto,
         ?ClientRegistrationHandler $registrationHandler = null,
         protected ?PreRegisteredClient $preRegisteredClient = null,
+        protected readonly array $postLogoutRedirectUris = [],
     ) {
         $this->cache = $cache ?? new FileCache(
             'odrcpc-' . md5($this->opConfigurationUrl . '|' . $this->redirectUri),
@@ -245,6 +251,20 @@ class DynamicallyRegisteredClient
             ResponseTypesEnum::Code->value,
         );
         $this->validateClientMetadataScope($clientMetadata);
+
+        foreach ($this->postLogoutRedirectUris as $postLogoutRedirectUri) {
+            if ($postLogoutRedirectUri === '') {
+                throw new OidcClientException(
+                    'Post logout redirect URIs must be non-empty strings.',
+                );
+            }
+
+            $this->validateClientMetadataContains(
+                $clientMetadata,
+                ClaimsEnum::PostLogoutRedirectUris->value,
+                $postLogoutRedirectUri,
+            );
+        }
     }
 
     /**
@@ -618,6 +638,70 @@ class DynamicallyRegisteredClient
     }
 
     /**
+     * Perform RP-Initiated Logout using the underlying pre-registered client
+     * instance built from the current client registration.
+     *
+     * @param ?string $postLogoutRedirectUri URI to which the OP should
+     * redirect the user agent after logout. Must be one of the
+     * 'post_logout_redirect_uris' registered on the OP (see the
+     * $postLogoutRedirectUris constructor parameter).
+     * @see PreRegisteredClient::logout()
+     * @throws OidcClientException
+     */
+    public function logout(
+        ?string $postLogoutRedirectUri = null,
+        ?string $logoutHint = null,
+        ?string $uiLocales = null,
+        AuthorizationRequestMethodEnum $logoutRequestMethod = AuthorizationRequestMethodEnum::Query,
+        ?ResponseInterface $response = null,
+    ): ?ResponseInterface {
+        return $this->resolvePreRegisteredClient()->logout(
+            $postLogoutRedirectUri,
+            $logoutHint,
+            $uiLocales,
+            $logoutRequestMethod,
+            $response,
+        );
+    }
+
+    /**
+     * Validate the request made to the post logout redirect URI after an
+     * RP-Initiated Logout.
+     *
+     * @see PreRegisteredClient::validateLogoutCallback()
+     * @throws OidcClientException
+     */
+    public function validateLogoutCallback(?ServerRequestInterface $request = null): void
+    {
+        $this->resolvePreRegisteredClient()->validateLogoutCallback($request);
+    }
+
+    /**
+     * Raw ID token received at the last successful login, or null when not
+     * available.
+     *
+     * @see PreRegisteredClient::getIdToken()
+     * @throws OidcClientException
+     */
+    public function getIdToken(): ?string
+    {
+        return $this->resolvePreRegisteredClient()->getIdToken();
+    }
+
+    /**
+     * Login data persisted at the last successful login, or null when not
+     * available.
+     *
+     * @return mixed[]|null
+     * @see PreRegisteredClient::getLoginData()
+     * @throws OidcClientException
+     */
+    public function getLoginData(): ?array
+    {
+        return $this->resolvePreRegisteredClient()->getLoginData();
+    }
+
+    /**
      * @return MetadataInterface OIDC Configuration URL content (OIDC metadata).
      */
     public function getMetadata(): MetadataInterface
@@ -651,6 +735,12 @@ class DynamicallyRegisteredClient
 
         if ($this->includeSoftwareId) {
             $clientMetadata[ClaimsEnum::SoftwareId->value] = 'https://github.com/cicnavi/oidc-client-php';
+        }
+
+        if ($this->postLogoutRedirectUris !== []) {
+            $clientMetadata[ClaimsEnum::PostLogoutRedirectUris->value] = array_values(
+                $this->postLogoutRedirectUris,
+            );
         }
 
         return array_merge($clientMetadata, $this->additionalClientMetadata);

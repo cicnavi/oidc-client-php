@@ -41,6 +41,13 @@ class RequestDataHandler
 
     public const KEY_REDIRECT_URI_FOR_STATE_ = 'redirect_uri_for_state_';
 
+    /**
+     * Session store key under which login data needed for logout (raw ID
+     * token, its iss / sub / sid claims, OP end session endpoint) is
+     * persisted after a successful login.
+     */
+    public const KEY_LOGIN_DATA = 'oidc_login_data';
+
     protected StateNonceDataHandlerInterface $stateNonceDataHandler;
 
     protected PkceDataHandlerInterface $pkceDataHandler;
@@ -124,6 +131,7 @@ class RequestDataHandler
         bool $useNonce = true,
         bool $fetchUserinfoClaims = true,
         ?string $expectedIssuer = null,
+        ?string $opEndSessionEndpoint = null,
     ): array {
 
         $tokenData = $this->requestTokenData(
@@ -144,7 +152,7 @@ class RequestDataHandler
             $this->pkceDataHandler->removeCodeVerifier();
         }
 
-        return $this->getClaims(
+        $claims = $this->getClaims(
             tokenData: $tokenData,
             jwksUri: $opJwksUri,
             userinfoEndpoint: $opUserinfoEndpoint,
@@ -153,6 +161,13 @@ class RequestDataHandler
             expectedIssuer: $expectedIssuer,
             expectedClientId: $clientId,
         );
+
+        $this->storeLoginData(
+            $tokenData[ParamsEnum::IdToken->value],
+            $opEndSessionEndpoint,
+        );
+
+        return $claims;
     }
 
     /**
@@ -925,5 +940,183 @@ class RequestDataHandler
         }
 
         throw new OidcClientException('Redirect URI not found for state "' . $state . '".');
+    }
+
+    /**
+     * Persist login data needed for logout in the session store: the raw ID
+     * token (used as 'id_token_hint' in RP-Initiated Logout), its 'iss',
+     * 'sub' and 'sid' claims (used to correlate OIDC Back-Channel Logout
+     * requests with this login), and the OP's end session endpoint (so
+     * logout can be performed even when OP metadata is no longer at hand,
+     * e.g. for OPs resolved per authorization flow).
+     *
+     * Claim extraction is best-effort: the ID token was already validated
+     * during login, so an extraction error is only logged and the raw ID
+     * token is stored anyway.
+     */
+    public function storeLoginData(?string $idToken, ?string $opEndSessionEndpoint = null): void
+    {
+        $claims = [];
+
+        if (is_string($idToken)) {
+            try {
+                $claims = $this->core->idTokenFactory()->fromToken($idToken)->getPayload();
+            } catch (Throwable $throwable) {
+                $this->logger?->warning(
+                    'Error extracting claims from ID token while storing login data. ' . $throwable->getMessage(),
+                );
+            }
+        }
+
+        $this->sessionStore->put(self::KEY_LOGIN_DATA, [
+            ParamsEnum::IdToken->value => $idToken,
+            ClaimsEnum::Iss->value => is_string($iss = $claims[ClaimsEnum::Iss->value] ?? null) ? $iss : null,
+            ClaimsEnum::Sub->value => is_string($sub = $claims[ClaimsEnum::Sub->value] ?? null) ? $sub : null,
+            ClaimsEnum::Sid->value => is_string($sid = $claims[ClaimsEnum::Sid->value] ?? null) ? $sid : null,
+            ClaimsEnum::EndSessionEndpoint->value => $opEndSessionEndpoint,
+        ]);
+    }
+
+    /**
+     * Get the login data persisted after the last successful login, or null
+     * when not available (no login was performed, or the session expired).
+     *
+     * @return mixed[]|null
+     */
+    public function getLoginData(): ?array
+    {
+        $loginData = $this->sessionStore->get(self::KEY_LOGIN_DATA);
+
+        return is_array($loginData) ? $loginData : null;
+    }
+
+    /**
+     * Raw ID token received at login, usable as the 'id_token_hint'
+     * RP-Initiated Logout parameter.
+     */
+    public function getLoginIdToken(): ?string
+    {
+        return $this->getLoginDataStringValue(ParamsEnum::IdToken->value);
+    }
+
+    /**
+     * Issuer (iss) claim of the ID token received at login.
+     */
+    public function getLoginIssuer(): ?string
+    {
+        return $this->getLoginDataStringValue(ClaimsEnum::Iss->value);
+    }
+
+    /**
+     * Subject (sub) claim of the ID token received at login.
+     */
+    public function getLoginSubject(): ?string
+    {
+        return $this->getLoginDataStringValue(ClaimsEnum::Sub->value);
+    }
+
+    /**
+     * Session ID (sid) claim of the ID token received at login, if the OP
+     * issued one. Used to correlate OP-initiated (back-channel) logout
+     * requests with this login.
+     */
+    public function getLoginSessionId(): ?string
+    {
+        return $this->getLoginDataStringValue(ClaimsEnum::Sid->value);
+    }
+
+    /**
+     * The OP's end session endpoint as advertised at login time.
+     */
+    public function getLoginEndSessionEndpoint(): ?string
+    {
+        return $this->getLoginDataStringValue(ClaimsEnum::EndSessionEndpoint->value);
+    }
+
+    /**
+     * Remove persisted login data from the session store (local logout).
+     */
+    public function clearLoginData(): void
+    {
+        $this->sessionStore->delete(self::KEY_LOGIN_DATA);
+    }
+
+    protected function getLoginDataStringValue(string $key): ?string
+    {
+        $value = $this->getLoginData()[$key] ?? null;
+
+        return (is_string($value) && $value !== '') ? $value : null;
+    }
+
+    /**
+     * Get the state parameter value to use in an RP-Initiated Logout
+     * request. Stored in the session (separately from the authorization
+     * request state), so it can be verified on the post logout redirect.
+     *
+     * @throws OidcClientException
+     */
+    public function getLogoutState(): string
+    {
+        return $this->stateNonceDataHandler->get(StateNonce::LOGOUT_STATE_KEY);
+    }
+
+    /**
+     * Build RP-Initiated Logout request parameters for the OP's end session
+     * endpoint. Null parameters are omitted. Per the specification all
+     * parameters are optional, but 'id_token_hint' is recommended, and when
+     * 'post_logout_redirect_uri' is used the OP needs to identify the RP
+     * ('id_token_hint' and / or 'client_id'), and its value must have been
+     * registered on the OP as one of the client's
+     * 'post_logout_redirect_uris'.
+     *
+     * @return array<string,string>
+     */
+    public function buildEndSessionParameters(
+        ?string $idTokenHint = null,
+        ?string $clientId = null,
+        ?string $postLogoutRedirectUri = null,
+        ?string $state = null,
+        ?string $logoutHint = null,
+        ?string $uiLocales = null,
+    ): array {
+        return array_filter([
+            ParamsEnum::IdTokenHint->value => $idTokenHint,
+            ParamsEnum::ClientId->value => $clientId,
+            ParamsEnum::PostLogoutRedirectUri->value => $postLogoutRedirectUri,
+            ParamsEnum::State->value => $state,
+            ParamsEnum::LogoutHint->value => $logoutHint,
+            ParamsEnum::UiLocales->value => $uiLocales,
+        ]);
+    }
+
+    /**
+     * Validate the request made to the post logout redirect URI after an
+     * RP-Initiated Logout: when a state parameter was sent in the logout
+     * request, the OP must return it unchanged, so verify it against the
+     * stored logout state (which is removed on successful verification).
+     *
+     * @throws OidcClientException
+     */
+    public function validateLogoutCallbackResponse(
+        ?ServerRequestInterface $request = null,
+        bool $useState = true,
+    ): void {
+        if (!$useState) {
+            return;
+        }
+
+        $queryParams = $request?->getQueryParams() ?? $_GET;
+        $parsedBody = $request?->getParsedBody() ?? $_POST;
+        $params = array_merge(
+            $queryParams,
+            is_array($parsedBody) ? $parsedBody : []
+        );
+
+        $state = $params[ParamsEnum::State->value] ?? null;
+        if (!is_string($state) || $state === '') {
+            throw new OidcClientException('Not all required parameters were provided (state).');
+        }
+
+        $this->stateNonceDataHandler->verify(StateNonce::LOGOUT_STATE_KEY, $state);
     }
 }

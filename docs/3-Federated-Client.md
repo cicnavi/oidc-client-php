@@ -141,6 +141,41 @@ public function callback(ServerRequestInterface $request) {
 See the [LoginController Example](../examples/FederatedClient/FederationLoginController.php)
 for a sample implementation.
 
+### 4. RP-Initiated Logout
+
+If the OP advertised an `end_session_endpoint` in its (resolved) metadata at
+login time, you can use the `logout()` method to perform
+[OpenID Connect RP-Initiated Logout](https://openid.net/specs/openid-connect-rpinitiated-1_0.html).
+Since the OP is resolved per authorization flow, the end session endpoint is
+snapshotted at login time (during `getUserData()`) together with the raw ID
+token, and used later when `logout()` is called.
+
+The client removes the persisted login data (local logout) and delivers a
+logout request to the OP's end session endpoint, carrying the ID token as
+`id_token_hint`, the RP entity ID as `client_id`, and a `state` parameter.
+Note that destroying the application session itself remains the
+application's responsibility.
+
+```php
+/** @var \Cicnavi\Oidc\FederatedClient $client */
+
+// Destroy your own application session as appropriate, then:
+$client->logout(
+    // Optional. Must be registered as one of this RP's
+    // 'post_logout_redirect_uris' metadata values (which can be provided
+    // using the Relying Party configuration additional claims):
+    postLogoutRedirectUri: 'https://rp.example.org/logged-out',
+);
+```
+
+If a `post_logout_redirect_uri` was provided, validate the redirected
+request using `validateLogoutCallback()` (verifies the returned `state`):
+
+```php
+/** @var \Cicnavi\Oidc\FederatedClient $client */
+$client->validateLogoutCallback();
+```
+
 ## Entity Configuration Endpoint
 
 To participate in a federation, your RP must publish its

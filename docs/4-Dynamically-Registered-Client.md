@@ -104,7 +104,10 @@ prepared from the constructor parameters:
 * `scope` - the provided scope,
 * `client_name` - if provided using the `clientName` parameter,
 * `software_id` - by default (can be disabled using the `includeSoftwareId`
-parameter).
+parameter),
+* `post_logout_redirect_uris` - if provided using the
+`postLogoutRedirectUris` parameter (used for RP-Initiated Logout, see
+below).
 
 Any additional client metadata claims can be provided using the
 `additionalClientMetadata` parameter. Claims provided here override the
@@ -171,6 +174,36 @@ $oidcClient->authorize();
 // File: callback.php
 $userData = $oidcClient->getUserData();
 ```
+
+### RP-Initiated Logout
+
+RP-Initiated Logout is also available, same as for the
+[Pre-Registered Client](2-Pre-Registered-Client.md): use `logout()` to
+deliver a logout request to the OP's end session endpoint, and
+`validateLogoutCallback()` on the post logout redirect URI. To use a
+`post_logout_redirect_uri` in the logout request, register it first using
+the `postLogoutRedirectUris` constructor parameter:
+
+```php
+use Cicnavi\Oidc\DynamicallyRegisteredClient;
+
+$oidcClient = new DynamicallyRegisteredClient(
+    opConfigurationUrl: 'https://example.org/oidc/.well-known/openid-configuration',
+    redirectUri: 'https://your-example.org/callback',
+    scope: 'openid profile',
+    postLogoutRedirectUris: ['https://your-example.org/logged-out'],
+);
+
+// File: logout.php
+$oidcClient->logout(postLogoutRedirectUri: 'https://your-example.org/logged-out');
+
+// File: logged-out.php
+$oidcClient->validateLogoutCallback();
+```
+
+Note that providing `postLogoutRedirectUris` changes the client metadata
+set, so an existing client registration will be updated (or replaced)
+accordingly.
 
 ## Requirements on the OpenID Provider
 
