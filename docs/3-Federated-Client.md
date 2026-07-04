@@ -154,12 +154,16 @@ The client removes the persisted login data (local logout) and delivers a
 logout request to the OP's end session endpoint, carrying the ID token as
 `id_token_hint`, the RP entity ID as `client_id`, and a `state` parameter.
 Note that destroying the application session itself remains the
-application's responsibility.
+application's responsibility - but do not destroy the PHP session before
+calling `logout()`, since with the default `PhpSessionStore` it also holds
+the persisted login data (end session endpoint, ID token). See the note in
+the [Pre-Registered Client documentation](2-Pre-Registered-Client.md#rp-initiated-logout)
+on session handling around logout.
 
 ```php
 /** @var \Cicnavi\Oidc\FederatedClient $client */
 
-// Destroy your own application session as appropriate, then:
+// Log out the user locally (but do not destroy the PHP session yet), then:
 $client->logout(
     // Optional. Must be registered as one of this RP's
     // 'post_logout_redirect_uris' metadata values (which can be provided

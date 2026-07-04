@@ -670,6 +670,25 @@ final class FederatedClientTest extends TestCase
         $this->assertSame($responseMock, $this->sut()->logout(response: $responseMock));
     }
 
+    public function testLogoutWarnsWhenNoIdTokenHintAvailable(): void
+    {
+        $this->entityConfigMock->method('getEntityId')->willReturn('https://rp.example.org');
+        $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')
+            ->willReturn('https://op.example.org/end-session');
+        $this->requestDataHandlerMock->method('getLoginIdToken')->willReturn(null);
+        $this->requestDataHandlerMock->method('getLogoutState')->willReturn('logout-state');
+        $this->requestDataHandlerMock->method('buildEndSessionParameters')->willReturn([]);
+
+        $this->loggerMock->expects($this->once())
+            ->method('warning')
+            ->with($this->stringContains('id_token_hint'));
+
+        $responseMock = $this->createMock(ResponseInterface::class);
+        $responseMock->method('withHeader')->willReturn($responseMock);
+
+        $this->assertSame($responseMock, $this->sut()->logout(response: $responseMock));
+    }
+
     public function testLogoutThrowsWhenEndSessionEndpointNotAvailable(): void
     {
         $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')->willReturn(null);

@@ -668,6 +668,30 @@ final class PreRegisteredClientTest extends TestCase
         $this->assertSame($response, $result);
     }
 
+    public function testLogoutWarnsWhenNoIdTokenHintAvailable(): void
+    {
+        $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([
+            ['end_session_endpoint', 'https://op.example.org/end-session'],
+        ]);
+
+        // No login data available (e.g., the application session was
+        // destroyed before calling logout()).
+        $this->requestDataHandlerMock->method('getLoginIdToken')->willReturn(null);
+        $this->requestDataHandlerMock->method('getLogoutState')->willReturn('logout-state');
+        $this->requestDataHandlerMock->method('buildEndSessionParameters')->willReturn([]);
+
+        $loggerMock = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $loggerMock->expects($this->once())
+            ->method('warning')
+            ->with($this->stringContains('id_token_hint'));
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->method('withHeader')->willReturn($response);
+
+        $result = $this->sut(logger: $loggerMock)->logout(response: $response);
+        $this->assertSame($response, $result);
+    }
+
     public function testLogoutWithoutStateOmitsLogoutState(): void
     {
         $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([

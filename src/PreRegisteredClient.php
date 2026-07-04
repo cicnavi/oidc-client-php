@@ -368,7 +368,15 @@ class PreRegisteredClient
      * 'id_token_hint'.
      *
      * Note that this does not destroy the application session itself - the
-     * application should do that as part of its own logout handling.
+     * application should do that as part of its own logout handling. However,
+     * with the default PhpSessionStore the persisted login data lives in the
+     * same PHP session as the application data, so do not destroy the PHP
+     * session before calling this method - otherwise the ID token is gone and
+     * the logout request is sent without 'id_token_hint' (a weaker request
+     * which the OP may refuse or answer with a user confirmation prompt; a
+     * warning is logged in that case). Destroy the session on the post logout
+     * redirect page instead, or - when using the $response variant - after
+     * this method returns.
      *
      * @param ?string $postLogoutRedirectUri URI to which the OP should
      * redirect the user agent after logout. Must be registered on the OP as
@@ -403,8 +411,19 @@ class PreRegisteredClient
             );
         }
 
+        $idTokenHint = $this->requestDataHandler->getLoginIdToken();
+
+        if ($idTokenHint === null) {
+            $this->logger?->warning(
+                'No ID token found in persisted login data, sending RP-Initiated Logout request without ' .
+                '"id_token_hint". The OpenID Provider may refuse the request or prompt the user for ' .
+                'confirmation. If the application session was destroyed before calling logout(), destroy ' .
+                'it after the logout request is prepared instead (see logout() documentation).',
+            );
+        }
+
         $parameters = $this->requestDataHandler->buildEndSessionParameters(
-            idTokenHint: $this->requestDataHandler->getLoginIdToken(),
+            idTokenHint: $idTokenHint,
             // Prefer the client ID the login was performed with, so it
             // matches the 'id_token_hint' even if the client registration
             // changed in the meantime (dynamically registered clients).

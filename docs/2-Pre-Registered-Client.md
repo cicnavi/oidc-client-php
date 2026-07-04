@@ -216,9 +216,21 @@ After a successful login (`getUserData()`), the client persists the raw ID
 token and related login data in the session store. On `logout()`, the client
 removes that login data (local logout) and delivers a logout request to the
 OP's end session endpoint, carrying the ID token as `id_token_hint`, the
-`client_id`, and a `state` parameter (if state check is enabled). Note that
-destroying the application session itself (for example, `session_destroy()`)
-remains the application's responsibility.
+`client_id`, and a `state` parameter (if state check is enabled).
+
+Destroying the application session itself (for example, `session_destroy()`)
+remains the application's responsibility - but note that with the default
+`PhpSessionStore`, the persisted login data lives in the same PHP session as
+your application data. **Do not destroy the PHP session before calling
+`logout()`** - the ID token would be gone, and the logout request would be
+sent without `id_token_hint` (a weaker request which the OP may refuse or
+answer with a user confirmation prompt; the client logs a warning in that
+case). Instead, remove your own application data from the session before
+calling `logout()` (the client removes its own login data itself), and
+destroy the session completely on the post logout redirect page.
+Alternatively, use the PSR-7 `response` variant, in which case you can
+destroy the session after `logout()` returns and before emitting the
+response.
 
 ```php
 use Cicnavi\Oidc\PreRegisteredClient;
@@ -226,7 +238,11 @@ use Cicnavi\Oidc\PreRegisteredClient;
 
 // File: logout.php
 try {
-    // Destroy your own application session as appropriate, then:
+    // Log out the user locally, but do not destroy the PHP session yet,
+    // since by default it also holds the ID token needed for the logout
+    // request:
+    unset($_SESSION['user']);
+
     $oidcClient->logout(
         // Optional. Must be registered on the OP as one of the client's
         // 'post_logout_redirect_uris':
@@ -249,6 +265,10 @@ use Cicnavi\Oidc\PreRegisteredClient;
 // File: logged-out.php
 try {
     $oidcClient->validateLogoutCallback();
+
+    // Now the session can be destroyed completely.
+    session_destroy();
+
     // Show a "logged out" page...
 } catch (\Throwable $exception) {
     // In a real app log the error and show an error message.
