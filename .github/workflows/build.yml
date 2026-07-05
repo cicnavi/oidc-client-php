@@ -2,8 +2,7 @@ name: Build
 
 on:
   push:
-    # TODO: remove 'logout' after the branch is merged.
-    branches: [ master, v3.x, logout ]
+    branches: [ master, v3.x ]
   pull_request:
     branches: [ master ]
 
@@ -89,7 +88,7 @@ jobs:
           sleep 2
       - name: Run RP-Initiated Logout conformance tests
         run: |
-          ./conformance-suite/scripts/run-test-plan.py --expected-failures-file ./main/conformance-tests/basic-warnings.json --expected-skips-file ./main/conformance-tests/basic-skips.json "oidcc-client-rp-initiated-logout-rp-basic[client_registration=static_client][request_type=plain_http_request]" ./main/conformance-tests/conformance-rp-logout-ci.json
+          ./conformance-suite/scripts/run-test-plan.py --expected-failures-file ./main/conformance-tests/basic-warnings.json --expected-skips-file ./main/conformance-tests/basic-skips.json "oidcc-client-rp-initiated-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=static_client][request_type=plain_http_request]" ./main/conformance-tests/conformance-rp-logout-ci.json
       - name: Switch RP App to RP-Initiated Logout flow with dynamic client registration
         working-directory: ./main
         run: |
@@ -102,7 +101,7 @@ jobs:
           sleep 2
       - name: Run RP-Initiated Logout conformance tests with dynamic client registration
         run: |
-          ./conformance-suite/scripts/run-test-plan.py --expected-failures-file ./main/conformance-tests/basic-warnings.json --expected-skips-file ./main/conformance-tests/basic-skips.json "oidcc-client-rp-initiated-logout-rp-basic[client_registration=dynamic_client][request_type=plain_http_request]" ./main/conformance-tests/conformance-rp-logout-dynamic-ci.json
+          ./conformance-suite/scripts/run-test-plan.py --expected-failures-file ./main/conformance-tests/basic-warnings.json --expected-skips-file ./main/conformance-tests/basic-skips.json "oidcc-client-rp-initiated-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=dynamic_client][request_type=plain_http_request]" ./main/conformance-tests/conformance-rp-logout-dynamic-ci.json
       - name: Stop RP App
         if: always()
         working-directory: ./main

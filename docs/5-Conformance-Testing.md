@@ -112,7 +112,7 @@ rejected, as exercised by the negative test modules):
    python3 /path/to/conformance-suite/scripts/run-test-plan.py \
      --expected-failures-file conformance-tests/basic-warnings.json \
      --expected-skips-file conformance-tests/basic-skips.json \
-     "oidcc-client-rp-initiated-logout-rp-basic[client_registration=static_client][request_type=plain_http_request]" \
+     "oidcc-client-rp-initiated-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=static_client][request_type=plain_http_request]" \
      conformance-tests/conformance-rp-logout-ci.json
    ```
    or, for the dynamic client registration variant (RP test application started using
@@ -121,7 +121,7 @@ rejected, as exercised by the negative test modules):
    python3 /path/to/conformance-suite/scripts/run-test-plan.py \
      --expected-failures-file conformance-tests/basic-warnings.json \
      --expected-skips-file conformance-tests/basic-skips.json \
-     "oidcc-client-rp-initiated-logout-rp-basic[client_registration=dynamic_client][request_type=plain_http_request]" \
+     "oidcc-client-rp-initiated-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=dynamic_client][request_type=plain_http_request]" \
      conformance-tests/conformance-rp-logout-dynamic-ci.json
    ```
 
