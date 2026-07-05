@@ -1050,10 +1050,6 @@ class FederatedClient
             // the signature) to learn which OP issued it.
             $issuer = $this->core->logoutTokenFactory()->fromToken($logoutToken)->getIssuer();
 
-            if ($issuer === '') {
-                throw new OidcClientException('Logout token issuer claim is empty.');
-            }
-
             $opResolvedMetadata = $this->resolveOpMetadata($issuer);
 
             $opJwksUri = $opResolvedMetadata[ClaimsEnum::JwksUri->value] ?? null;

@@ -775,7 +775,7 @@ final class PreRegisteredClientTest extends TestCase
             ->with($request)
             ->willReturn('logout-token');
 
-        $this->metadataMock->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
             ['jwks_uri', 'https://op.example.org/jwks'],
             ['issuer', 'https://op.example.org'],
         ]);
@@ -810,7 +810,7 @@ final class PreRegisteredClientTest extends TestCase
     {
         $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
 
-        $this->metadataMock->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
             ['jwks_uri', 'https://op.example.org/jwks'],
             ['issuer', 'https://op.example.org'],
         ]);

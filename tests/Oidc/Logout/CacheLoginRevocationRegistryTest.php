@@ -24,9 +24,9 @@ final class CacheLoginRevocationRegistryTest extends TestCase
      */
     private array $cacheStorage = [];
 
-    private MockObject $cacheMock;
+    private MockObject&CacheInterface $cacheMock;
 
-    private MockObject $loggerMock;
+    private MockObject&LoggerInterface $loggerMock;
 
     protected function setUp(): void
     {
@@ -49,7 +49,6 @@ final class CacheLoginRevocationRegistryTest extends TestCase
         ?DateInterval $revocationDuration = null,
         ?LoggerInterface $logger = null,
     ): CacheLoginRevocationRegistry {
-        /** @var CacheInterface $cache */
         $cache ??= $this->cacheMock;
         $revocationDuration ??= new DateInterval('P1D');
         $logger ??= $this->loggerMock;

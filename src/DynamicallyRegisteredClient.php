@@ -809,7 +809,7 @@ class DynamicallyRegisteredClient
 
             $clientId = $this->loadRegistrationData()?->getClientId();
 
-            if (!is_string($clientId) || $clientId === '') {
+            if ($clientId === null) {
                 throw new OidcClientException(
                     'No persisted client registration found, so the logout token audience can not be validated.',
                 );

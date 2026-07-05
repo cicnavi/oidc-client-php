@@ -1028,16 +1028,16 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $this->expectExceptionMessage('backchannel_logout_uri');
 
         $this->sut(
-            backchannelLogoutUri: 'https://rp.example.org/backchannel-logout',
             additionalClientMetadata: ['backchannel_logout_uri' => 'https://rp.example.org/other'],
+            backchannelLogoutUri: 'https://rp.example.org/backchannel-logout',
         );
     }
 
     public function testAllowsMatchingBackchannelLogoutUriOverride(): void
     {
         $clientMetadata = $this->sut(
-            backchannelLogoutUri: 'https://rp.example.org/backchannel-logout',
             additionalClientMetadata: ['backchannel_logout_uri' => 'https://rp.example.org/backchannel-logout'],
+            backchannelLogoutUri: 'https://rp.example.org/backchannel-logout',
         )->buildClientRegistrationMetadata();
 
         $this->assertSame('https://rp.example.org/backchannel-logout', $clientMetadata['backchannel_logout_uri']);
@@ -1052,7 +1052,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
             ->with($request)
             ->willReturn('logout-token');
 
-        $this->metadataMock->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
             ['jwks_uri', 'https://op.example.org/jwks'],
             ['issuer', 'https://op.example.org'],
         ]);
@@ -1093,7 +1093,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
     {
         $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
 
-        $this->metadataMock->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->once())->method('get')->willReturnMap([
             ['jwks_uri', 'https://op.example.org/jwks'],
             ['issuer', 'https://op.example.org'],
         ]);
@@ -1120,7 +1120,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
     {
         $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
 
-        $this->metadataMock->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
             ['jwks_uri', 'https://op.example.org/jwks'],
             ['issuer', 'https://op.example.org'],
         ]);

@@ -68,7 +68,7 @@ final class RequestDataHandlerTest extends TestCase
 
     private DateInterval $maxCacheDuration;
 
-    private MockObject $loginRevocationRegistryMock;
+    private MockObject&LoginRevocationRegistryInterface $loginRevocationRegistryMock;
 
     protected function setUp(): void
     {
@@ -111,7 +111,6 @@ final class RequestDataHandlerTest extends TestCase
         $pkceDataHandler ??= $this->pkceDataHandlerMock;
         $logger ??= $this->loggerMock;
         $maxCacheDuration ??= $this->maxCacheDuration;
-        /** @var LoginRevocationRegistryInterface $loginRevocationRegistry */
         $loginRevocationRegistry ??= $this->loginRevocationRegistryMock;
 
         return new RequestDataHandler(

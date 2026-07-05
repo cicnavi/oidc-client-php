@@ -7,6 +7,7 @@ namespace Cicnavi\Tests\Oidc\Helpers;
 use Cicnavi\Oidc\Helpers\HttpHelper;
 use PHPUnit\Framework\Attributes\BackupGlobals;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(HttpHelper::class)]
@@ -224,7 +225,7 @@ final class HttpHelperTest extends TestCase
         $headers = [];
         $response->expects($this->exactly(2))
             ->method('withHeader')
-            ->willReturnCallback(function (string $name, string $value) use (&$headers, $response) {
+            ->willReturnCallback(function (string $name, string $value) use (&$headers, $response): MockObject {
                 $headers[$name] = $value;
                 return $response;
             });
