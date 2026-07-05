@@ -25,7 +25,7 @@ composer require cicnavi/oidc-client-php
 ## Client Usage
 
 There are three ways to instantiate an OIDC client:
-* Pre-registered Client (`Cicnavi\Oidc\PreRegisteredClient`) - can be used if 
+* Pre-registered Client (`Cicnavi\Oidc\PreRegisteredClient`) - can be used if
 the client is already registered with the OpenID Provider.
 * Federated Client (`Cicnavi\Oidc\FederatedClient`) - can be used in federated
 environments (as per OpenID Federation specification). This client type

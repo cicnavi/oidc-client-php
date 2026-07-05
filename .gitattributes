@@ -1,0 +1,3 @@
+# Normalize line endings: store all text files with LF in the repository
+# and use LF in working trees, regardless of platform.
+* text=auto eol=lf

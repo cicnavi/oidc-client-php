@@ -42,7 +42,7 @@ $oidcClient = new PreRegisteredClient(
     clientSecret: 'some-client-secret',
     redirectUri: 'https://your-example.org/callback',
     scope: 'openid profile',
-    
+
     // Optional parameters with default values
     usePkce: true,  // Determines if PKCE should be used in authorization flow. True by default.
     pkceCodeChallengeMethod: PkceCodeChallengeMethodEnum::S256, // If PKCE is used, which Code Challenge Method should be used.
@@ -50,7 +50,7 @@ $oidcClient = new PreRegisteredClient(
     useState: true,  // Enable / disable state check
     useNonce: true,  // Enable / disable nonce check
     fetchUserinfoClaims: true,  // Fetch claims from the userinfo endpoint
-    maxCacheDuration: new \DateInterval('PT6H'),  // Cache max TTL 
+    maxCacheDuration: new \DateInterval('PT6H'),  // Cache max TTL
     logger: null,  // \Psr\Log\LoggerInterface instance
     defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::FormPost, // Determines the default authorization request method.
     responseMode: null, // Determines the OIDC response mode (e.g., ResponseModesEnum::Query or ResponseModesEnum::FormPost. Fragment is not supported). Null by default.
@@ -85,7 +85,7 @@ The mode can also be overridden per call: `$oidcClient->authorize(parMode: ParMo
 To initiate authorization (Authorization Code Flow), that is, to initiate a
 login process, you can use the `authorize()` method:
 
-```php 
+```php
 use Cicnavi\Oidc\PreRegisteredClient;
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
 use SimpleSAML\OpenID\Codebooks\ResponseModesEnum;
@@ -102,7 +102,7 @@ try {
     // In real app log the error, redirect user and show error message.
     throw $exception;
 }
-```  
+```
 This will initiate a browser request (GET or POST, depending on
 `AuthorizationRequestMethodEnum`) to the authorization server,
 where the user will log in. If the login is successful, the authorization
@@ -135,7 +135,7 @@ try {
     } else {
         // In the real app redirect to another page, show an error message...
     }
-    
+
     // This part is for demo purposes, so we can see returned user data.
     $userDataString = var_export($userData, true);
 
@@ -173,33 +173,33 @@ array (
   'address' => 'Some organization, Example street 123, HR-10000 Zagreb, Croatia',
   'phone_number' => '123',
   // ...
-) 
+)
 ```
 Note that some OpenID providers (for example, AAI@EduHr Federation) will send
 claims that have multiple values, for example:
 ```
-// ... 
-'hrEduPersonUniqueID' => 
+// ...
+'hrEduPersonUniqueID' =>
   array (
     0 => 'jdoe@example.org',
   ),
-  'uid' => 
+  'uid' =>
   array (
     0 => 'jdoe',
   ),
-  'cn' => 
+  'cn' =>
   array (
     0 => 'John Doe',
   ),
-  'sn' => 
+  'sn' =>
   array (
     0 => 'Doe',
   ),
-  'givenName' => 
+  'givenName' =>
   array (
     0 => 'John',
   ),
-  'mail' => 
+  'mail' =>
   array (
     0 => 'john.doe@example.org',
     1 => 'jdoe@example.org',
@@ -297,7 +297,7 @@ instance before making any authentication calls.
 ```php
 use Cicnavi\Oidc\PreRegisteredClient;
 
-// ... 
+// ...
 $oidcClient = new PreRegisteredClient(
     opConfigurationUrl: 'https://example.org/oidc/.well-known/openid-configuration',
     clientId: 'some-client-id',
