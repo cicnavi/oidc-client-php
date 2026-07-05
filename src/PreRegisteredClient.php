@@ -287,27 +287,13 @@ class PreRegisteredClient
         AuthorizationRequestMethodEnum $requestMethod,
         ?ResponseInterface $response,
     ): ?ResponseInterface {
-        if ($requestMethod === AuthorizationRequestMethodEnum::FormPost) {
-            $formHtml = HttpHelper::generateAutoSubmitPostForm($endpoint, $parameters);
-            if ($response instanceof ResponseInterface) {
-                $this->logger?->debug('Returning FormPost HTML in response body.');
-                $response->getBody()->write($formHtml);
-                return $response->withHeader('Content-Type', 'text/html');
-            }
-
-            echo $formHtml;
-            exit;
-        }
-
-        $redirectUri = $endpoint . '?' . http_build_query($parameters);
-
-        if ($response instanceof ResponseInterface) {
-            $this->logger?->debug('Redirecting.', ['endpoint' => $endpoint]);
-            return $response->withHeader('Location', $redirectUri);
-        }
-
-        header('Location: ' . $redirectUri);
-        exit;
+        return HttpHelper::dispatchFrontChannelRequest(
+            $endpoint,
+            $parameters,
+            $requestMethod,
+            $response,
+            $this->logger,
+        );
     }
 
     /**

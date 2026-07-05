@@ -826,27 +826,13 @@ class FederatedClient
         AuthorizationRequestMethodEnum $authorizationRequestMethod,
         ?ResponseInterface $response,
     ): ?ResponseInterface {
-        if ($authorizationRequestMethod === AuthorizationRequestMethodEnum::FormPost) {
-            $formHtml = HttpHelper::generateAutoSubmitPostForm($opAuthorizationEndpoint, $authorizationParameters);
-            if ($response instanceof ResponseInterface) {
-                $this->logger?->debug('Returning FormPost HTML in response body.');
-                $response->getBody()->write($formHtml);
-                return $response->withHeader('Content-Type', 'text/html');
-            }
-
-            echo $formHtml;
-            exit;
-        }
-
-        $opAuthorizationEndpointUri = $opAuthorizationEndpoint . '?' . http_build_query($authorizationParameters);
-
-        if ($response instanceof ResponseInterface) {
-            $this->logger?->debug('Redirecting.', ['endpoint' => $opAuthorizationEndpoint]);
-            return $response->withHeader('Location', $opAuthorizationEndpointUri);
-        }
-
-        header('Location: ' . $opAuthorizationEndpointUri);
-        exit;
+        return HttpHelper::dispatchFrontChannelRequest(
+            $opAuthorizationEndpoint,
+            $authorizationParameters,
+            $authorizationRequestMethod,
+            $response,
+            $this->logger,
+        );
     }
 
     protected function resolveClientRedirectUriForAuthorizationRequest(?string $specificRedirectUri): string
