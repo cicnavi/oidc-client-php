@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Cicnavi\Oidc\Helpers;
 
+use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Log\LoggerInterface;
+
 /**
  * @see \Cicnavi\Tests\Oidc\Helpers\HttpHelperTest
  */
@@ -124,5 +128,47 @@ class HttpHelper
             htmlspecialchars($url, ENT_QUOTES, 'UTF-8'),
             $inputs
         );
+    }
+
+    /**
+     * Deliver a front-channel request (authorization request, RP-Initiated
+     * Logout request) to the given endpoint, either as an auto-submitting
+     * POST form or as a redirect with parameters in the query string,
+     * depending on the method.
+     *
+     * If a PSR-7 response instance is provided, it is populated with the
+     * proper headers / body and returned. Otherwise, output is emitted
+     * directly and the script is terminated.
+     *
+     * @param array<string,string> $parameters
+     */
+    public static function dispatchFrontChannelRequest(
+        string $endpoint,
+        array $parameters,
+        AuthorizationRequestMethodEnum $requestMethod,
+        ?ResponseInterface $response = null,
+        ?LoggerInterface $logger = null,
+    ): ?ResponseInterface {
+        if ($requestMethod === AuthorizationRequestMethodEnum::FormPost) {
+            $formHtml = self::generateAutoSubmitPostForm($endpoint, $parameters);
+            if ($response instanceof ResponseInterface) {
+                $logger?->debug('Returning FormPost HTML in response body.');
+                $response->getBody()->write($formHtml);
+                return $response->withHeader('Content-Type', 'text/html');
+            }
+
+            echo $formHtml;
+            exit;
+        }
+
+        $uri = $endpoint . '?' . http_build_query($parameters);
+
+        if ($response instanceof ResponseInterface) {
+            $logger?->debug('Redirecting.', ['endpoint' => $endpoint]);
+            return $response->withHeader('Location', $uri);
+        }
+
+        header('Location: ' . $uri);
+        exit;
     }
 }

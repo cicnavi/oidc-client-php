@@ -85,10 +85,16 @@ final class FederatedClientTest extends TestCase
 
     private MockObject $federationMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\Jwk
+     */
     private \PHPUnit\Framework\MockObject\Stub $jwkMock;
 
     private HashAlgorithmsEnum $jwkThumbprintHashAlgo;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\Factories\SignatureKeyPairFactory
+     */
     private \PHPUnit\Framework\MockObject\Stub $signatureKeyPairFactoryMock;
 
     private MockObject $signatureKeyPairBagFactoryMock;
@@ -107,12 +113,21 @@ final class FederatedClientTest extends TestCase
 
     private PkceCodeChallengeMethodEnum $pkceCodeChallengeMethod;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface
+     */
     private \PHPUnit\Framework\MockObject\Stub $sessionStoreMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\GuzzleHttp\Client
+     */
     private \PHPUnit\Framework\MockObject\Stub $httpClientMock;
 
     private MockObject $coreMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\Jwks
+     */
     private \PHPUnit\Framework\MockObject\Stub $jwksMock;
 
     private MockObject $requestDataHandlerMock;
@@ -566,6 +581,159 @@ final class FederatedClientTest extends TestCase
 
         $result = $this->sut()->getUserData();
         $this->assertSame($expectedUserData, $result);
+    }
+
+    public function testGetUserDataPassesEndSessionEndpointFromResolvedOpMetadata(): void
+    {
+        $opEntityId = 'https://op.example.org';
+        $state = 'state123';
+        $this->requestDataHandlerMock->method('validateAuthorizationCallbackResponse')->willReturn([
+            'code' => 'auth_code',
+            'state' => $state,
+        ]);
+
+        $opMetadata = [
+            'jwks_uri' => 'https://op.example.org/jwks',
+            'token_endpoint' => 'https://op.example.org/token',
+            'issuer' => $opEntityId,
+            'end_session_endpoint' => 'https://op.example.org/end-session',
+        ];
+        $this->requestDataHandlerMock->method('getResolvedOpMetadataForState')
+            ->with($state)->willReturn($opMetadata);
+        $this->requestDataHandlerMock->method('getClientRedirectUriForState')
+            ->with($state)->willReturn('https://rp.example.org/callback');
+
+        $keyPairResolverMock = $this->createMock(\SimpleSAML\OpenID\Utils\KeyPairResolver::class);
+        $this->federationMock->method('keyPairResolver')->willReturn($keyPairResolverMock);
+        $signingKeyPairMock = $this->createMock(SignatureKeyPair::class);
+        $keyPairResolverMock->method('resolveSignatureKeyPairByAlgorithm')->willReturn($signingKeyPairMock);
+
+        $innerKeyPairMock = $this->createMock(\SimpleSAML\OpenID\ValueAbstracts\KeyPair::class);
+        $signingKeyPairMock->method('getKeyPair')->willReturn($innerKeyPairMock);
+        $innerKeyPairMock->method('getKeyId')->willReturn('kid1');
+        $innerKeyPairMock->method('getPrivateKey')->willReturn($this->createStub(JwkDecorator::class));
+        $signingKeyPairMock->method('getSignatureAlgorithm')->willReturn(SignatureAlgorithmEnum::ES256);
+
+        $helpersMock = $this->createMock(\SimpleSAML\OpenID\Helpers::class);
+        $this->federationMock->method('helpers')->willReturn($helpersMock);
+        $dateTimeHelperMock = $this->createMock(\SimpleSAML\OpenID\Helpers\DateTime::class);
+        $helpersMock->method('dateTime')->willReturn($dateTimeHelperMock);
+        $dateTimeHelperMock->method('getUtc')->willReturn(new \DateTimeImmutable());
+        $randomHelperMock = $this->createMock(\SimpleSAML\OpenID\Helpers\Random::class);
+        $helpersMock->method('random')->willReturn($randomHelperMock);
+        $randomHelperMock->method('string')->willReturn('random_jti');
+
+        $clientAssertionMock = $this->createMock(ClientAssertion::class);
+        $clientAssertionFactoryMock = $this->createMock(ClientAssertionFactory::class);
+        $this->coreMock->method('clientAssertionFactory')->willReturn($clientAssertionFactoryMock);
+        $clientAssertionFactoryMock->method('fromData')->willReturn($clientAssertionMock);
+        $clientAssertionMock->method('getToken')->willReturn('client_assertion_token');
+
+        $capturedArgs = [];
+        $this->requestDataHandlerMock->method('getUserData')
+            ->willReturnCallback(function (mixed ...$args) use (&$capturedArgs): array {
+                $capturedArgs = $args;
+                return ['sub' => 'user123'];
+            });
+
+        $this->sut()->getUserData();
+
+        $this->assertContains('https://op.example.org/end-session', $capturedArgs);
+    }
+
+    public function testLogoutRedirectWithResponse(): void
+    {
+        $this->entityConfigMock->method('getEntityId')->willReturn('https://rp.example.org');
+
+        $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')
+            ->willReturn('https://op.example.org/end-session');
+        $this->requestDataHandlerMock->method('getLoginIdToken')->willReturn('id-token');
+        $this->requestDataHandlerMock->method('getLogoutState')->willReturn('logout-state');
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('buildEndSessionParameters')
+            ->with(
+                'id-token',
+                'https://rp.example.org',
+                null,
+                'logout-state',
+                null,
+                null,
+            )
+            ->willReturn([
+                'id_token_hint' => 'id-token',
+                'client_id' => 'https://rp.example.org',
+                'state' => 'logout-state',
+            ]);
+
+        $this->requestDataHandlerMock->expects($this->once())->method('clearLoginData');
+
+        $responseMock = $this->createMock(ResponseInterface::class);
+        $responseMock->expects($this->once())
+            ->method('withHeader')
+            ->with(
+                'Location',
+                $this->callback(fn(string $location): bool => str_starts_with(
+                    $location,
+                    'https://op.example.org/end-session?'
+                ) &&
+                    str_contains($location, 'id_token_hint=id-token') &&
+                    str_contains($location, 'client_id=' . urlencode('https://rp.example.org')) &&
+                    str_contains($location, 'state=logout-state'))
+            )
+            ->willReturn($responseMock);
+
+        $this->assertSame($responseMock, $this->sut()->logout(response: $responseMock));
+    }
+
+    public function testLogoutWarnsWhenNoIdTokenHintAvailable(): void
+    {
+        $this->entityConfigMock->method('getEntityId')->willReturn('https://rp.example.org');
+        $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')
+            ->willReturn('https://op.example.org/end-session');
+        $this->requestDataHandlerMock->method('getLoginIdToken')->willReturn(null);
+        $this->requestDataHandlerMock->method('getLogoutState')->willReturn('logout-state');
+        $this->requestDataHandlerMock->method('buildEndSessionParameters')->willReturn([]);
+
+        $this->loggerMock->expects($this->once())
+            ->method('warning')
+            ->with($this->stringContains('id_token_hint'));
+
+        $responseMock = $this->createMock(ResponseInterface::class);
+        $responseMock->method('withHeader')->willReturn($responseMock);
+
+        $this->assertSame($responseMock, $this->sut()->logout(response: $responseMock));
+    }
+
+    public function testLogoutThrowsWhenEndSessionEndpointNotAvailable(): void
+    {
+        $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')->willReturn(null);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('End session endpoint not available');
+
+        $this->sut()->logout();
+    }
+
+    public function testValidateLogoutCallbackDelegates(): void
+    {
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutCallbackResponse');
+
+        $this->sut()->validateLogoutCallback();
+    }
+
+    public function testGetIdTokenDelegates(): void
+    {
+        $this->requestDataHandlerMock->method('getLoginIdToken')->willReturn('id-token');
+
+        $this->assertSame('id-token', $this->sut()->getIdToken());
+    }
+
+    public function testGetLoginDataDelegates(): void
+    {
+        $this->requestDataHandlerMock->method('getLoginData')->willReturn(['id_token' => 'id-token']);
+
+        $this->assertSame(['id_token' => 'id-token'], $this->sut()->getLoginData());
     }
 
     public function testBuildEntityStatementWithStaticTrustMarks(): void

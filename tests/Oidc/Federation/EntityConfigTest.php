@@ -19,16 +19,34 @@ final class EntityConfigTest extends TestCase
 {
     private string $entityId;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\TrustAnchorConfigBag
+     */
     private \PHPUnit\Framework\MockObject\Stub $trustAnchorConfigBagMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\UniqueStringBag
+     */
     private \PHPUnit\Framework\MockObject\Stub $authorityHintBagMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairConfigBag
+     */
     private \PHPUnit\Framework\MockObject\Stub $federationSignatureKeyPairConfigBagMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\UniqueStringBag
+     */
     private \PHPUnit\Framework\MockObject\Stub $staticTrustMarkBagMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\KeyedStringBag
+     */
     private \PHPUnit\Framework\MockObject\Stub $dynamicTrustMarkBagMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\ClaimBag
+     */
     private \PHPUnit\Framework\MockObject\Stub $additionalClaimBag;
 
     protected function setUp(): void

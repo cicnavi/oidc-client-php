@@ -95,6 +95,10 @@ while time.time() - start_time < timeout:
                     print(f"Trigger request completed. Status: {trigger_resp.status_code}", flush=True)
                     if "submission_complete" in trigger_resp.text:
                         print("SUCCESS: submission_complete found in response!", flush=True)
+                    elif "logout_rejected" in trigger_resp.text:
+                        # Negative RP-Initiated Logout test modules: the RP
+                        # completed the flow by rejecting the logout callback.
+                        print("SUCCESS: logout_rejected found in response!", flush=True)
                     else:
                         print("WARNING: submission_complete NOT found in response!", flush=True)
                         print(trigger_resp.text[:1000], flush=True) # Print first 1000 chars of response for debug

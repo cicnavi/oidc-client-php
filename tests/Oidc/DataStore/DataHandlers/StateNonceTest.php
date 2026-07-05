@@ -79,4 +79,30 @@ final class StateNonceTest extends TestCase
 
         $this->assertSame($value, $stateNonce->get(StateNonce::STATE_KEY));
     }
+
+    public function testLogoutStateIsValidKeyAndSeparateFromState(): void
+    {
+        $stateNonce = new StateNonce();
+
+        $state = $stateNonce->get(StateNonce::STATE_KEY);
+        $logoutState = $stateNonce->get(StateNonce::LOGOUT_STATE_KEY);
+
+        $this->assertNotSame($state, $logoutState);
+
+        $stateNonce->verify(StateNonce::LOGOUT_STATE_KEY, $logoutState);
+
+        // Logout state is removed on successful verification, so a new one is
+        // generated on next get.
+        $this->assertNotSame($logoutState, $stateNonce->get(StateNonce::LOGOUT_STATE_KEY));
+        // Authorization request state is not affected by logout state handling.
+        $this->assertSame($state, $stateNonce->get(StateNonce::STATE_KEY));
+    }
+
+    public function testVerifyLogoutStateInvalidValueThrows(): void
+    {
+        $stateNonce = new StateNonce();
+        $stateNonce->get(StateNonce::LOGOUT_STATE_KEY);
+        $this->expectException(\Exception::class);
+        $stateNonce->verify(StateNonce::LOGOUT_STATE_KEY, 'invalid');
+    }
 }

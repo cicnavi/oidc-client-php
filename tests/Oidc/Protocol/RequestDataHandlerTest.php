@@ -44,6 +44,9 @@ final class RequestDataHandlerTest extends TestCase
 
     private MockObject $coreMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\Psr\SimpleCache\CacheInterface
+     */
     private \PHPUnit\Framework\MockObject\Stub $cacheMock;
 
     private MockObject $jwksMock;
@@ -1357,5 +1360,292 @@ final class RequestDataHandlerTest extends TestCase
             ['request_uri' => 'urn:abc', 'expires_in' => 0],
             $this->sut()->validatePushedAuthorizationResponseData(['request_uri' => 'urn:abc']),
         );
+    }
+
+    public function testGetLogoutStateDelegatesToHandler(): void
+    {
+        $this->stateNonceDataHandlerMock->expects($this->once())
+            ->method('get')
+            ->with(StateNonce::LOGOUT_STATE_KEY)
+            ->willReturn('logout-state');
+
+        $this->assertSame('logout-state', $this->sut()->getLogoutState());
+    }
+
+    public function testStoreLoginDataStoresIdTokenAndClaims(): void
+    {
+        $idTokenFactory = $this->createMock(IdTokenFactory::class);
+        $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
+        $idTokenJws = $this->createMock(IdToken::class);
+        $idTokenFactory->method('fromToken')->with('id-token')->willReturn($idTokenJws);
+        $idTokenJws->method('getPayload')->willReturn([
+            'iss' => 'https://op.example.org',
+            'sub' => 'user-1',
+            'sid' => 'op-session-1',
+        ]);
+
+        $this->sessionStoreMock->expects($this->once())
+            ->method('put')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA, [
+                'id_token' => 'id-token',
+                'iss' => 'https://op.example.org',
+                'sub' => 'user-1',
+                'sid' => 'op-session-1',
+                'end_session_endpoint' => 'https://op.example.org/end-session',
+                'client_id' => 'client-id',
+            ]);
+
+        $this->sut()->storeLoginData('id-token', 'https://op.example.org/end-session', 'client-id');
+    }
+
+    public function testStoreLoginDataStoresRawIdTokenOnClaimExtractionError(): void
+    {
+        $idTokenFactory = $this->createMock(IdTokenFactory::class);
+        $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
+        $idTokenFactory->method('fromToken')->willThrowException(new JwsException('Parse error'));
+
+        $this->loggerMock->expects($this->once())->method('warning');
+
+        $this->sessionStoreMock->expects($this->once())
+            ->method('put')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA, [
+                'id_token' => 'id-token',
+                'iss' => null,
+                'sub' => null,
+                'sid' => null,
+                'end_session_endpoint' => null,
+                'client_id' => null,
+            ]);
+
+        $this->sut()->storeLoginData('id-token');
+    }
+
+    public function testStoreLoginDataWithoutIdToken(): void
+    {
+        $this->coreMock->expects($this->never())->method('idTokenFactory');
+
+        $this->sessionStoreMock->expects($this->once())
+            ->method('put')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA, [
+                'id_token' => null,
+                'iss' => null,
+                'sub' => null,
+                'sid' => null,
+                'end_session_endpoint' => 'https://op.example.org/end-session',
+                'client_id' => 'client-id',
+            ]);
+
+        $this->sut()->storeLoginData(null, 'https://op.example.org/end-session', 'client-id');
+    }
+
+    public function testLoginDataGetters(): void
+    {
+        $this->sessionStoreMock->method('get')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA)
+            ->willReturn([
+                'id_token' => 'id-token',
+                'iss' => 'https://op.example.org',
+                'sub' => 'user-1',
+                'sid' => 'op-session-1',
+                'end_session_endpoint' => 'https://op.example.org/end-session',
+                'client_id' => 'client-id',
+            ]);
+
+        $sut = $this->sut();
+
+        $this->assertSame('id-token', $sut->getLoginIdToken());
+        $this->assertSame('https://op.example.org', $sut->getLoginIssuer());
+        $this->assertSame('user-1', $sut->getLoginSubject());
+        $this->assertSame('op-session-1', $sut->getLoginSessionId());
+        $this->assertSame('https://op.example.org/end-session', $sut->getLoginEndSessionEndpoint());
+        $this->assertSame('client-id', $sut->getLoginClientId());
+    }
+
+    public function testLoginDataGettersReturnNullWhenNoLoginData(): void
+    {
+        $this->sessionStoreMock->method('get')->willReturn(null);
+
+        $sut = $this->sut();
+
+        $this->assertNull($sut->getLoginData());
+        $this->assertNull($sut->getLoginIdToken());
+        $this->assertNull($sut->getLoginIssuer());
+        $this->assertNull($sut->getLoginSubject());
+        $this->assertNull($sut->getLoginSessionId());
+        $this->assertNull($sut->getLoginEndSessionEndpoint());
+        $this->assertNull($sut->getLoginClientId());
+    }
+
+    public function testClearLoginData(): void
+    {
+        $this->sessionStoreMock->expects($this->once())
+            ->method('delete')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA);
+
+        $this->sut()->clearLoginData();
+    }
+
+    public function testGetUserDataStoresLoginData(): void
+    {
+        // requestTokenData mocks
+        $this->pkceDataHandlerMock->method('getCodeVerifier')->willReturn('verifier');
+        $this->guzzleBridgeMock->method('psr7StreamFor')->willReturn($this->createStub(StreamInterface::class));
+
+        $tokenRequest = $this->createMock(RequestInterface::class);
+        $userInfoRequest = $this->createMock(RequestInterface::class);
+        $userInfoRequest->method('withHeader')->willReturn($userInfoRequest);
+
+        $this->requestFactoryMock->method('createRequest')
+            ->willReturnOnConsecutiveCalls($tokenRequest, $userInfoRequest);
+
+        $tokenRequest->method('withBody')->willReturn($tokenRequest);
+        $tokenRequest->method('withHeader')->willReturn($tokenRequest);
+
+        $tokenResponse = $this->createMock(ResponseInterface::class);
+        $tokenResponse->method('getStatusCode')->willReturn(200);
+        $tokenStream = $this->createMock(StreamInterface::class);
+        $tokenStream->method('__toString')->willReturn(json_encode([
+            'access_token' => 'at',
+            'token_type' => 'Bearer',
+            'id_token' => 'id-token'
+        ]));
+        $tokenResponse->method('getBody')->willReturn($tokenStream);
+
+        // getClaims mocks
+        $jwksFetcher = $this->createMock(JwksFetcher::class);
+        $this->jwksMock->method('jwksFetcher')->willReturn($jwksFetcher);
+        $keySet = $this->createMock(JwksDecorator::class);
+        $keySet->method('jsonSerialize')->willReturn(['keys' => []]);
+        $jwksFetcher->method('fromCacheOrJwksUri')->willReturn($keySet);
+
+        $idTokenFactory = $this->createMock(IdTokenFactory::class);
+        $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
+        $idTokenJws = $this->createMock(IdToken::class);
+        $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getPayload')->willReturn([
+            'iss' => 'https://op.example.org',
+            'sub' => 'sub1',
+            'sid' => 'op-session-1',
+        ]);
+
+        $userInfoResponse = $this->createMock(ResponseInterface::class);
+        $userInfoResponse->method('getStatusCode')->willReturn(200);
+        $userInfoStream = $this->createMock(StreamInterface::class);
+        $userInfoStream->method('__toString')->willReturn('{"sub": "sub1"}');
+        $userInfoResponse->method('getBody')->willReturn($userInfoStream);
+
+        $this->httpClientMock->method('sendRequest')
+            ->willReturnOnConsecutiveCalls($tokenResponse, $userInfoResponse);
+
+        // Login data is persisted after successful login.
+        $this->sessionStoreMock->expects($this->once())
+            ->method('put')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA, [
+                'id_token' => 'id-token',
+                'iss' => 'https://op.example.org',
+                'sub' => 'sub1',
+                'sid' => 'op-session-1',
+                'end_session_endpoint' => 'https://op.example.org/end-session',
+                'client_id' => 'client-id',
+            ]);
+
+        $this->sut()->getUserData(
+            ClientAuthenticationMethodsEnum::ClientSecretPost,
+            'code',
+            'client-id',
+            'redirect-uri',
+            'jwks-uri',
+            'token-endpoint',
+            'userinfo-endpoint',
+            opEndSessionEndpoint: 'https://op.example.org/end-session',
+        );
+    }
+
+    public function testBuildEndSessionParametersOmitsNullValues(): void
+    {
+        $this->assertSame([], $this->sut()->buildEndSessionParameters());
+
+        $this->assertSame(
+            [
+                'id_token_hint' => 'id-token',
+                'client_id' => 'client-id',
+            ],
+            $this->sut()->buildEndSessionParameters(
+                idTokenHint: 'id-token',
+                clientId: 'client-id',
+            ),
+        );
+    }
+
+    public function testBuildEndSessionParametersWithAllValues(): void
+    {
+        $this->assertSame(
+            [
+                'id_token_hint' => 'id-token',
+                'client_id' => 'client-id',
+                'post_logout_redirect_uri' => 'https://rp.example.org/logged-out',
+                'state' => 'logout-state',
+                'logout_hint' => 'user@example.org',
+                'ui_locales' => 'hr en',
+            ],
+            $this->sut()->buildEndSessionParameters(
+                idTokenHint: 'id-token',
+                clientId: 'client-id',
+                postLogoutRedirectUri: 'https://rp.example.org/logged-out',
+                state: 'logout-state',
+                logoutHint: 'user@example.org',
+                uiLocales: 'hr en',
+            ),
+        );
+    }
+
+    public function testValidateLogoutCallbackResponseVerifiesState(): void
+    {
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getQueryParams')->willReturn([
+            'state' => 'logout-state',
+        ]);
+
+        $this->stateNonceDataHandlerMock->expects($this->once())
+            ->method('verify')
+            ->with(StateNonce::LOGOUT_STATE_KEY, 'logout-state');
+
+        $this->sut()->validateLogoutCallbackResponse($request);
+    }
+
+    public function testValidateLogoutCallbackResponseVerifiesStateFromParsedBody(): void
+    {
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getQueryParams')->willReturn([]);
+        $request->method('getParsedBody')->willReturn([
+            'state' => 'logout-state',
+        ]);
+
+        $this->stateNonceDataHandlerMock->expects($this->once())
+            ->method('verify')
+            ->with(StateNonce::LOGOUT_STATE_KEY, 'logout-state');
+
+        $this->sut()->validateLogoutCallbackResponse($request);
+    }
+
+    public function testValidateLogoutCallbackResponseThrowsOnMissingState(): void
+    {
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getQueryParams')->willReturn([]);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Not all required parameters were provided (state).');
+
+        $this->sut()->validateLogoutCallbackResponse($request);
+    }
+
+    public function testValidateLogoutCallbackResponseSkipsVerificationWithoutState(): void
+    {
+        $request = $this->createStub(ServerRequestInterface::class);
+
+        $this->stateNonceDataHandlerMock->expects($this->never())->method('verify');
+
+        $this->sut()->validateLogoutCallbackResponse($request, false);
     }
 }

@@ -1,0 +1,18 @@
+{
+    "alias": "oidc-client-php",
+    "description": "OIDC RP-Initiated Logout conformance tests for oidc-client-php (dynamic client registration)",
+    "browser": [
+        {
+            "match": "https://rp.local.conformance.test*",
+            "tasks": [
+                {
+                    "task": "Trigger RP login with logout and wait for completion",
+                    "match": "https://rp.local.conformance.test/",
+                    "commands": [
+                        ["wait", "id", "submission_complete", 30]
+                    ]
+                }
+            ]
+        }
+    ]
+}

@@ -813,8 +813,10 @@ class FederatedClient
     }
 
     /**
-     * Deliver the front-channel authorization request to the OP, either as an
-     * auto-submitting POST form or as a redirect, depending on the method.
+     * Deliver a front-channel request (authorization request, RP-Initiated
+     * Logout request) to the OP, either as an auto-submitting POST form or
+     * as a redirect with parameters in the query string, depending on the
+     * method.
      *
      * @param array<string,string> $authorizationParameters
      */
@@ -824,27 +826,13 @@ class FederatedClient
         AuthorizationRequestMethodEnum $authorizationRequestMethod,
         ?ResponseInterface $response,
     ): ?ResponseInterface {
-        if ($authorizationRequestMethod === AuthorizationRequestMethodEnum::FormPost) {
-            $formHtml = HttpHelper::generateAutoSubmitPostForm($opAuthorizationEndpoint, $authorizationParameters);
-            if ($response instanceof ResponseInterface) {
-                $this->logger?->debug('Returning FormPost HTML in response body.');
-                $response->getBody()->write($formHtml);
-                return $response->withHeader('Content-Type', 'text/html');
-            }
-
-            echo $formHtml;
-            exit;
-        }
-
-        $opAuthorizationEndpointUri = $opAuthorizationEndpoint . '?' . http_build_query($authorizationParameters);
-
-        if ($response instanceof ResponseInterface) {
-            $this->logger?->debug('Redirecting to authorization endpoint.');
-            return $response->withHeader('Location', $opAuthorizationEndpointUri);
-        }
-
-        header('Location: ' . $opAuthorizationEndpointUri);
-        exit;
+        return HttpHelper::dispatchFrontChannelRequest(
+            $opAuthorizationEndpoint,
+            $authorizationParameters,
+            $authorizationRequestMethod,
+            $response,
+            $this->logger,
+        );
     }
 
     protected function resolveClientRedirectUriForAuthorizationRequest(?string $specificRedirectUri): string
@@ -901,6 +889,12 @@ class FederatedClient
         $opUserinfoEndpoint = $resolvedOpMetadata[ClaimsEnum::UserinfoEndpoint->value] ?? null;
         $opUserinfoEndpoint = is_string($opUserinfoEndpoint) ? $opUserinfoEndpoint : null;
 
+        // Snapshot the end session endpoint at login time, since the resolved
+        // OP metadata (bound to the authorization flow state) is not
+        // available anymore when logout is performed.
+        $opEndSessionEndpoint = $resolvedOpMetadata[ClaimsEnum::EndSessionEndpoint->value] ?? null;
+        $opEndSessionEndpoint = is_string($opEndSessionEndpoint) ? $opEndSessionEndpoint : null;
+
         $opEntityId = $resolvedOpMetadata[ClaimsEnum::Issuer->value] ?? null;
         if (!is_string($opEntityId)) {
             $this->logger?->error(
@@ -923,7 +917,129 @@ class FederatedClient
             useNonce: $this->useNonce,
             fetchUserinfoClaims: $this->fetchUserinfoClaims,
             expectedIssuer: $opEntityId,
+            opEndSessionEndpoint: $opEndSessionEndpoint,
         );
+    }
+
+    /**
+     * Perform RP-Initiated Logout: remove the login data persisted in the
+     * session store (local logout) and deliver a logout request to the OP's
+     * end session endpoint (as advertised at login time), carrying the ID
+     * token received at login as 'id_token_hint'.
+     *
+     * Note that this does not destroy the application session itself - the
+     * application should do that as part of its own logout handling. However,
+     * with the default PhpSessionStore the persisted login data lives in the
+     * same PHP session as the application data, so do not destroy the PHP
+     * session before calling this method - otherwise the login data is gone
+     * and logout is not possible (no end session endpoint) or is sent without
+     * 'id_token_hint' (a warning is logged in that case). Destroy the session
+     * on the post logout redirect page instead, or - when using the $response
+     * variant - after this method returns.
+     *
+     * @param ?string $postLogoutRedirectUri URI to which the OP should
+     * redirect the user agent after logout. Must be registered as one of
+     * this RP's 'post_logout_redirect_uris' metadata values (which can be
+     * provided using the Relying Party configuration additional claims).
+     * Validate the redirected request using validateLogoutCallback().
+     * @param ?string $logoutHint Hint about the End-User that is logging out,
+     * analogous to 'login_hint' (e.g., e-mail address or phone number).
+     * @param ?string $uiLocales Preferred languages for the OP's logout user
+     * interface (space-separated language tags).
+     * @param AuthorizationRequestMethodEnum $logoutRequestMethod How to
+     * deliver the logout request to the OP. Defaults to Query (HTTP GET
+     * redirect), which every OP supporting RP-Initiated Logout accepts.
+     * @param ?ResponseInterface $response Optional HTTP response which will
+     * be populated with proper headers and returned. If not provided, an
+     * immediate redirect (or form output) is performed.
+     * @throws OidcClientException If no end session endpoint is available in
+     * the persisted login data (the OP did not advertise one at login time,
+     * or no login was performed in this session).
+     */
+    public function logout(
+        ?string $postLogoutRedirectUri = null,
+        ?string $logoutHint = null,
+        ?string $uiLocales = null,
+        AuthorizationRequestMethodEnum $logoutRequestMethod = AuthorizationRequestMethodEnum::Query,
+        ?ResponseInterface $response = null,
+    ): ?ResponseInterface {
+        $endSessionEndpoint = $this->requestDataHandler->getLoginEndSessionEndpoint();
+
+        if (!is_string($endSessionEndpoint)) {
+            $error = 'End session endpoint not available in persisted login data, so RP-Initiated Logout is ' .
+            'not available (the OpenID Provider did not advertise one at login time, or no login was performed).';
+            $this->logger?->error($error);
+            throw new OidcClientException($error);
+        }
+
+        $idTokenHint = $this->requestDataHandler->getLoginIdToken();
+
+        if ($idTokenHint === null) {
+            $this->logger?->warning(
+                'No ID token found in persisted login data, sending RP-Initiated Logout request without ' .
+                '"id_token_hint". The OpenID Provider may refuse the request or prompt the user for ' .
+                'confirmation. If the application session was destroyed before calling logout(), destroy ' .
+                'it after the logout request is prepared instead (see logout() documentation).',
+            );
+        }
+
+        $parameters = $this->requestDataHandler->buildEndSessionParameters(
+            idTokenHint: $idTokenHint,
+            // Prefer the client ID the login was performed with, so it
+            // matches the 'id_token_hint'.
+            clientId: $this->requestDataHandler->getLoginClientId() ?? $this->entityConfig->getEntityId(),
+            postLogoutRedirectUri: $postLogoutRedirectUri,
+            state: $this->requestDataHandler->getLogoutState(),
+            logoutHint: $logoutHint,
+            uiLocales: $uiLocales,
+        );
+
+        $this->logger?->debug('Logout request parameters', $parameters);
+
+        // Local logout: remove persisted login data.
+        $this->requestDataHandler->clearLoginData();
+
+        return $this->dispatchAuthorizationRequest(
+            $endSessionEndpoint,
+            $parameters,
+            $logoutRequestMethod,
+            $response,
+        );
+    }
+
+    /**
+     * Validate the request made to the post logout redirect URI after an
+     * RP-Initiated Logout (the OP must return the logout state parameter
+     * unchanged).
+     *
+     * @throws OidcClientException If the state parameter is missing or does
+     * not match the one sent in the logout request.
+     */
+    public function validateLogoutCallback(?ServerRequestInterface $request = null): void
+    {
+        $this->requestDataHandler->validateLogoutCallbackResponse($request);
+    }
+
+    /**
+     * Raw ID token received at the last successful login, or null when not
+     * available (no login was performed, no ID token was issued, or the
+     * session expired).
+     */
+    public function getIdToken(): ?string
+    {
+        return $this->requestDataHandler->getLoginIdToken();
+    }
+
+    /**
+     * Login data persisted at the last successful login (raw ID token, its
+     * 'iss' / 'sub' / 'sid' claims, OP end session endpoint), or null when
+     * not available.
+     *
+     * @return mixed[]|null
+     */
+    public function getLoginData(): ?array
+    {
+        return $this->requestDataHandler->getLoginData();
     }
 
     /**

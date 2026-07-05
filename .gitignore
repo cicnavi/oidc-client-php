@@ -5,3 +5,4 @@ composer.lock
 /.idea/
 /.scannerwork/
 sonar-project.properties
+__pycache__/

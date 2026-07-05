@@ -24,11 +24,19 @@ class StateNonce extends AbstractDataHandler implements StateNonceDataHandlerInt
     public const NONCE_KEY = 'OIDC_NONCE_PARAMETER';
 
     /**
+     * @var string State key used for session storage of the RP-Initiated
+     * Logout state parameter. Separate from STATE_KEY so a logout request
+     * does not clobber an in-flight authorization request state.
+     */
+    public const LOGOUT_STATE_KEY = 'OIDC_LOGOUT_STATE_PARAMETER';
+
+    /**
      * @var string[]
      */
     protected static array $validParameterKeys = [
         self::STATE_KEY,
-        self::NONCE_KEY
+        self::NONCE_KEY,
+        self::LOGOUT_STATE_KEY,
     ];
 
     /**

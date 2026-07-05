@@ -5,6 +5,8 @@ The `oidc-client-php` library has been fully tested and verified against the off
 Specifically, currently we run the following OpenID Conformance Tests:
 * **Basic RP profile** (`oidcc-client-basic-certification-test-plan` plan using static client registration and plain HTTP request authorization).
 * **Basic RP profile with dynamic client registration** (`oidcc-client-basic-certification-test-plan` plan using dynamic client registration and plain HTTP request authorization).
+* **RP-Initiated Logout RP profile (Basic)** (`oidcc-client-rp-initiated-logout-rp-basic` plan using static client registration and plain HTTP request authorization).
+* **RP-Initiated Logout RP profile (Basic) with dynamic client registration** (`oidcc-client-rp-initiated-logout-rp-basic` plan using dynamic client registration and plain HTTP request authorization).
 
 ---
 
@@ -65,6 +67,29 @@ Since every conformance test module is a fresh OP instance served on the same is
 RP test application performs a new client registration each time an authorization flow is
 started (any previously persisted registration would be stale).
 
+For the RP-Initiated Logout test plan, additionally set `LOGOUT_FLOW=rp_initiated`. The RP test
+application then continues every completed login with an RP-Initiated Logout: the callback
+redirects to `/logout` (which sends the logout request to the OP's `end_session_endpoint` with
+`id_token_hint`, `client_id`, `post_logout_redirect_uri` and `state`), and the OP redirects back
+to `/logout-callback`, where the state parameter is validated (an invalid or missing state is
+rejected, as exercised by the negative test modules).
+
+Note that the RP-Initiated Logout test modules require the client to also have a
+`backchannel_logout_uri` or `frontchannel_logout_uri` registered (condition
+`EnsureClientHasAtLeastOneOfBackOrFrontChannelLogoutUri`), and the suite sends a Back-Channel
+Logout request to it while handling the `end_session_endpoint` request. The RP test application
+therefore exposes a `/backchannel-logout` endpoint (currently a stub which acknowledges the
+request with `Cache-Control: no-store`, until Back-Channel Logout support lands in the library).
+It is registered statically via `backchannel_logout_uri` in
+`conformance-tests/conformance-rp-logout-ci.json`, and dynamically via the
+`DynamicallyRegisteredClient` `additionalClientMetadata` constructor parameter:
+   ```bash
+   LOGOUT_FLOW=rp_initiated docker compose -f docker/docker-compose.yml up --build -d
+   # ... or, with dynamic client registration (post_logout_redirect_uris is then
+   # registered on the OP's registration endpoint):
+   CLIENT_REGISTRATION=dynamic_client LOGOUT_FLOW=rp_initiated docker compose -f docker/docker-compose.yml up --build -d
+   ```
+
 ---
 
 ### Step 3: Run the Conformance Tests
@@ -90,6 +115,23 @@ started (any previously persisted registration would be stale).
      --expected-skips-file conformance-tests/basic-skips.json \
      "oidcc-client-basic-certification-test-plan[client_registration=dynamic_client][request_type=plain_http_request]" \
      conformance-tests/conformance-basic-dynamic-ci.json
+   ```
+4. For the RP-Initiated Logout plan (with the RP test application started using
+   `LOGOUT_FLOW=rp_initiated`, see Step 2), run (without the `--expected-skips-file` option,
+   since the skipped test module only exists in the Basic plan):
+   ```bash
+   python3 /path/to/conformance-suite/scripts/run-test-plan.py \
+     --expected-failures-file conformance-tests/basic-warnings.json \
+     "oidcc-client-rp-initiated-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=static_client][request_type=plain_http_request]" \
+     conformance-tests/conformance-rp-logout-ci.json
+   ```
+   or, for the dynamic client registration variant (RP test application started using
+   `CLIENT_REGISTRATION=dynamic_client LOGOUT_FLOW=rp_initiated`):
+   ```bash
+   python3 /path/to/conformance-suite/scripts/run-test-plan.py \
+     --expected-failures-file conformance-tests/basic-warnings.json \
+     "oidcc-client-rp-initiated-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=dynamic_client][request_type=plain_http_request]" \
+     conformance-tests/conformance-rp-logout-dynamic-ci.json
    ```
 
 All test modules should complete and pass cleanly.

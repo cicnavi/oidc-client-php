@@ -10,6 +10,7 @@ use Cicnavi\Oidc\CodeBooks\ParModeEnum;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
+use Cicnavi\Oidc\Helpers\HttpHelper;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use Cicnavi\Oidc\Protocol\ClientRegistrationHandler;
 use Cicnavi\Oidc\Protocol\OpMetadata;
@@ -91,6 +92,12 @@ class DynamicallyRegisteredClient
     protected ?ClientRegistrationData $registrationData = null;
 
     /**
+     * Request data handler resolved for session-stored login / logout data
+     * operations (see resolveRequestDataHandler()).
+     */
+    protected ?RequestDataHandler $resolvedRequestDataHandler = null;
+
+    /**
      * DynamicallyRegisteredClient constructor.
      *
      * @param string $opConfigurationUrl URL where the OP configuration can be
@@ -133,6 +140,11 @@ class DynamicallyRegisteredClient
      * instance to delegate protocol operations to. If not provided (default),
      * one will be built after registration using the issued client
      * credentials. Intended primarily for testing.
+     * @param string[] $postLogoutRedirectUris URIs to register as
+     * 'post_logout_redirect_uris' during client registration, so they can be
+     * used as the post logout redirect URI in RP-Initiated Logout (see
+     * logout()). Note that providing this changes the client metadata set,
+     * so an existing registration will be updated (or replaced) accordingly.
      *
      * For other parameters, refer to PreRegisteredClient - they are forwarded
      * to the underlying client instance which is built after registration.
@@ -184,6 +196,7 @@ class DynamicallyRegisteredClient
         protected readonly ParModeEnum $parMode = ParModeEnum::Auto,
         ?ClientRegistrationHandler $registrationHandler = null,
         protected ?PreRegisteredClient $preRegisteredClient = null,
+        protected readonly array $postLogoutRedirectUris = [],
     ) {
         $this->cache = $cache ?? new FileCache(
             'odrcpc-' . md5($this->opConfigurationUrl . '|' . $this->redirectUri),
@@ -245,6 +258,20 @@ class DynamicallyRegisteredClient
             ResponseTypesEnum::Code->value,
         );
         $this->validateClientMetadataScope($clientMetadata);
+
+        foreach ($this->postLogoutRedirectUris as $postLogoutRedirectUri) {
+            if ($postLogoutRedirectUri === '') {
+                throw new OidcClientException(
+                    'Post logout redirect URIs must be non-empty strings.',
+                );
+            }
+
+            $this->validateClientMetadataContains(
+                $clientMetadata,
+                ClaimsEnum::PostLogoutRedirectUris->value,
+                $postLogoutRedirectUri,
+            );
+        }
     }
 
     /**
@@ -618,6 +645,186 @@ class DynamicallyRegisteredClient
     }
 
     /**
+     * Perform RP-Initiated Logout: remove the login data persisted in the
+     * session store (local logout) and deliver a logout request to the OP's
+     * end session endpoint, carrying the ID token received at login as
+     * 'id_token_hint'.
+     *
+     * Logout only needs session-stored login data and OP metadata, so no
+     * client registration is performed or updated here - logout must not be
+     * blocked by dynamic client registration state (stale, expired, or
+     * missing registration, unavailable registration endpoint...). The
+     * 'client_id' logout parameter is the login-time client ID from the
+     * persisted login data, with a read-only fallback to the client ID of
+     * the persisted client registration.
+     *
+     * For notes on application session handling around logout, refer to
+     * PreRegisteredClient::logout().
+     *
+     * @param ?string $postLogoutRedirectUri URI to which the OP should
+     * redirect the user agent after logout. Must be one of the
+     * 'post_logout_redirect_uris' registered on the OP (see the
+     * $postLogoutRedirectUris constructor parameter).
+     * @see PreRegisteredClient::logout()
+     * @throws OidcClientException If the OP does not advertise an
+     * 'end_session_endpoint'.
+     */
+    public function logout(
+        ?string $postLogoutRedirectUri = null,
+        ?string $logoutHint = null,
+        ?string $uiLocales = null,
+        AuthorizationRequestMethodEnum $logoutRequestMethod = AuthorizationRequestMethodEnum::Query,
+        ?ResponseInterface $response = null,
+    ): ?ResponseInterface {
+        $requestDataHandler = $this->resolveRequestDataHandler();
+
+        $endSessionEndpoint = $requestDataHandler->getLoginEndSessionEndpoint() ??
+        $this->getOptionalMetadataString(ClaimsEnum::EndSessionEndpoint->value);
+
+        if (!is_string($endSessionEndpoint)) {
+            throw new OidcClientException(
+                'End session endpoint not found in OP metadata, so RP-Initiated Logout is not available.',
+            );
+        }
+
+        $idTokenHint = $requestDataHandler->getLoginIdToken();
+
+        if ($idTokenHint === null) {
+            $this->logger?->warning(
+                'No ID token found in persisted login data, sending RP-Initiated Logout request without ' .
+                '"id_token_hint". The OpenID Provider may refuse the request or prompt the user for ' .
+                'confirmation. If the application session was destroyed before calling logout(), destroy ' .
+                'it after the logout request is prepared instead (see logout() documentation).',
+            );
+        }
+
+        $parameters = $requestDataHandler->buildEndSessionParameters(
+            idTokenHint: $idTokenHint,
+            // Prefer the client ID the login was performed with, so it
+            // matches the 'id_token_hint' even if the client registration
+            // changed in the meantime. The fallback only reads the persisted
+            // registration - no registration is performed or updated.
+            clientId: $requestDataHandler->getLoginClientId() ?? $this->loadRegistrationData()?->getClientId(),
+            postLogoutRedirectUri: $postLogoutRedirectUri,
+            state: $this->useState ? $requestDataHandler->getLogoutState() : null,
+            logoutHint: $logoutHint,
+            uiLocales: $uiLocales,
+        );
+
+        $this->logger?->debug('Logout request parameters', $parameters);
+
+        // Local logout: remove persisted login data.
+        $requestDataHandler->clearLoginData();
+
+        return HttpHelper::dispatchFrontChannelRequest(
+            $endSessionEndpoint,
+            $parameters,
+            $logoutRequestMethod,
+            $response,
+            $this->logger,
+        );
+    }
+
+    /**
+     * Validate the request made to the post logout redirect URI after an
+     * RP-Initiated Logout (the OP must return the logout state parameter
+     * unchanged). No-op when this client is configured not to use state.
+     *
+     * Only verifies the logout state against the session store - no client
+     * registration is performed or updated here.
+     *
+     * @throws OidcClientException If the state parameter is missing or does
+     * not match the one sent in the logout request.
+     */
+    public function validateLogoutCallback(?ServerRequestInterface $request = null): void
+    {
+        $this->resolveRequestDataHandler()->validateLogoutCallbackResponse($request, $this->useState);
+    }
+
+    /**
+     * Raw ID token received at the last successful login, or null when not
+     * available. Read from the session store - no client registration is
+     * performed or updated here.
+     */
+    public function getIdToken(): ?string
+    {
+        return $this->resolveRequestDataHandler()->getLoginIdToken();
+    }
+
+    /**
+     * Login data persisted at the last successful login, or null when not
+     * available. Read from the session store - no client registration is
+     * performed or updated here.
+     *
+     * @return mixed[]|null
+     */
+    public function getLoginData(): ?array
+    {
+        return $this->resolveRequestDataHandler()->getLoginData();
+    }
+
+    /**
+     * Get the request data handler used for session-stored login / logout
+     * data operations. Uses the constructor-provided instance when
+     * available, otherwise lazily builds one over the same session store
+     * that the underlying pre-registered client instances use (so
+     * session-stored data is shared either way). Never performs client
+     * registration.
+     */
+    protected function resolveRequestDataHandler(): RequestDataHandler
+    {
+        if ($this->resolvedRequestDataHandler instanceof RequestDataHandler) {
+            return $this->resolvedRequestDataHandler;
+        }
+
+        if ($this->requestDataHandler instanceof RequestDataHandler) {
+            return $this->resolvedRequestDataHandler = $this->requestDataHandler;
+        }
+
+        $core = $this->core ?? new Core(
+            $this->supportedAlgorithms,
+            $this->supportedSerializers,
+            $this->timestampValidationLeeway,
+            $this->logger,
+        );
+
+        $jwks = $this->jwks ?? new Jwks(
+            supportedAlgorithms: $this->supportedAlgorithms,
+            supportedSerializers: $this->supportedSerializers,
+            maxCacheDuration: $this->maxCacheDuration,
+            timestampValidationLeeway: $this->timestampValidationLeeway,
+            cache: $this->cache,
+            logger: $this->logger,
+            httpClient: $this->httpClient,
+        );
+
+        return $this->resolvedRequestDataHandler = new RequestDataHandler(
+            sessionStore: $this->sessionStore,
+            core: $core,
+            cache: $this->cache,
+            jwks: $jwks,
+            httpClient: $this->httpClient,
+            logger: $this->logger,
+            maxCacheDuration: $this->maxCacheDuration,
+        );
+    }
+
+    /**
+     * Read an optional string value from OP metadata, returning null when the
+     * key is not advertised or its value is not a non-empty string.
+     */
+    protected function getOptionalMetadataString(string $key): ?string
+    {
+        try {
+            $value = $this->metadata->get($key);
+        } catch (OidcClientException) {
+            return null;
+        }
+
+        return (is_string($value) && $value !== '') ? $value : null;
+    }
+
+    /**
      * @return MetadataInterface OIDC Configuration URL content (OIDC metadata).
      */
     public function getMetadata(): MetadataInterface
@@ -651,6 +858,12 @@ class DynamicallyRegisteredClient
 
         if ($this->includeSoftwareId) {
             $clientMetadata[ClaimsEnum::SoftwareId->value] = 'https://github.com/cicnavi/oidc-client-php';
+        }
+
+        if ($this->postLogoutRedirectUris !== []) {
+            $clientMetadata[ClaimsEnum::PostLogoutRedirectUris->value] = array_values(
+                $this->postLogoutRedirectUris,
+            );
         }
 
         return array_merge($clientMetadata, $this->additionalClientMetadata);

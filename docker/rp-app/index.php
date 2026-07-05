@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Cicnavi\Oidc\DynamicallyRegisteredClient;
+use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\PreRegisteredClient;
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
 use GuzzleHttp\Client as GuzzleClient;
@@ -19,10 +20,33 @@ $opConfigurationUrl = getenv('OP_DISCOVERY_URL') ?: 'https://localhost.emobix.co
 $clientRegistration = getenv('CLIENT_REGISTRATION') ?: 'static_client';
 $clientId = getenv('CLIENT_ID') ?: 'oidc-client-php-test';
 $clientSecret = getenv('CLIENT_SECRET') ?: 'oidc-client-php-test-secret';
-$redirectUri = getenv('REDIRECT_URI') ?: 'https://rp.local.conformance.test/callback';
+$rpBaseUri = getenv('RP_BASE_URI') ?: 'https://rp.local.conformance.test';
+$redirectUri = getenv('REDIRECT_URI') ?: $rpBaseUri . '/callback';
 $scope = getenv('SCOPE') ?: 'openid';
+// 'none' runs plain login flows; 'rp_initiated' continues each login with an
+// RP-Initiated Logout flow (for the RP-Initiated Logout conformance plan).
+$logoutFlow = getenv('LOGOUT_FLOW') ?: 'none';
+$postLogoutRedirectUri = getenv('POST_LOGOUT_REDIRECT_URI') ?: $rpBaseUri . '/logout-callback';
+$backchannelLogoutUri = getenv('BACKCHANNEL_LOGOUT_URI') ?: $rpBaseUri . '/backchannel-logout';
 
 try {
+    $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+
+    if ($path === '/backchannel-logout') {
+        // Back-Channel Logout endpoint stub. The RP-Initiated Logout test
+        // modules require the client to have a backchannel_logout_uri or
+        // frontchannel_logout_uri registered, and the suite POSTs a logout
+        // token here while handling the end_session request. Proper logout
+        // token validation is a separate library feature (Back-Channel
+        // Logout support) - until it lands, only acknowledge the request.
+        // 'Cache-Control: no-store' is required per OIDC Back-Channel Logout
+        // 2.8 (the suite warns when missing).
+        header('Cache-Control: no-store');
+        http_response_code(200);
+        echo 'OK';
+        exit;
+    }
+
     // Disable SSL verification for internal Guzzle client because conformance-suite uses a self-signed cert
     $httpClient = new GuzzleClient(['verify' => false]);
 
@@ -33,7 +57,12 @@ try {
             scope: $scope,
             clientName: 'oidc-client-php',
             httpClient: $httpClient,
-            defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::Query
+            defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::Query,
+            postLogoutRedirectUris: $logoutFlow === 'rp_initiated' ? [$postLogoutRedirectUri] : [],
+            // See the /backchannel-logout endpoint stub above.
+            additionalClientMetadata: $logoutFlow === 'rp_initiated'
+                ? ['backchannel_logout_uri' => $backchannelLogoutUri]
+                : [],
         );
     } else {
         $client = new PreRegisteredClient(
@@ -47,17 +76,44 @@ try {
         );
     }
 
-    $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-
     if ($path === '/callback') {
         // Exchange authorization code for token and fetch user data
         $userData = $client->getUserData();
+
+        if ($logoutFlow === 'rp_initiated') {
+            // Continue with RP-Initiated Logout in a separate request, so the
+            // persisted login data (ID token for 'id_token_hint') is read
+            // from the session store the way a real application would.
+            header('Location: ' . $rpBaseUri . '/logout', true, 302);
+            exit;
+        }
 
         // Print success div for automated browser/curl matching
         echo '<html><head><title>OIDC RP Test Completion</title></head><body>';
         echo '<div id="submission_complete">OIDC Flow Successful!</div>';
         echo '<h1>User Data</h1><pre>' . htmlspecialchars(json_encode($userData, JSON_PRETTY_PRINT)) . '</pre>';
         echo '</body></html>';
+    } elseif ($path === '/logout') {
+        // Redirects the user agent to the OP's end_session_endpoint with
+        // id_token_hint, client_id, post_logout_redirect_uri and state.
+        $client->logout(postLogoutRedirectUri: $postLogoutRedirectUri);
+    } elseif ($path === '/logout-callback') {
+        try {
+            $client->validateLogoutCallback();
+
+            echo '<html><head><title>OIDC RP Logout Completion</title></head><body>';
+            echo '<div id="submission_complete">RP-Initiated Logout Successful!</div>';
+            echo '<p>Login data cleared: ' . ($client->getLoginData() === null ? 'yes' : 'NO') . '</p>';
+            echo '</body></html>';
+        } catch (OidcClientException $exception) {
+            // Negative test modules (state omitted or changed by the OP) end
+            // up here: the RP must not treat the logout as confirmed.
+            http_response_code(400);
+            echo '<html><head><title>OIDC RP Logout Rejected</title></head><body>';
+            echo '<div id="logout_rejected">Post logout callback rejected, logout is NOT confirmed: '
+                . htmlspecialchars($exception->getMessage()) . '</div>';
+            echo '</body></html>';
+        }
     } else {
         if ($client instanceof DynamicallyRegisteredClient) {
             // Each conformance test module is a fresh OP instance served on the

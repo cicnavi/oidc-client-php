@@ -23,6 +23,7 @@ use PHPUnit\Framework\TestCase;
 #[UsesClass(PreRegisteredClient::class)]
 #[UsesClass(\Cicnavi\Oidc\DataStore\DataHandlers\AbstractDataHandler::class)]
 #[UsesClass(\Cicnavi\Oidc\Protocol\RequestDataHandler::class)]
+#[UsesClass(\Cicnavi\Oidc\Helpers\HttpHelper::class)]
 final class DynamicallyRegisteredClientTest extends TestCase
 {
     protected string $opConfigurationUrl = 'https://op.example.org/.well-known/openid-configuration';
@@ -56,6 +57,8 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
     protected MockObject $sessionStoreMock;
 
+    protected MockObject $requestDataHandlerMock;
+
     protected function setUp(): void
     {
         $this->registrationStoreMock = $this->createMock(ClientRegistrationStoreInterface::class);
@@ -64,6 +67,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $this->cacheMock = $this->createMock(\Psr\SimpleCache\CacheInterface::class);
         $this->preRegisteredClientMock = $this->createMock(PreRegisteredClient::class);
         $this->sessionStoreMock = $this->createMock(SessionStoreInterface::class);
+        $this->requestDataHandlerMock = $this->createMock(\Cicnavi\Oidc\Protocol\RequestDataHandler::class);
 
         // By default, keep cache valid to avoid side-effects in most tests.
         $this->cacheMock->method('get')->with('OIDC_OP_CONFIGURATION_URL')
@@ -84,6 +88,9 @@ final class DynamicallyRegisteredClientTest extends TestCase
         ?ClientRegistrationHandler $registrationHandler = null,
         ?PreRegisteredClient $preRegisteredClient = null,
         bool $injectPreRegisteredClient = true,
+        array $postLogoutRedirectUris = [],
+        ?\Cicnavi\Oidc\Protocol\RequestDataHandler $requestDataHandler = null,
+        bool $injectRequestDataHandler = true,
     ): DynamicallyRegisteredClient {
         $registrationStore ??= $this->registrationStoreMock;
         $cache ??= $this->cacheMock;
@@ -92,6 +99,10 @@ final class DynamicallyRegisteredClientTest extends TestCase
 
         if ($injectPreRegisteredClient) {
             $preRegisteredClient ??= $this->preRegisteredClientMock;
+        }
+
+        if ($injectRequestDataHandler) {
+            $requestDataHandler ??= $this->requestDataHandlerMock;
         }
 
         $this->assertInstanceOf(ClientRegistrationStoreInterface::class, $registrationStore);
@@ -112,8 +123,10 @@ final class DynamicallyRegisteredClientTest extends TestCase
             sessionStore: $this->sessionStoreMock,
             httpClient: $this->createStub(\GuzzleHttp\Client::class),
             metadata: $metadata,
+            requestDataHandler: $requestDataHandler,
             registrationHandler: $registrationHandler,
             preRegisteredClient: $preRegisteredClient,
+            postLogoutRedirectUris: $postLogoutRedirectUris,
         );
     }
 
@@ -464,6 +477,208 @@ final class DynamicallyRegisteredClientTest extends TestCase
             ->willReturn(null);
 
         $this->assertNotInstanceOf(\Psr\Http\Message\ResponseInterface::class, $this->sut()->authorize());
+    }
+
+    public function testPostLogoutRedirectUrisAreIncludedInClientRegistrationMetadata(): void
+    {
+        $clientMetadata = $this->sut(
+            postLogoutRedirectUris: ['https://rp.example.org/logged-out'],
+        )->buildClientRegistrationMetadata();
+
+        $this->assertSame(
+            ['https://rp.example.org/logged-out'],
+            $clientMetadata['post_logout_redirect_uris'],
+        );
+    }
+
+    public function testPostLogoutRedirectUrisAreAbsentByDefault(): void
+    {
+        $this->assertArrayNotHasKey(
+            'post_logout_redirect_uris',
+            $this->sut()->buildClientRegistrationMetadata(),
+        );
+    }
+
+    public function testThrowsForInvalidPostLogoutRedirectUri(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Post logout redirect URIs must be non-empty strings.');
+
+        $this->sut(postLogoutRedirectUris: ['']);
+    }
+
+    public function testThrowsWhenPostLogoutRedirectUrisOverrideExcludesConfiguredUri(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('post_logout_redirect_uris');
+
+        $this->sut(
+            additionalClientMetadata: [
+                'post_logout_redirect_uris' => ['https://rp.example.org/other'],
+            ],
+            postLogoutRedirectUris: ['https://rp.example.org/logged-out'],
+        );
+    }
+
+    public function testLogoutUsesLoginDataWithoutPerformingRegistration(): void
+    {
+        // Logout must not perform or update client registration.
+        $this->registrationHandlerMock->expects($this->never())->method('register');
+        $this->registrationHandlerMock->expects($this->never())->method('update');
+        // No persisted registration exists at all - logout still works from
+        // session-stored login data.
+        $this->registrationStoreMock->method('get')->willReturn(null);
+
+        $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')
+            ->willReturn('https://op.example.org/end-session');
+        $this->requestDataHandlerMock->method('getLoginIdToken')->willReturn('id-token');
+        $this->requestDataHandlerMock->method('getLoginClientId')->willReturn('login-client-id');
+        $this->requestDataHandlerMock->method('getLogoutState')->willReturn('logout-state');
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('buildEndSessionParameters')
+            ->with(
+                'id-token',
+                'login-client-id',
+                'https://rp.example.org/logged-out',
+                'logout-state',
+                null,
+                null,
+            )
+            ->willReturn(['id_token_hint' => 'id-token']);
+        $this->requestDataHandlerMock->expects($this->once())->method('clearLoginData');
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with(
+                'Location',
+                $this->callback(fn(string $location): bool => str_starts_with(
+                    $location,
+                    'https://op.example.org/end-session?'
+                ) && str_contains($location, 'id_token_hint=id-token'))
+            )
+            ->willReturn($response);
+
+        $result = $this->sut()->logout(
+            postLogoutRedirectUri: 'https://rp.example.org/logged-out',
+            response: $response,
+        );
+        $this->assertSame($response, $result);
+    }
+
+    public function testLogoutFallsBackToPersistedRegistrationClientId(): void
+    {
+        $this->registrationHandlerMock->expects($this->never())->method('register');
+        $this->registrationHandlerMock->expects($this->never())->method('update');
+        // Persisted registration exists (note: without the current metadata
+        // fingerprint, which would trigger an update if registration was
+        // resolved) - only its client ID is read.
+        $this->registrationStoreMock->method('get')->willReturn($this->clientInformationResponse);
+
+        $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')
+            ->willReturn('https://op.example.org/end-session');
+        $this->requestDataHandlerMock->method('getLoginClientId')->willReturn(null);
+        $this->requestDataHandlerMock->method('getLogoutState')->willReturn('logout-state');
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('buildEndSessionParameters')
+            ->with(null, 'client-id', null, 'logout-state', null, null)
+            ->willReturn([]);
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->method('withHeader')->willReturn($response);
+
+        $result = $this->sut()->logout(response: $response);
+        $this->assertSame($response, $result);
+    }
+
+    public function testLogoutUsesEndSessionEndpointFromOpMetadataAsFallback(): void
+    {
+        $this->registrationHandlerMock->expects($this->never())->method('register');
+
+        $this->metadataMock->expects($this->exactly(1))->method('get')->willReturnMap([
+            ['end_session_endpoint', 'https://op.example.org/end-session'],
+        ]);
+
+        $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')->willReturn(null);
+        $this->requestDataHandlerMock->method('getLogoutState')->willReturn('logout-state');
+        $this->requestDataHandlerMock->method('buildEndSessionParameters')->willReturn([]);
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with(
+                'Location',
+                $this->callback(fn(string $location): bool => str_starts_with(
+                    $location,
+                    'https://op.example.org/end-session'
+                ))
+            )
+            ->willReturn($response);
+
+        $result = $this->sut()->logout(response: $response);
+        $this->assertSame($response, $result);
+    }
+
+    public function testLogoutThrowsWhenEndSessionEndpointNotAvailable(): void
+    {
+        $this->requestDataHandlerMock->method('getLoginEndSessionEndpoint')->willReturn(null);
+        $this->metadataMock->method('get')->willThrowException(
+            new OidcClientException('OIDC metadata parameter not supported'),
+        );
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('End session endpoint not found in OP metadata');
+
+        $this->sut()->logout();
+    }
+
+    public function testValidateLogoutCallbackDoesNotTouchRegistration(): void
+    {
+        $this->registrationHandlerMock->expects($this->never())->method('register');
+        $this->registrationHandlerMock->expects($this->never())->method('update');
+        $this->registrationStoreMock->expects($this->never())->method('get');
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutCallbackResponse')
+            ->with(null, true);
+
+        $this->sut()->validateLogoutCallback();
+    }
+
+    public function testGetIdTokenUsesSessionLoginData(): void
+    {
+        $this->registrationHandlerMock->expects($this->never())->method('register');
+        $this->registrationStoreMock->expects($this->never())->method('get');
+
+        $this->requestDataHandlerMock->method('getLoginIdToken')->willReturn('id-token');
+
+        $this->assertSame('id-token', $this->sut()->getIdToken());
+    }
+
+    public function testGetLoginDataUsesSessionLoginData(): void
+    {
+        $this->registrationHandlerMock->expects($this->never())->method('register');
+        $this->registrationStoreMock->expects($this->never())->method('get');
+
+        $this->requestDataHandlerMock->method('getLoginData')->willReturn(['id_token' => 'id-token']);
+
+        $this->assertSame(['id_token' => 'id-token'], $this->sut()->getLoginData());
+    }
+
+    public function testGetIdTokenWithLazilyBuiltRequestDataHandler(): void
+    {
+        $this->registrationHandlerMock->expects($this->never())->method('register');
+
+        // Login data is read from the session store via a lazily built
+        // request data handler (no instance provided in constructor).
+        $this->sessionStoreMock->method('get')
+            ->with(\Cicnavi\Oidc\Protocol\RequestDataHandler::KEY_LOGIN_DATA)
+            ->willReturn(['id_token' => 'id-token']);
+
+        $this->assertSame(
+            'id-token',
+            $this->sut(injectRequestDataHandler: false)->getIdToken(),
+        );
     }
 
     public function testGetUserDataDelegatesToPreRegisteredClient(): void

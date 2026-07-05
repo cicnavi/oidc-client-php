@@ -76,6 +76,32 @@ jobs:
       - name: Run Basic conformance tests with dynamic client registration
         run: |
           ./conformance-suite/scripts/run-test-plan.py --expected-failures-file ./main/conformance-tests/basic-warnings.json --expected-skips-file ./main/conformance-tests/basic-skips.json "oidcc-client-basic-certification-test-plan[client_registration=dynamic_client][request_type=plain_http_request]" ./main/conformance-tests/conformance-basic-dynamic-ci.json
+      - name: Switch RP App to RP-Initiated Logout flow
+        working-directory: ./main
+        run: |
+          LOGOUT_FLOW=rp_initiated docker compose -f docker/docker-compose.yml up -d
+          sleep 5
+      - name: Restart trigger-client daemon for RP-Initiated Logout tests
+        run: |
+          pkill -f trigger-client.py || true
+          python3 ./main/conformance-tests/trigger-client.py &
+          sleep 2
+      - name: Run RP-Initiated Logout conformance tests
+        run: |
+          ./conformance-suite/scripts/run-test-plan.py --expected-failures-file ./main/conformance-tests/basic-warnings.json "oidcc-client-rp-initiated-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=static_client][request_type=plain_http_request]" ./main/conformance-tests/conformance-rp-logout-ci.json
+      - name: Switch RP App to RP-Initiated Logout flow with dynamic client registration
+        working-directory: ./main
+        run: |
+          CLIENT_REGISTRATION=dynamic_client LOGOUT_FLOW=rp_initiated docker compose -f docker/docker-compose.yml up -d
+          sleep 5
+      - name: Restart trigger-client daemon for dynamic RP-Initiated Logout tests
+        run: |
+          pkill -f trigger-client.py || true
+          python3 ./main/conformance-tests/trigger-client.py &
+          sleep 2
+      - name: Run RP-Initiated Logout conformance tests with dynamic client registration
+        run: |
+          ./conformance-suite/scripts/run-test-plan.py --expected-failures-file ./main/conformance-tests/basic-warnings.json "oidcc-client-rp-initiated-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=dynamic_client][request_type=plain_http_request]" ./main/conformance-tests/conformance-rp-logout-dynamic-ci.json
       - name: Stop RP App
         if: always()
         working-directory: ./main

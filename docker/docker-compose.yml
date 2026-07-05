@@ -14,6 +14,11 @@ services:
       - CLIENT_SECRET=oidc-client-php-test-secret
       - REDIRECT_URI=https://rp.local.conformance.test/callback
       - SCOPE=openid profile email
+      # 'none' runs plain login flows; 'rp_initiated' continues each login
+      # with an RP-Initiated Logout flow (for the RP logout conformance plan).
+      - LOGOUT_FLOW=${LOGOUT_FLOW:-none}
+      - POST_LOGOUT_REDIRECT_URI=https://rp.local.conformance.test/logout-callback
+      - BACKCHANNEL_LOGOUT_URI=https://rp.local.conformance.test/backchannel-logout
     extra_hosts:
       - "localhost.emobix.co.uk:host-gateway"
 
