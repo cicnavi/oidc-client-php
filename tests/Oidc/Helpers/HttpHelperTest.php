@@ -131,4 +131,58 @@ final class HttpHelperTest extends TestCase
         $this->assertStringContainsString('name="scope" value="openid profile"', $html);
         $this->assertStringContainsString('onload="document.forms[0].submit()"', $html);
     }
+
+    public function testDispatchFrontChannelRequestQueryPopulatesLocationHeader(): void
+    {
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with(
+                'Location',
+                'https://example.com/auth?client_id=test_client&scope=openid+profile',
+            )
+            ->willReturn($response);
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())->method('debug');
+
+        $result = HttpHelper::dispatchFrontChannelRequest(
+            'https://example.com/auth',
+            [
+                'client_id' => 'test_client',
+                'scope' => 'openid profile',
+            ],
+            \Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum::Query,
+            $response,
+            $logger,
+        );
+
+        $this->assertSame($response, $result);
+    }
+
+    public function testDispatchFrontChannelRequestFormPostPopulatesResponseBody(): void
+    {
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->callback(fn(string $html): bool =>
+                str_contains($html, 'action="https://example.com/auth"') &&
+                str_contains($html, 'name="client_id" value="test_client"')));
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->method('getBody')->willReturn($body);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with('Content-Type', 'text/html')
+            ->willReturn($response);
+
+        $result = HttpHelper::dispatchFrontChannelRequest(
+            'https://example.com/auth',
+            ['client_id' => 'test_client'],
+            \Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum::FormPost,
+            $response,
+        );
+
+        $this->assertSame($response, $result);
+    }
 }
