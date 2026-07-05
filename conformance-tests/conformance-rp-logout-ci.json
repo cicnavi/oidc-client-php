@@ -1,0 +1,27 @@
+{
+    "alias": "oidc-client-php",
+    "description": "OIDC RP-Initiated Logout conformance tests for oidc-client-php",
+    "client": {
+        "client_id": "oidc-client-php-test",
+        "client_secret": "oidc-client-php-test-secret",
+        "redirect_uri": "https://rp.local.conformance.test/callback",
+        "post_logout_redirect_uris": [
+            "https://rp.local.conformance.test/logout-callback"
+        ],
+        "request_type": "plain_http_request"
+    },
+    "browser": [
+        {
+            "match": "https://rp.local.conformance.test*",
+            "tasks": [
+                {
+                    "task": "Trigger RP login with logout and wait for completion",
+                    "match": "https://rp.local.conformance.test/",
+                    "commands": [
+                        ["wait", "id", "submission_complete", 30]
+                    ]
+                }
+            ]
+        }
+    ]
+}
