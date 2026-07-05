@@ -145,6 +145,17 @@ class DynamicallyRegisteredClient
      * used as the post logout redirect URI in RP-Initiated Logout (see
      * logout()). Note that providing this changes the client metadata set,
      * so an existing registration will be updated (or replaced) accordingly.
+     * @param ?string $backchannelLogoutUri URI to register as
+     * 'backchannel_logout_uri' during client registration - the endpoint on
+     * which this client handles OIDC Back-Channel Logout requests from the
+     * OP (see handleBackchannelLogoutRequest()). Note that providing this
+     * changes the client metadata set, so an existing registration will be
+     * updated (or replaced) accordingly.
+     * @param ?bool $backchannelLogoutSessionRequired Value to register as
+     * 'backchannel_logout_session_required' during client registration
+     * (whether the OP should include a 'sid' claim in logout tokens sent to
+     * this client), null to leave it out. Only registered when
+     * $backchannelLogoutUri is provided.
      *
      * For other parameters, refer to PreRegisteredClient - they are forwarded
      * to the underlying client instance which is built after registration.
@@ -197,6 +208,8 @@ class DynamicallyRegisteredClient
         ?ClientRegistrationHandler $registrationHandler = null,
         protected ?PreRegisteredClient $preRegisteredClient = null,
         protected readonly array $postLogoutRedirectUris = [],
+        protected readonly ?string $backchannelLogoutUri = null,
+        protected readonly ?bool $backchannelLogoutSessionRequired = null,
     ) {
         $this->cache = $cache ?? new FileCache(
             'odrcpc-' . md5($this->opConfigurationUrl . '|' . $this->redirectUri),
@@ -271,6 +284,27 @@ class DynamicallyRegisteredClient
                 ClaimsEnum::PostLogoutRedirectUris->value,
                 $postLogoutRedirectUri,
             );
+        }
+
+        if (is_string($this->backchannelLogoutUri)) {
+            if ($this->backchannelLogoutUri === '') {
+                throw new OidcClientException(
+                    'Backchannel logout URI must be a non-empty string.',
+                );
+            }
+
+            $backchannelLogoutUriOverride = $clientMetadata[ClaimsEnum::BackChannelLogoutUri->value] ?? null;
+
+            if (
+                $backchannelLogoutUriOverride !== null &&
+                $backchannelLogoutUriOverride !== $this->backchannelLogoutUri
+            ) {
+                throw new OidcClientException(sprintf(
+                    'Client metadata claim "%s" must match the configured backchannel logout URI "%s".',
+                    ClaimsEnum::BackChannelLogoutUri->value,
+                    $this->backchannelLogoutUri,
+                ));
+            }
         }
     }
 
@@ -742,6 +776,69 @@ class DynamicallyRegisteredClient
     }
 
     /**
+     * Handle an OIDC Back-Channel Logout request from the OP: validate the
+     * logout token from the request, record the login revocation it
+     * requests, and deliver the appropriate HTTP response (200 when the
+     * logout was performed, 400 with a JSON error body when not). Register
+     * the URI of the endpoint calling this method as the
+     * 'backchannel_logout_uri' client metadata (see the $backchannelLogoutUri
+     * constructor parameter).
+     *
+     * The logout token audience is validated against the client ID of the
+     * persisted client registration - no client registration is performed
+     * or updated here. Without a persisted registration the logout token
+     * can not be validated, so the request is rejected.
+     *
+     * For notes on how the revocation terminates the affected login, refer
+     * to PreRegisteredClient::handleBackchannelLogoutRequest().
+     *
+     * @see PreRegisteredClient::handleBackchannelLogoutRequest()
+     */
+    public function handleBackchannelLogoutRequest(
+        ?ServerRequestInterface $request = null,
+        ?ResponseInterface $response = null,
+    ): ?ResponseInterface {
+        $requestDataHandler = $this->resolveRequestDataHandler();
+
+        try {
+            $logoutToken = $requestDataHandler->parseBackchannelLogoutRequest($request);
+
+            if (!is_string($opJwksUri = $this->metadata->get(ClaimsEnum::JwksUri->value))) {
+                throw new OidcClientException('JWKS URI not found in OP metadata.');
+            }
+
+            $clientId = $this->loadRegistrationData()?->getClientId();
+
+            if (!is_string($clientId) || $clientId === '') {
+                throw new OidcClientException(
+                    'No persisted client registration found, so the logout token audience can not be validated.',
+                );
+            }
+
+            $logoutTokenJws = $requestDataHandler->validateLogoutToken(
+                logoutToken: $logoutToken,
+                jwksUri: $opJwksUri,
+                expectedIssuer: $this->getOptionalMetadataString(ClaimsEnum::Issuer->value),
+                expectedClientId: $clientId,
+            );
+
+            $requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);
+        } catch (Throwable $throwable) {
+            $this->logger?->error('Back-channel logout request error. ' . $throwable->getMessage());
+
+            return HttpHelper::dispatchBackchannelLogoutResponse(
+                $response,
+                $throwable->getMessage(),
+                $this->logger,
+            );
+        }
+
+        $this->logger?->debug('Back-channel logout performed.');
+
+        return HttpHelper::dispatchBackchannelLogoutResponse($response, null, $this->logger);
+    }
+
+    /**
      * Raw ID token received at the last successful login, or null when not
      * available. Read from the session store - no client registration is
      * performed or updated here.
@@ -864,6 +961,15 @@ class DynamicallyRegisteredClient
             $clientMetadata[ClaimsEnum::PostLogoutRedirectUris->value] = array_values(
                 $this->postLogoutRedirectUris,
             );
+        }
+
+        if (is_string($this->backchannelLogoutUri)) {
+            $clientMetadata[ClaimsEnum::BackChannelLogoutUri->value] = $this->backchannelLogoutUri;
+
+            if (is_bool($this->backchannelLogoutSessionRequired)) {
+                $clientMetadata[ClaimsEnum::BackChannelLogoutSessionRequired->value] =
+                $this->backchannelLogoutSessionRequired;
+            }
         }
 
         return array_merge($clientMetadata, $this->additionalClientMetadata);

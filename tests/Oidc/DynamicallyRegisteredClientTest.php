@@ -91,6 +91,8 @@ final class DynamicallyRegisteredClientTest extends TestCase
         array $postLogoutRedirectUris = [],
         ?\Cicnavi\Oidc\Protocol\RequestDataHandler $requestDataHandler = null,
         bool $injectRequestDataHandler = true,
+        ?string $backchannelLogoutUri = null,
+        ?bool $backchannelLogoutSessionRequired = null,
     ): DynamicallyRegisteredClient {
         $registrationStore ??= $this->registrationStoreMock;
         $cache ??= $this->cacheMock;
@@ -127,6 +129,8 @@ final class DynamicallyRegisteredClientTest extends TestCase
             registrationHandler: $registrationHandler,
             preRegisteredClient: $preRegisteredClient,
             postLogoutRedirectUris: $postLogoutRedirectUris,
+            backchannelLogoutUri: $backchannelLogoutUri,
+            backchannelLogoutSessionRequired: $backchannelLogoutSessionRequired,
         );
     }
 
@@ -989,5 +993,158 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $this->expectExceptionMessage('Cache validation error');
 
         $this->sut(cache: $cacheMock);
+    }
+
+    public function testCanBuildClientRegistrationMetadataWithBackchannelLogoutUri(): void
+    {
+        $clientMetadata = $this->sut(
+            backchannelLogoutUri: 'https://rp.example.org/backchannel-logout',
+            backchannelLogoutSessionRequired: true,
+        )->buildClientRegistrationMetadata();
+
+        $this->assertSame('https://rp.example.org/backchannel-logout', $clientMetadata['backchannel_logout_uri']);
+        $this->assertTrue($clientMetadata['backchannel_logout_session_required']);
+    }
+
+    public function testBackchannelLogoutSessionRequiredIsOmittedWithoutBackchannelLogoutUri(): void
+    {
+        $clientMetadata = $this->sut(backchannelLogoutSessionRequired: true)->buildClientRegistrationMetadata();
+
+        $this->assertArrayNotHasKey('backchannel_logout_uri', $clientMetadata);
+        $this->assertArrayNotHasKey('backchannel_logout_session_required', $clientMetadata);
+    }
+
+    public function testThrowsOnEmptyBackchannelLogoutUri(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Backchannel logout URI must be a non-empty string.');
+
+        $this->sut(backchannelLogoutUri: '');
+    }
+
+    public function testThrowsOnConflictingBackchannelLogoutUriOverride(): void
+    {
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('backchannel_logout_uri');
+
+        $this->sut(
+            backchannelLogoutUri: 'https://rp.example.org/backchannel-logout',
+            additionalClientMetadata: ['backchannel_logout_uri' => 'https://rp.example.org/other'],
+        );
+    }
+
+    public function testAllowsMatchingBackchannelLogoutUriOverride(): void
+    {
+        $clientMetadata = $this->sut(
+            backchannelLogoutUri: 'https://rp.example.org/backchannel-logout',
+            additionalClientMetadata: ['backchannel_logout_uri' => 'https://rp.example.org/backchannel-logout'],
+        )->buildClientRegistrationMetadata();
+
+        $this->assertSame('https://rp.example.org/backchannel-logout', $clientMetadata['backchannel_logout_uri']);
+    }
+
+    public function testHandleBackchannelLogoutRequestSuccess(): void
+    {
+        $request = $this->createStub(\Psr\Http\Message\ServerRequestInterface::class);
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('parseBackchannelLogoutRequest')
+            ->with($request)
+            ->willReturn('logout-token');
+
+        $this->metadataMock->method('get')->willReturnMap([
+            ['jwks_uri', 'https://op.example.org/jwks'],
+            ['issuer', 'https://op.example.org'],
+        ]);
+
+        // Persisted client registration provides the expected audience.
+        $this->registrationStoreMock->method('get')->willReturn([
+            'client_id' => 'registered-client-id',
+            'client_secret' => 'client-secret',
+        ]);
+
+        $logoutTokenJws = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutToken')
+            ->with(
+                'logout-token',
+                'https://op.example.org/jwks',
+                'https://op.example.org',
+                'registered-client-id',
+            )
+            ->willReturn($logoutTokenJws);
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('registerLogoutTokenRevocation')
+            ->with($logoutTokenJws);
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())->method('withStatus')->with(200)->willReturn($response);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with('Cache-Control', 'no-store')
+            ->willReturn($response);
+
+        $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest($request, $response));
+    }
+
+    public function testHandleBackchannelLogoutRequestRespondsWith400WithoutRegistration(): void
+    {
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+
+        $this->metadataMock->method('get')->willReturnMap([
+            ['jwks_uri', 'https://op.example.org/jwks'],
+            ['issuer', 'https://op.example.org'],
+        ]);
+
+        // No persisted client registration.
+        $this->registrationStoreMock->method('get')->willReturn(null);
+
+        $this->requestDataHandlerMock->expects($this->never())->method('validateLogoutToken');
+
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->stringContains('No persisted client registration found'));
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())->method('withStatus')->with(400)->willReturn($response);
+        $response->method('withHeader')->willReturn($response);
+        $response->method('getBody')->willReturn($body);
+
+        $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest(null, $response));
+    }
+
+    public function testHandleBackchannelLogoutRequestRespondsWith400OnInvalidLogoutToken(): void
+    {
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+
+        $this->metadataMock->method('get')->willReturnMap([
+            ['jwks_uri', 'https://op.example.org/jwks'],
+            ['issuer', 'https://op.example.org'],
+        ]);
+
+        $this->registrationStoreMock->method('get')->willReturn([
+            'client_id' => 'registered-client-id',
+            'client_secret' => 'client-secret',
+        ]);
+
+        $this->requestDataHandlerMock->method('validateLogoutToken')
+            ->willThrowException(new OidcClientException('Logout token is not valid.'));
+
+        $this->requestDataHandlerMock->expects($this->never())->method('registerLogoutTokenRevocation');
+
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->stringContains('Logout token is not valid.'));
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())->method('withStatus')->with(400)->willReturn($response);
+        $response->method('withHeader')->willReturn($response);
+        $response->method('getBody')->willReturn($body);
+
+        $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest(null, $response));
     }
 }

@@ -32,21 +32,6 @@ $backchannelLogoutUri = getenv('BACKCHANNEL_LOGOUT_URI') ?: $rpBaseUri . '/backc
 try {
     $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-    if ($path === '/backchannel-logout') {
-        // Back-Channel Logout endpoint stub. The RP-Initiated Logout test
-        // modules require the client to have a backchannel_logout_uri or
-        // frontchannel_logout_uri registered, and the suite POSTs a logout
-        // token here while handling the end_session request. Proper logout
-        // token validation is a separate library feature (Back-Channel
-        // Logout support) - until it lands, only acknowledge the request.
-        // 'Cache-Control: no-store' is required per OIDC Back-Channel Logout
-        // 2.8 (the suite warns when missing).
-        header('Cache-Control: no-store');
-        http_response_code(200);
-        echo 'OK';
-        exit;
-    }
-
     // Disable SSL verification for internal Guzzle client because conformance-suite uses a self-signed cert
     $httpClient = new GuzzleClient(['verify' => false]);
 
@@ -59,10 +44,11 @@ try {
             httpClient: $httpClient,
             defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::Query,
             postLogoutRedirectUris: $logoutFlow === 'rp_initiated' ? [$postLogoutRedirectUri] : [],
-            // See the /backchannel-logout endpoint stub above.
-            additionalClientMetadata: $logoutFlow === 'rp_initiated'
-                ? ['backchannel_logout_uri' => $backchannelLogoutUri]
-                : [],
+            // Registered so the OP can deliver Back-Channel Logout requests
+            // to the /backchannel-logout endpoint below (the logout test
+            // modules also require the client to have a
+            // backchannel_logout_uri or frontchannel_logout_uri).
+            backchannelLogoutUri: $logoutFlow === 'rp_initiated' ? $backchannelLogoutUri : null,
         );
     } else {
         $client = new PreRegisteredClient(
@@ -74,6 +60,17 @@ try {
             httpClient: $httpClient,
             defaultAuthorizationRequestMethod: AuthorizationRequestMethodEnum::Query
         );
+    }
+
+    if ($path === '/backchannel-logout') {
+        // OIDC Back-Channel Logout endpoint. The conformance suite POSTs a
+        // logout token here while handling the end_session request. The
+        // handler validates the logout token, records the login revocation,
+        // and emits the spec-compliant response itself (200 when the logout
+        // was performed, 400 with a JSON error body when the logout token
+        // was rejected, 'Cache-Control: no-store' in both cases).
+        $client->handleBackchannelLogoutRequest();
+        exit;
     }
 
     if ($path === '/callback') {

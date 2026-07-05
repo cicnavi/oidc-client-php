@@ -13,6 +13,8 @@ use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Http\RequestFactory;
+use Cicnavi\Oidc\Logout\CacheLoginRevocationRegistry;
+use Cicnavi\Oidc\Logout\Interfaces\LoginRevocationRegistryInterface;
 use GuzzleHttp\Client;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -24,9 +26,11 @@ use SimpleSAML\OpenID\Codebooks\ClientAssertionTypesEnum;
 use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\GrantTypesEnum;
 use SimpleSAML\OpenID\Codebooks\HttpMethodsEnum;
+use SimpleSAML\OpenID\Codebooks\JwtTypesEnum;
 use SimpleSAML\OpenID\Codebooks\ParamsEnum;
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 use SimpleSAML\OpenID\Core;
+use SimpleSAML\OpenID\Core\LogoutToken;
 use SimpleSAML\OpenID\Exceptions\InvalidValueException;
 use SimpleSAML\OpenID\Exceptions\JwsException;
 use SimpleSAML\OpenID\Jwks;
@@ -48,9 +52,38 @@ class RequestDataHandler
      */
     public const KEY_LOGIN_DATA = 'oidc_login_data';
 
+    /**
+     * Login data array key under which the Unix timestamp of the login is
+     * stored. Used to correlate logins with Back-Channel Logout revocations
+     * (revocations only affect logins established before them).
+     */
+    public const KEY_LOGGED_IN_AT = 'logged_in_at';
+
+    /**
+     * Back-channel logout request body parameter carrying the logout token,
+     * per OIDC Back-Channel Logout 1.0, section 2.5.
+     */
+    public const PARAM_LOGOUT_TOKEN = 'logout_token';
+
+    /**
+     * Default maximum accepted age of a logout token ('iat' claim
+     * freshness). OPs are encouraged to use short logout token lifetimes
+     * (preferably at most two minutes), so a stale but not-yet-expired token
+     * is suspicious.
+     */
+    public const DEFAULT_LOGOUT_TOKEN_MAX_AGE = 'PT5M';
+
+    /**
+     * Cache key prefix for consumed logout token 'jti' values (replay
+     * detection).
+     */
+    protected const CACHE_KEY_PREFIX_LOGOUT_TOKEN_JTI = 'bcl_jti_';
+
     protected StateNonceDataHandlerInterface $stateNonceDataHandler;
 
     protected PkceDataHandlerInterface $pkceDataHandler;
+
+    protected LoginRevocationRegistryInterface $loginRevocationRegistry;
 
     public function __construct(
         protected readonly SessionStoreInterface $sessionStore,
@@ -64,9 +97,12 @@ class RequestDataHandler
         ?PkceDataHandlerInterface $pkceDataHandler = null,
         protected readonly ?LoggerInterface $logger = null,
         protected readonly \DateInterval $maxCacheDuration = new \DateInterval('PT6H'),
+        ?LoginRevocationRegistryInterface $loginRevocationRegistry = null,
     ) {
         $this->stateNonceDataHandler = $stateNonceDataHandler ?? new StateNonce($this->sessionStore);
         $this->pkceDataHandler = $pkceDataHandler ?? new Pkce($this->sessionStore);
+        $this->loginRevocationRegistry = $loginRevocationRegistry ??
+        new CacheLoginRevocationRegistry($this->cache, logger: $this->logger);
     }
 
     /**
@@ -982,12 +1018,18 @@ class RequestDataHandler
             ClaimsEnum::Sid->value => is_string($sid = $claims[ClaimsEnum::Sid->value] ?? null) ? $sid : null,
             ClaimsEnum::EndSessionEndpoint->value => $opEndSessionEndpoint,
             ParamsEnum::ClientId->value => $clientId,
+            self::KEY_LOGGED_IN_AT => time(),
         ]);
     }
 
     /**
      * Get the login data persisted after the last successful login, or null
-     * when not available (no login was performed, or the session expired).
+     * when not available (no login was performed, the session expired, or
+     * the login was revoked via OIDC Back-Channel Logout).
+     *
+     * When a Back-Channel Logout revocation matching the persisted login is
+     * found, the login data is cleared (local logout) and null is returned,
+     * so the application observes the login as terminated.
      *
      * @return mixed[]|null
      */
@@ -995,7 +1037,55 @@ class RequestDataHandler
     {
         $loginData = $this->sessionStore->get(self::KEY_LOGIN_DATA);
 
-        return is_array($loginData) ? $loginData : null;
+        if (!is_array($loginData)) {
+            return null;
+        }
+
+        if ($this->isLoginDataRevoked($loginData)) {
+            $this->logger?->info(
+                'Persisted login data corresponds to a login revoked via OIDC Back-Channel Logout - ' .
+                'clearing it (local logout).',
+            );
+            $this->clearLoginData();
+            return null;
+        }
+
+        return $loginData;
+    }
+
+    /**
+     * Check if the given login data corresponds to a login revoked via OIDC
+     * Back-Channel Logout: by OP issuer and 'sid' (that particular session),
+     * or by OP issuer and 'sub' (all of the subject's sessions). Logins
+     * without an 'iss' value can not be correlated with revocations, and
+     * logins established after a revocation are not affected by it.
+     *
+     * @param mixed[] $loginData
+     */
+    protected function isLoginDataRevoked(array $loginData): bool
+    {
+        $issuer = $loginData[ClaimsEnum::Iss->value] ?? null;
+
+        if (!is_string($issuer) || $issuer === '') {
+            return false;
+        }
+
+        $loggedInAt = $loginData[self::KEY_LOGGED_IN_AT] ?? null;
+        // Logins persisted without a timestamp are affected by any revocation.
+        $loggedInAt = is_numeric($loggedInAt) ? (int) $loggedInAt : 0;
+
+        $sid = $loginData[ClaimsEnum::Sid->value] ?? null;
+        if (
+            is_string($sid) && $sid !== '' &&
+            $this->loginRevocationRegistry->isSessionRevoked($issuer, $sid, $loggedInAt)
+        ) {
+            return true;
+        }
+
+        $sub = $loginData[ClaimsEnum::Sub->value] ?? null;
+
+        return is_string($sub) && $sub !== '' &&
+        $this->loginRevocationRegistry->isSubjectRevoked($issuer, $sub, $loggedInAt);
     }
 
     /**
@@ -1137,5 +1227,240 @@ class RequestDataHandler
         }
 
         $this->stateNonceDataHandler->verify(StateNonce::LOGOUT_STATE_KEY, $state);
+    }
+
+    /**
+     * Extract the logout token from an OIDC Back-Channel Logout request
+     * (HTTP POST with 'application/x-www-form-urlencoded' body carrying a
+     * 'logout_token' parameter, per specification section 2.5).
+     *
+     * @return non-empty-string Raw logout token. Note that it is NOT
+     * validated yet - use validateLogoutToken() for that.
+     * @throws OidcClientException If the request is not a valid back-channel
+     * logout request (the endpoint should respond with HTTP 400).
+     */
+    public function parseBackchannelLogoutRequest(?ServerRequestInterface $request = null): string
+    {
+        $method = $request?->getMethod() ?? ($_SERVER['REQUEST_METHOD'] ?? null);
+
+        if (is_string($method) && strtoupper($method) !== HttpMethodsEnum::POST->value) {
+            throw new OidcClientException('Back-channel logout request must use the HTTP POST method.');
+        }
+
+        $parsedBody = $request?->getParsedBody() ?? $_POST;
+        $logoutToken = is_array($parsedBody) ? ($parsedBody[self::PARAM_LOGOUT_TOKEN] ?? null) : null;
+
+        if (!is_string($logoutToken) || $logoutToken === '') {
+            throw new OidcClientException(
+                'Back-channel logout request does not contain a "logout_token" body parameter.',
+            );
+        }
+
+        return $logoutToken;
+    }
+
+    /**
+     * Validate a logout token per OIDC Back-Channel Logout 1.0, section 2.6.
+     *
+     * Building the LogoutToken instance validates the claim set (required
+     * 'iss', 'aud', 'iat', 'exp', 'jti', 'events' with the backchannel-logout
+     * event member, 'sub' and / or 'sid', forbidden 'nonce', timestamps with
+     * leeway). This method additionally verifies the signature against the
+     * OP JWKS (with a one-time JWKS cache refresh retry, like for ID
+     * tokens), the expected issuer and audience, logout token freshness, and
+     * 'jti' replay.
+     *
+     * @param string $logoutToken Raw logout token.
+     * @param string $jwksUri OP JWKS URI to verify the signature against.
+     * @param ?string $expectedIssuer When provided, the 'iss' claim must
+     * match it.
+     * @param ?string $expectedClientId When provided, the 'aud' claim must
+     * contain it.
+     * @param ?\DateInterval $logoutTokenMaxAge Maximum accepted logout token
+     * age ('iat' claim freshness), null to disable the check. Default is 5
+     * minutes.
+     * @param bool $checkJtiReplay Whether to reject logout tokens whose
+     * 'jti' was already consumed (replay detection, uses the cache).
+     * @param bool $refreshCache Used internally for the JWKS refresh retry.
+     * @throws OidcClientException If the logout token is not valid (the
+     * back-channel logout endpoint should respond with HTTP 400).
+     */
+    public function validateLogoutToken(
+        string $logoutToken,
+        string $jwksUri,
+        ?string $expectedIssuer = null,
+        ?string $expectedClientId = null,
+        ?\DateInterval $logoutTokenMaxAge = new \DateInterval(self::DEFAULT_LOGOUT_TOKEN_MAX_AGE),
+        bool $checkJtiReplay = true,
+        bool $refreshCache = false,
+    ): LogoutToken {
+        $jwks = $this->getJwksUriContent($jwksUri, $refreshCache);
+
+        try {
+            $logoutTokenJws = $this->core->logoutTokenFactory()->fromToken($logoutToken);
+        } catch (Throwable $throwable) {
+            $error = 'Error building Logout Token: ' . $throwable->getMessage();
+            $this->logger?->error($error, ['logoutToken' => $logoutToken]);
+            throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
+        }
+
+        try {
+            $logoutTokenJws->verifyWithKeySet($jwks);
+        } catch (Throwable $throwable) {
+            // If we have already refreshed our cache (we have fresh JWKS), throw...
+            if ($refreshCache) {
+                $error = 'Logout token is not valid. ' . $throwable->getMessage();
+                $this->logger?->error($error);
+                throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
+            }
+
+            $this->logger?->warning(
+                'Logout token signature verification failed, but trying once more with JWKS refresh.',
+            );
+            // Try once more with refreshing cache (fetch fresh JWKS).
+            return $this->validateLogoutToken(
+                logoutToken: $logoutToken,
+                jwksUri: $jwksUri,
+                expectedIssuer: $expectedIssuer,
+                expectedClientId: $expectedClientId,
+                logoutTokenMaxAge: $logoutTokenMaxAge,
+                checkJtiReplay: $checkJtiReplay,
+                refreshCache: true,
+            );
+        }
+
+        // Validate Issuer (iss)
+        if ($expectedIssuer !== null) {
+            $iss = $logoutTokenJws->getIssuer();
+            if ($iss !== $expectedIssuer) {
+                $error = sprintf(
+                    'Logout token issuer claim "%s" does not match expected issuer "%s".',
+                    $iss,
+                    $expectedIssuer,
+                );
+                $this->logger?->error($error);
+                throw new OidcClientException($error);
+            }
+        }
+
+        // Validate Audience (aud)
+        if ($expectedClientId !== null && !in_array($expectedClientId, $logoutTokenJws->getAudience(), true)) {
+            $error = sprintf(
+                'Logout token audience claim does not contain expected client ID "%s".',
+                $expectedClientId,
+            );
+            $this->logger?->error($error);
+            throw new OidcClientException($error);
+        }
+
+        // Explicit typing ('typ' header of 'logout+jwt') is only RECOMMENDED
+        // by the specification, and requiring it would break existing OP
+        // deployments - so an unexpected value is only logged.
+        $typ = $logoutTokenJws->getType();
+        if ($typ !== null && $typ !== JwtTypesEnum::LogoutJwt->value) {
+            $this->logger?->warning(sprintf(
+                'Logout token has unexpected "typ" header value "%s" (expected "%s").',
+                $typ,
+                JwtTypesEnum::LogoutJwt->value,
+            ));
+        }
+
+        // Logout token freshness (iat). The specification encourages OPs to
+        // use short logout token lifetimes, and building the LogoutToken
+        // instance only rejects future 'iat' values - staleness is checked
+        // here.
+        if ($logoutTokenMaxAge instanceof \DateInterval) {
+            $iat = $logoutTokenJws->getIssuedAt();
+            if (time() - $iat > $this->dateIntervalToSeconds($logoutTokenMaxAge)) {
+                $error = sprintf('Logout token is too old (issued at %d).', $iat);
+                $this->logger?->error($error);
+                throw new OidcClientException($error);
+            }
+        }
+
+        if ($checkJtiReplay) {
+            $this->validateLogoutTokenJtiNotReplayed($logoutTokenJws);
+        }
+
+        return $logoutTokenJws;
+    }
+
+    /**
+     * Reject logout tokens whose 'jti' value was already consumed (replay
+     * detection, per specification section 2.6, step 8). Consumed 'jti'
+     * values are recorded in the cache until the logout token itself can no
+     * longer validate (expiration plus slack). Cache errors disable the
+     * check (it is optional per specification) instead of rejecting logouts.
+     *
+     * @throws OidcClientException If the logout token 'jti' was already
+     * consumed.
+     */
+    protected function validateLogoutTokenJtiNotReplayed(LogoutToken $logoutTokenJws): void
+    {
+        $cacheKey = self::CACHE_KEY_PREFIX_LOGOUT_TOKEN_JTI .
+        substr(hash('sha256', $logoutTokenJws->getIssuer() . "\n" . $logoutTokenJws->getJwtId()), 0, 56);
+
+        try {
+            $consumedAt = $this->cache->get($cacheKey);
+        } catch (Throwable $throwable) {
+            $this->logger?->error(
+                'Could not check for logout token replay, skipping the check. ' . $throwable->getMessage(),
+            );
+            return;
+        }
+
+        if ($consumedAt !== null) {
+            $error = 'Logout token replay detected (a logout token with the same "jti" was already consumed).';
+            $this->logger?->error($error);
+            throw new OidcClientException($error);
+        }
+
+        try {
+            $this->cache->set(
+                $cacheKey,
+                time(),
+                max(60, $logoutTokenJws->getExpirationTime() + 300 - time()),
+            );
+        } catch (Throwable $throwable) {
+            $this->logger?->warning(
+                'Could not record consumed logout token "jti". ' . $throwable->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * Record the login revocation requested by a (validated) logout token:
+     * by OP issuer and 'sid' when present (that particular session), else by
+     * OP issuer and 'sub' (all of the subject's sessions), per specification
+     * section 2.7. Affected persisted logins are then observed as terminated
+     * (see getLoginData()).
+     *
+     * @throws OidcClientException If the revocation could not be recorded
+     * (the back-channel logout endpoint should respond with HTTP 400, since
+     * the logout was not performed).
+     */
+    public function registerLogoutTokenRevocation(LogoutToken $logoutTokenJws): void
+    {
+        $issuer = $logoutTokenJws->getIssuer();
+
+        if (is_string($sid = $logoutTokenJws->getSessionId())) {
+            $this->loginRevocationRegistry->revokeSession($issuer, $sid);
+            return;
+        }
+
+        if (is_string($sub = $logoutTokenJws->getSubject())) {
+            $this->loginRevocationRegistry->revokeSubject($issuer, $sub);
+            return;
+        }
+
+        // Unreachable for validated logout tokens ('sub' and / or 'sid' is
+        // required), but do not silently acknowledge a logout which can not
+        // be correlated with any login.
+        throw new OidcClientException('Logout token does not identify a session or a subject.');
+    }
+
+    protected function dateIntervalToSeconds(\DateInterval $dateInterval): int
+    {
+        return (new \DateTimeImmutable('@0'))->add($dateInterval)->getTimestamp();
     }
 }

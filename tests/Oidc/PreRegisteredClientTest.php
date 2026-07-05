@@ -765,4 +765,93 @@ final class PreRegisteredClientTest extends TestCase
 
         $this->assertSame(['id_token' => 'id-token'], $this->sut()->getLoginData());
     }
+
+    public function testHandleBackchannelLogoutRequestSuccess(): void
+    {
+        $request = $this->createStub(\Psr\Http\Message\ServerRequestInterface::class);
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('parseBackchannelLogoutRequest')
+            ->with($request)
+            ->willReturn('logout-token');
+
+        $this->metadataMock->method('get')->willReturnMap([
+            ['jwks_uri', 'https://op.example.org/jwks'],
+            ['issuer', 'https://op.example.org'],
+        ]);
+
+        $logoutTokenJws = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutToken')
+            ->with(
+                'logout-token',
+                'https://op.example.org/jwks',
+                'https://op.example.org',
+                $this->clientId,
+            )
+            ->willReturn($logoutTokenJws);
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('registerLogoutTokenRevocation')
+            ->with($logoutTokenJws);
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())->method('withStatus')->with(200)->willReturn($response);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with('Cache-Control', 'no-store')
+            ->willReturn($response);
+
+        $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest($request, $response));
+    }
+
+    public function testHandleBackchannelLogoutRequestRespondsWith400OnInvalidLogoutToken(): void
+    {
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+
+        $this->metadataMock->method('get')->willReturnMap([
+            ['jwks_uri', 'https://op.example.org/jwks'],
+            ['issuer', 'https://op.example.org'],
+        ]);
+
+        $this->requestDataHandlerMock->method('validateLogoutToken')
+            ->willThrowException(new \Cicnavi\Oidc\Exceptions\OidcClientException('Logout token is not valid.'));
+
+        $this->requestDataHandlerMock->expects($this->never())->method('registerLogoutTokenRevocation');
+
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->stringContains('Logout token is not valid.'));
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())->method('withStatus')->with(400)->willReturn($response);
+        $response->method('withHeader')->willReturn($response);
+        $response->method('getBody')->willReturn($body);
+
+        $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest(null, $response));
+    }
+
+    public function testHandleBackchannelLogoutRequestRespondsWith400OnParseError(): void
+    {
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')
+            ->willThrowException(new \Cicnavi\Oidc\Exceptions\OidcClientException(
+                'Back-channel logout request must use the HTTP POST method.',
+            ));
+
+        $this->requestDataHandlerMock->expects($this->never())->method('validateLogoutToken');
+
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->stringContains('must use the HTTP POST method'));
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())->method('withStatus')->with(400)->willReturn($response);
+        $response->method('withHeader')->willReturn($response);
+        $response->method('getBody')->willReturn($body);
+
+        $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest(null, $response));
+    }
 }

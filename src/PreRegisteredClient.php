@@ -447,6 +447,65 @@ class PreRegisteredClient
     }
 
     /**
+     * Handle an OIDC Back-Channel Logout request from the OP: validate the
+     * logout token from the request (signature against the OP JWKS, issuer,
+     * audience, claim set, freshness, 'jti' replay), record the login
+     * revocation it requests, and deliver the appropriate HTTP response
+     * (200 when the logout was performed, 400 with a JSON error body when
+     * not).
+     *
+     * Note that a back-channel logout request arrives outside the context
+     * of the End-User's session, so the affected login can not be removed
+     * from its session store here. Instead, the revocation is recorded in
+     * the login revocation registry (backed by the shared client cache by
+     * default), and the affected persisted login is observed as terminated
+     * on subsequent reads (see getLoginData()) - the application should
+     * treat that as the session being logged out. Register the URI of the
+     * endpoint calling this method as 'backchannel_logout_uri' client
+     * metadata on the OP.
+     *
+     * @param ?ServerRequestInterface $request Back-channel logout request.
+     * If not provided, it is read from PHP globals.
+     * @param ?ResponseInterface $response Optional HTTP response which will
+     * be populated with the proper status / headers / body and returned. If
+     * not provided, the response is emitted directly and the script is
+     * terminated.
+     */
+    public function handleBackchannelLogoutRequest(
+        ?ServerRequestInterface $request = null,
+        ?ResponseInterface $response = null,
+    ): ?ResponseInterface {
+        try {
+            $logoutToken = $this->requestDataHandler->parseBackchannelLogoutRequest($request);
+
+            if (!is_string($opJwksUri = $this->metadata->get(ClaimsEnum::JwksUri->value))) {
+                throw new OidcClientException('JWKS URI not found in OP metadata.');
+            }
+
+            $logoutTokenJws = $this->requestDataHandler->validateLogoutToken(
+                logoutToken: $logoutToken,
+                jwksUri: $opJwksUri,
+                expectedIssuer: $this->getOptionalMetadataString(ClaimsEnum::Issuer->value),
+                expectedClientId: $this->clientId,
+            );
+
+            $this->requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);
+        } catch (Throwable $throwable) {
+            $this->logger?->error('Back-channel logout request error. ' . $throwable->getMessage());
+
+            return HttpHelper::dispatchBackchannelLogoutResponse(
+                $response,
+                $throwable->getMessage(),
+                $this->logger,
+            );
+        }
+
+        $this->logger?->debug('Back-channel logout performed.');
+
+        return HttpHelper::dispatchBackchannelLogoutResponse($response, null, $this->logger);
+    }
+
+    /**
      * Raw ID token received at the last successful login, or null when not
      * available (no login was performed, no ID token was issued, or the
      * session expired).

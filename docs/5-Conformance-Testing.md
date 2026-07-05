@@ -7,6 +7,8 @@ Specifically, currently we run the following OpenID Conformance Tests:
 * **Basic RP profile with dynamic client registration** (`oidcc-client-basic-certification-test-plan` plan using dynamic client registration and plain HTTP request authorization).
 * **RP-Initiated Logout RP profile (Basic)** (`oidcc-client-rp-initiated-logout-rp-basic` plan using static client registration and plain HTTP request authorization).
 * **RP-Initiated Logout RP profile (Basic) with dynamic client registration** (`oidcc-client-rp-initiated-logout-rp-basic` plan using dynamic client registration and plain HTTP request authorization).
+* **Back-Channel Logout RP profile (Basic)** (`oidcc-client-back-channel-logout-rp-basic` plan using static client registration and plain HTTP request authorization).
+* **Back-Channel Logout RP profile (Basic) with dynamic client registration** (`oidcc-client-back-channel-logout-rp-basic` plan using dynamic client registration and plain HTTP request authorization).
 
 ---
 
@@ -78,17 +80,22 @@ Note that the RP-Initiated Logout test modules require the client to also have a
 `backchannel_logout_uri` or `frontchannel_logout_uri` registered (condition
 `EnsureClientHasAtLeastOneOfBackOrFrontChannelLogoutUri`), and the suite sends a Back-Channel
 Logout request to it while handling the `end_session_endpoint` request. The RP test application
-therefore exposes a `/backchannel-logout` endpoint (currently a stub which acknowledges the
-request with `Cache-Control: no-store`, until Back-Channel Logout support lands in the library).
-It is registered statically via `backchannel_logout_uri` in
-`conformance-tests/conformance-rp-logout-ci.json`, and dynamically via the
-`DynamicallyRegisteredClient` `additionalClientMetadata` constructor parameter:
+therefore exposes a `/backchannel-logout` endpoint, which uses the library's
+`handleBackchannelLogoutRequest()` to validate the logout token, record the login revocation,
+and respond (200 when the logout was performed, 400 when the logout token was rejected - as
+exercised by the negative Back-Channel Logout test modules). It is registered statically via
+`backchannel_logout_uri` in the conformance test configuration JSON files, and dynamically via
+the `DynamicallyRegisteredClient` `backchannelLogoutUri` constructor parameter:
    ```bash
    LOGOUT_FLOW=rp_initiated docker compose -f docker/docker-compose.yml up --build -d
    # ... or, with dynamic client registration (post_logout_redirect_uris is then
    # registered on the OP's registration endpoint):
    CLIENT_REGISTRATION=dynamic_client LOGOUT_FLOW=rp_initiated docker compose -f docker/docker-compose.yml up --build -d
    ```
+
+The Back-Channel Logout test plan uses the same RP flow as the RP-Initiated Logout plan (the
+suite delivers the logout token while handling the `end_session_endpoint` request), so the RP
+test application is started the same way (`LOGOUT_FLOW=rp_initiated`) for both plans.
 
 ---
 
@@ -132,6 +139,22 @@ It is registered statically via `backchannel_logout_uri` in
      --expected-failures-file conformance-tests/basic-warnings.json \
      "oidcc-client-rp-initiated-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=dynamic_client][request_type=plain_http_request]" \
      conformance-tests/conformance-rp-logout-dynamic-ci.json
+   ```
+5. For the Back-Channel Logout plan (with the RP test application started using
+   `LOGOUT_FLOW=rp_initiated`, same as for the RP-Initiated Logout plan), run:
+   ```bash
+   python3 /path/to/conformance-suite/scripts/run-test-plan.py \
+     --expected-failures-file conformance-tests/basic-warnings.json \
+     "oidcc-client-back-channel-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=static_client][request_type=plain_http_request]" \
+     conformance-tests/conformance-backchannel-logout-ci.json
+   ```
+   or, for the dynamic client registration variant (RP test application started using
+   `CLIENT_REGISTRATION=dynamic_client LOGOUT_FLOW=rp_initiated`):
+   ```bash
+   python3 /path/to/conformance-suite/scripts/run-test-plan.py \
+     --expected-failures-file conformance-tests/basic-warnings.json \
+     "oidcc-client-back-channel-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=dynamic_client][request_type=plain_http_request]" \
+     conformance-tests/conformance-backchannel-logout-dynamic-ci.json
    ```
 
 All test modules should complete and pass cleanly.

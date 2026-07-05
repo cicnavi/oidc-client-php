@@ -180,6 +180,29 @@ request using `validateLogoutCallback()` (verifies the returned `state`):
 $client->validateLogoutCallback();
 ```
 
+### 5. Back-Channel Logout
+
+Back-Channel Logout is also available, same as for the
+[Pre-Registered Client](2-Pre-Registered-Client.md#back-channel-logout):
+call `handleBackchannelLogoutRequest()` on the endpoint which receives
+back-channel logout requests from OPs. Register that endpoint as the
+`backchannel_logout_uri` claim in this RP's OpenID Relying Party federation
+metadata (which can be provided using the Relying Party configuration
+additional claims).
+
+```php
+/** @var \Cicnavi\Oidc\FederatedClient $client */
+
+// File: backchannel-logout.php (published as 'backchannel_logout_uri')
+$client->handleBackchannelLogoutRequest();
+```
+
+Since the OP is not known upfront, the issuing OP is determined from the
+logout token `iss` claim, and trusted only if a federation Trust Chain can
+be resolved from it to one of the configured Trust Anchors. The OP JWKS
+used to verify the logout token signature is taken from the resolved OP
+metadata.
+
 ## Entity Configuration Endpoint
 
 To participate in a federation, your RP must publish its

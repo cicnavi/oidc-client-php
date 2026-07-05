@@ -185,4 +185,63 @@ final class HttpHelperTest extends TestCase
 
         $this->assertSame($response, $result);
     }
+
+    public function testDispatchBackchannelLogoutResponsePopulatesSuccessResponse(): void
+    {
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())
+            ->method('withStatus')
+            ->with(200)
+            ->willReturn($response);
+        $response->expects($this->once())
+            ->method('withHeader')
+            ->with('Cache-Control', 'no-store')
+            ->willReturn($response);
+        $response->expects($this->never())->method('getBody');
+
+        $result = HttpHelper::dispatchBackchannelLogoutResponse($response);
+
+        $this->assertSame($response, $result);
+    }
+
+    public function testDispatchBackchannelLogoutResponsePopulatesErrorResponse(): void
+    {
+        $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->callback(fn(string $json): bool =>
+                str_contains($json, '"error": "invalid_request"') === false && // pretty print not used
+                str_contains($json, '"invalid_request"') &&
+                str_contains($json, 'Logout token is not valid.')));
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())
+            ->method('withStatus')
+            ->with(400)
+            ->willReturn($response);
+        $response->method('getBody')->willReturn($body);
+
+        $headers = [];
+        $response->expects($this->exactly(2))
+            ->method('withHeader')
+            ->willReturnCallback(function (string $name, string $value) use (&$headers, $response) {
+                $headers[$name] = $value;
+                return $response;
+            });
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())->method('debug');
+
+        $result = HttpHelper::dispatchBackchannelLogoutResponse(
+            $response,
+            'Logout token is not valid.',
+            $logger,
+        );
+
+        $this->assertSame($response, $result);
+        $this->assertSame(
+            ['Cache-Control' => 'no-store', 'Content-Type' => 'application/json'],
+            $headers,
+        );
+    }
 }

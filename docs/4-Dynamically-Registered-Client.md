@@ -107,7 +107,11 @@ prepared from the constructor parameters:
 parameter),
 * `post_logout_redirect_uris` - if provided using the
 `postLogoutRedirectUris` parameter (used for RP-Initiated Logout, see
-below).
+below),
+* `backchannel_logout_uri` (and optionally
+`backchannel_logout_session_required`) - if provided using the
+`backchannelLogoutUri` / `backchannelLogoutSessionRequired` parameters
+(used for Back-Channel Logout, see below).
 
 Any additional client metadata claims can be provided using the
 `additionalClientMetadata` parameter. Claims provided here override the
@@ -204,6 +208,37 @@ $oidcClient->validateLogoutCallback();
 Note that providing `postLogoutRedirectUris` changes the client metadata
 set, so an existing client registration will be updated (or replaced)
 accordingly.
+
+### Back-Channel Logout
+
+Back-Channel Logout is also available, same as for the
+[Pre-Registered Client](2-Pre-Registered-Client.md#back-channel-logout):
+call `handleBackchannelLogoutRequest()` on the endpoint which receives
+back-channel logout requests from the OP. Register that endpoint as the
+`backchannel_logout_uri` client metadata using the `backchannelLogoutUri`
+constructor parameter (and optionally register
+`backchannel_logout_session_required` using the
+`backchannelLogoutSessionRequired` parameter):
+
+```php
+use Cicnavi\Oidc\DynamicallyRegisteredClient;
+
+$oidcClient = new DynamicallyRegisteredClient(
+    opConfigurationUrl: 'https://example.org/oidc/.well-known/openid-configuration',
+    redirectUri: 'https://your-example.org/callback',
+    scope: 'openid profile',
+    backchannelLogoutUri: 'https://your-example.org/backchannel-logout',
+);
+
+// File: backchannel-logout.php
+$oidcClient->handleBackchannelLogoutRequest();
+```
+
+The logout token audience is validated against the client ID of the
+persisted client registration - no client registration is performed or
+updated while handling back-channel logout requests. Note that providing
+`backchannelLogoutUri` changes the client metadata set, so an existing
+client registration will be updated (or replaced) accordingly.
 
 ## Requirements on the OpenID Provider
 
