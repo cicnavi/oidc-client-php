@@ -85,10 +85,16 @@ final class FederatedClientTest extends TestCase
 
     private MockObject $federationMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\Jwk
+     */
     private \PHPUnit\Framework\MockObject\Stub $jwkMock;
 
     private HashAlgorithmsEnum $jwkThumbprintHashAlgo;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\Factories\SignatureKeyPairFactory
+     */
     private \PHPUnit\Framework\MockObject\Stub $signatureKeyPairFactoryMock;
 
     private MockObject $signatureKeyPairBagFactoryMock;
@@ -107,12 +113,21 @@ final class FederatedClientTest extends TestCase
 
     private PkceCodeChallengeMethodEnum $pkceCodeChallengeMethod;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface
+     */
     private \PHPUnit\Framework\MockObject\Stub $sessionStoreMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\GuzzleHttp\Client
+     */
     private \PHPUnit\Framework\MockObject\Stub $httpClientMock;
 
     private MockObject $coreMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\Jwks
+     */
     private \PHPUnit\Framework\MockObject\Stub $jwksMock;
 
     private MockObject $requestDataHandlerMock;

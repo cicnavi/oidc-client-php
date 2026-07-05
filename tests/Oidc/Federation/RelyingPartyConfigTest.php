@@ -17,12 +17,24 @@ use SimpleSAML\OpenID\ValueAbstracts\UniqueStringBag;
 #[CoversClass(RelyingPartyConfig::class)]
 final class RelyingPartyConfigTest extends TestCase
 {
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\RedirectUriBag
+     */
     private \PHPUnit\Framework\MockObject\Stub $redirectUriBagMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\SignatureKeyPairConfigBag
+     */
     private \PHPUnit\Framework\MockObject\Stub $connectSignatureKeyPairBagMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\ScopeBag
+     */
     private \PHPUnit\Framework\MockObject\Stub $scopeBagMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\ValueAbstracts\ClaimBag
+     */
     private \PHPUnit\Framework\MockObject\Stub $additionalClaimBagMock;
 
     private string $initiateLoginUri;

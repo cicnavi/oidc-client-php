@@ -44,6 +44,9 @@ final class RequestDataHandlerTest extends TestCase
 
     private MockObject $coreMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\Psr\SimpleCache\CacheInterface
+     */
     private \PHPUnit\Framework\MockObject\Stub $cacheMock;
 
     private MockObject $jwksMock;

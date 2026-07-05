@@ -48,22 +48,43 @@ final class PreRegisteredClientTest extends TestCase
 
     private bool $fetchUserinfoClaims;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\SupportedAlgorithms
+     */
     private \PHPUnit\Framework\MockObject\Stub $supportedAlgorithmsMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\SupportedSerializers
+     */
     private \PHPUnit\Framework\MockObject\Stub $supportedSerializersMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\Psr\Log\LoggerInterface
+     */
     private \PHPUnit\Framework\MockObject\Stub $loggerMock;
 
     private \PHPUnit\Framework\MockObject\MockObject $cacheMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface
+     */
     private \PHPUnit\Framework\MockObject\Stub $sessionStoreMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\GuzzleHttp\Client
+     */
     private \PHPUnit\Framework\MockObject\Stub $httpClientMock;
 
     private \PHPUnit\Framework\MockObject\MockObject $metadataMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\Core
+     */
     private \PHPUnit\Framework\MockObject\Stub $coreMock;
 
+    /**
+     * @var \PHPUnit\Framework\MockObject\Stub&\SimpleSAML\OpenID\Jwks
+     */
     private \PHPUnit\Framework\MockObject\Stub $jwksMock;
 
     private \DateInterval $maxCacheDuration;
