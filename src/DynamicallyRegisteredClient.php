@@ -11,6 +11,7 @@ use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Helpers\HttpHelper;
+use Cicnavi\Oidc\Helpers\MetadataHelper;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use Cicnavi\Oidc\Protocol\ClientRegistrationHandler;
 use Cicnavi\Oidc\Protocol\OpMetadata;
@@ -713,7 +714,7 @@ class DynamicallyRegisteredClient
         $requestDataHandler = $this->resolveRequestDataHandler();
 
         $endSessionEndpoint = $requestDataHandler->getLoginEndSessionEndpoint() ??
-        $this->getOptionalMetadataString(ClaimsEnum::EndSessionEndpoint->value);
+        MetadataHelper::optionalString($this->metadata, ClaimsEnum::EndSessionEndpoint->value);
 
         if (!is_string($endSessionEndpoint)) {
             throw new OidcClientException(
@@ -818,8 +819,12 @@ class DynamicallyRegisteredClient
             $logoutTokenJws = $requestDataHandler->validateLogoutToken(
                 logoutToken: $logoutToken,
                 jwksUri: $opJwksUri,
-                expectedIssuer: $this->getOptionalMetadataString(ClaimsEnum::Issuer->value),
+                expectedIssuer: MetadataHelper::optionalString($this->metadata, ClaimsEnum::Issuer->value),
                 expectedClientId: $clientId,
+                allowedSigningAlgorithms: MetadataHelper::optionalStringList(
+                    $this->metadata,
+                    ClaimsEnum::IdTokenSigningAlgValuesSupported->value,
+                ),
             );
 
             $requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);
@@ -904,21 +909,6 @@ class DynamicallyRegisteredClient
             logger: $this->logger,
             maxCacheDuration: $this->maxCacheDuration,
         );
-    }
-
-    /**
-     * Read an optional string value from OP metadata, returning null when the
-     * key is not advertised or its value is not a non-empty string.
-     */
-    protected function getOptionalMetadataString(string $key): ?string
-    {
-        try {
-            $value = $this->metadata->get($key);
-        } catch (OidcClientException) {
-            return null;
-        }
-
-        return (is_string($value) && $value !== '') ? $value : null;
     }
 
     /**

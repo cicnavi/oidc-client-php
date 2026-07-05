@@ -1276,6 +1276,13 @@ class RequestDataHandler
      * match it.
      * @param ?string $expectedClientId When provided, the 'aud' claim must
      * contain it.
+     * @param ?string[] $allowedSigningAlgorithms When a non-empty list is
+     * provided, the logout token 'alg' header must be one of these values
+     * (typically the OP's advertised 'id_token_signing_alg_values_supported').
+     * This applies "the same restrictions on the algorithms" as ID Token
+     * validation, per specification section 2.6, so a logout token that is
+     * validly signed but with an unexpected algorithm is rejected. 'none' is
+     * never accepted regardless (it never verifies).
      * @param ?\DateInterval $logoutTokenMaxAge Maximum accepted logout token
      * age ('iat' claim freshness), null to disable the check. Default is 5
      * minutes.
@@ -1290,6 +1297,7 @@ class RequestDataHandler
         string $jwksUri,
         ?string $expectedIssuer = null,
         ?string $expectedClientId = null,
+        ?array $allowedSigningAlgorithms = null,
         ?\DateInterval $logoutTokenMaxAge = new \DateInterval(self::DEFAULT_LOGOUT_TOKEN_MAX_AGE),
         bool $checkJtiReplay = true,
         bool $refreshCache = false,
@@ -1302,6 +1310,23 @@ class RequestDataHandler
             $error = 'Error building Logout Token: ' . $throwable->getMessage();
             $this->logger?->error($error, ['logoutToken' => $logoutToken]);
             throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
+        }
+
+        // Enforce the expected signing algorithm(s) before verifying the
+        // signature, so a validly signed but unexpected-algorithm token is
+        // rejected (specification section 2.6) without a needless JWKS
+        // refresh retry.
+        if (is_array($allowedSigningAlgorithms) && $allowedSigningAlgorithms !== []) {
+            $alg = $logoutTokenJws->getAlgorithm();
+            if (!in_array($alg, $allowedSigningAlgorithms, true)) {
+                $error = sprintf(
+                    'Logout token signing algorithm "%s" is not among the expected algorithms (%s).',
+                    $alg ?? 'none',
+                    implode(', ', $allowedSigningAlgorithms),
+                );
+                $this->logger?->error($error);
+                throw new OidcClientException($error);
+            }
         }
 
         try {
@@ -1323,6 +1348,7 @@ class RequestDataHandler
                 jwksUri: $jwksUri,
                 expectedIssuer: $expectedIssuer,
                 expectedClientId: $expectedClientId,
+                allowedSigningAlgorithms: $allowedSigningAlgorithms,
                 logoutTokenMaxAge: $logoutTokenMaxAge,
                 checkJtiReplay: $checkJtiReplay,
                 refreshCache: true,

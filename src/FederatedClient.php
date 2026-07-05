@@ -12,6 +12,7 @@ use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Federation\RelyingPartyConfig;
 use Cicnavi\Oidc\Helpers\HttpHelper;
+use Cicnavi\Oidc\Helpers\MetadataHelper;
 use Cicnavi\Oidc\Protocol\RequestDataHandler;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -1063,6 +1064,9 @@ class FederatedClient
                 jwksUri: $opJwksUri,
                 expectedIssuer: $issuer,
                 expectedClientId: $this->entityConfig->getEntityId(),
+                allowedSigningAlgorithms: MetadataHelper::toNonEmptyStringListOrNull(
+                    $opResolvedMetadata[ClaimsEnum::IdTokenSigningAlgValuesSupported->value] ?? null,
+                ),
             );
 
             $this->requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);

@@ -11,6 +11,7 @@ use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Helpers\HttpHelper;
+use Cicnavi\Oidc\Helpers\MetadataHelper;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use Cicnavi\Oidc\Protocol\OpMetadata;
 use Cicnavi\Oidc\Protocol\RequestDataHandler;
@@ -343,7 +344,10 @@ class PreRegisteredClient
             useNonce: $this->useNonce,
             fetchUserinfoClaims: $this->fetchUserinfoClaims,
             expectedIssuer: $expectedIssuer,
-            opEndSessionEndpoint: $this->getOptionalMetadataString(ClaimsEnum::EndSessionEndpoint->value),
+            opEndSessionEndpoint: MetadataHelper::optionalString(
+                $this->metadata,
+                ClaimsEnum::EndSessionEndpoint->value,
+            ),
         );
     }
 
@@ -389,7 +393,7 @@ class PreRegisteredClient
         ?ResponseInterface $response = null,
     ): ?ResponseInterface {
         $endSessionEndpoint = $this->requestDataHandler->getLoginEndSessionEndpoint() ??
-        $this->getOptionalMetadataString(ClaimsEnum::EndSessionEndpoint->value);
+        MetadataHelper::optionalString($this->metadata, ClaimsEnum::EndSessionEndpoint->value);
 
         if (!is_string($endSessionEndpoint)) {
             throw new OidcClientException(
@@ -485,8 +489,12 @@ class PreRegisteredClient
             $logoutTokenJws = $this->requestDataHandler->validateLogoutToken(
                 logoutToken: $logoutToken,
                 jwksUri: $opJwksUri,
-                expectedIssuer: $this->getOptionalMetadataString(ClaimsEnum::Issuer->value),
+                expectedIssuer: MetadataHelper::optionalString($this->metadata, ClaimsEnum::Issuer->value),
                 expectedClientId: $this->clientId,
+                allowedSigningAlgorithms: MetadataHelper::optionalStringList(
+                    $this->metadata,
+                    ClaimsEnum::IdTokenSigningAlgValuesSupported->value,
+                ),
             );
 
             $this->requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);
@@ -525,21 +533,6 @@ class PreRegisteredClient
     public function getLoginData(): ?array
     {
         return $this->requestDataHandler->getLoginData();
-    }
-
-    /**
-     * Read an optional string value from OP metadata, returning null when the
-     * key is not advertised or its value is not a non-empty string.
-     */
-    protected function getOptionalMetadataString(string $key): ?string
-    {
-        try {
-            $value = $this->metadata->get($key);
-        } catch (OidcClientException) {
-            return null;
-        }
-
-        return (is_string($value) && $value !== '') ? $value : null;
     }
 
     /**

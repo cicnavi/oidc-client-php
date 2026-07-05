@@ -15,6 +15,7 @@ use Cicnavi\Oidc\Protocol\RequestDataHandler;
 use Cicnavi\Oidc\Federation\EntityConfig;
 use Cicnavi\Oidc\Federation\RelyingPartyConfig;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -59,6 +60,7 @@ use SimpleSAML\OpenID\ValueAbstracts\UniqueStringBag;
 
 #[CoversClass(FederatedClient::class)]
 #[CoversClass(HttpHelper::class)]
+#[UsesClass(\Cicnavi\Oidc\Helpers\MetadataHelper::class)]
 final class FederatedClientTest extends TestCase
 {
     private MockObject $entityConfigMock;

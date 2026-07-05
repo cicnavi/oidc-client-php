@@ -1841,6 +1841,40 @@ final class RequestDataHandlerTest extends TestCase
         );
     }
 
+    public function testValidateLogoutTokenThrowsOnDisallowedSigningAlgorithm(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        // Validly signed, but with an algorithm the OP does not advertise.
+        $logoutTokenJws->method('getAlgorithm')->willReturn('ES256');
+        // The algorithm is rejected before the signature is even verified.
+        $logoutTokenJws->expects($this->never())->method('verifyWithKeySet');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('is not among the expected algorithms');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            allowedSigningAlgorithms: ['RS256'],
+        );
+    }
+
+    public function testValidateLogoutTokenAcceptsAllowedSigningAlgorithm(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $this->configureValidLogoutToken($logoutTokenJws);
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->expects($this->once())->method('verifyWithKeySet');
+
+        $result = $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            allowedSigningAlgorithms: ['RS256'],
+        );
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
     public function testValidateLogoutTokenWarnsOnUnexpectedTypHeader(): void
     {
         $logoutTokenJws = $this->mockLogoutTokenSetup();

@@ -24,6 +24,7 @@ use Cicnavi\Oidc\Helpers\HttpHelper;
 
 #[CoversClass(PreRegisteredClient::class)]
 #[UsesClass(HttpHelper::class)]
+#[UsesClass(\Cicnavi\Oidc\Helpers\MetadataHelper::class)]
 final class PreRegisteredClientTest extends TestCase
 {
     private string $opConfigrationUrl;
@@ -775,9 +776,10 @@ final class PreRegisteredClientTest extends TestCase
             ->with($request)
             ->willReturn('logout-token');
 
-        $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(3))->method('get')->willReturnMap([
             ['jwks_uri', 'https://op.example.org/jwks'],
             ['issuer', 'https://op.example.org'],
+            ['id_token_signing_alg_values_supported', ['RS256']],
         ]);
 
         $logoutTokenJws = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
@@ -789,6 +791,7 @@ final class PreRegisteredClientTest extends TestCase
                 'https://op.example.org/jwks',
                 'https://op.example.org',
                 $this->clientId,
+                ['RS256'],
             )
             ->willReturn($logoutTokenJws);
 
@@ -810,9 +813,10 @@ final class PreRegisteredClientTest extends TestCase
     {
         $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
 
-        $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
+        $this->metadataMock->expects($this->exactly(3))->method('get')->willReturnMap([
             ['jwks_uri', 'https://op.example.org/jwks'],
             ['issuer', 'https://op.example.org'],
+            ['id_token_signing_alg_values_supported', ['RS256']],
         ]);
 
         $this->requestDataHandlerMock->method('validateLogoutToken')
