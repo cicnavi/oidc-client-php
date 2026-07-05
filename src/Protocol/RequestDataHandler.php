@@ -1276,13 +1276,13 @@ class RequestDataHandler
      * match it.
      * @param ?string $expectedClientId When provided, the 'aud' claim must
      * contain it.
-     * @param ?string[] $allowedSigningAlgorithms When a non-empty list is
-     * provided, the logout token 'alg' header must be one of these values
-     * (typically the OP's advertised 'id_token_signing_alg_values_supported').
-     * This applies "the same restrictions on the algorithms" as ID Token
-     * validation, per specification section 2.6, so a logout token that is
-     * validly signed but with an unexpected algorithm is rejected. 'none' is
-     * never accepted regardless (it never verifies).
+     * @param ?string $expectedSigningAlgorithm When provided, the logout
+     * token 'alg' header must equal this value (the RP's
+     * 'id_token_signed_response_alg', which the OP also uses to sign this
+     * client's logout tokens). This applies "the same restrictions on the
+     * algorithms" as ID Token validation, per specification section 2.6, so
+     * a logout token that is validly signed but with a different algorithm
+     * than expected is rejected.
      * @param ?\DateInterval $logoutTokenMaxAge Maximum accepted logout token
      * age ('iat' claim freshness), null to disable the check. Default is 5
      * minutes.
@@ -1297,7 +1297,7 @@ class RequestDataHandler
         string $jwksUri,
         ?string $expectedIssuer = null,
         ?string $expectedClientId = null,
-        ?array $allowedSigningAlgorithms = null,
+        ?string $expectedSigningAlgorithm = null,
         ?\DateInterval $logoutTokenMaxAge = new \DateInterval(self::DEFAULT_LOGOUT_TOKEN_MAX_AGE),
         bool $checkJtiReplay = true,
         bool $refreshCache = false,
@@ -1312,21 +1312,30 @@ class RequestDataHandler
             throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
         }
 
-        // Enforce the expected signing algorithm(s) before verifying the
-        // signature, so a validly signed but unexpected-algorithm token is
-        // rejected (specification section 2.6) without a needless JWKS
-        // refresh retry.
-        if (is_array($allowedSigningAlgorithms) && $allowedSigningAlgorithms !== []) {
-            $alg = $logoutTokenJws->getAlgorithm();
-            if (!in_array($alg, $allowedSigningAlgorithms, true)) {
-                $error = sprintf(
-                    'Logout token signing algorithm "%s" is not among the expected algorithms (%s).',
-                    $alg ?? 'none',
-                    implode(', ', $allowedSigningAlgorithms),
-                );
-                $this->logger?->error($error);
-                throw new OidcClientException($error);
-            }
+        // Validate the 'alg' Header Parameter (specification section 2.6),
+        // before verifying the signature so an invalid-algorithm token is
+        // rejected without a needless JWKS refresh retry.
+        $alg = $logoutTokenJws->getAlgorithm();
+
+        // An 'alg' of 'none' MUST NOT be used for Logout Tokens - they must be
+        // signed (a signed JWT also always carries an 'alg' header).
+        if ($alg === null || strcasecmp($alg, 'none') === 0) {
+            $error = 'Logout token is unsigned or uses the "none" algorithm, which is not allowed.';
+            $this->logger?->error($error);
+            throw new OidcClientException($error);
+        }
+
+        // Like ID Tokens, the algorithm the OP uses is the single one the RP
+        // registered ('id_token_signed_response_alg', default RS256) - not the
+        // OP's broad advertised 'id_token_signing_alg_values_supported' set.
+        if ($expectedSigningAlgorithm !== null && $alg !== $expectedSigningAlgorithm) {
+            $error = sprintf(
+                'Logout token signing algorithm "%s" does not match the expected algorithm "%s".',
+                $alg,
+                $expectedSigningAlgorithm,
+            );
+            $this->logger?->error($error);
+            throw new OidcClientException($error);
         }
 
         try {
@@ -1348,7 +1357,7 @@ class RequestDataHandler
                 jwksUri: $jwksUri,
                 expectedIssuer: $expectedIssuer,
                 expectedClientId: $expectedClientId,
-                allowedSigningAlgorithms: $allowedSigningAlgorithms,
+                expectedSigningAlgorithm: $expectedSigningAlgorithm,
                 logoutTokenMaxAge: $logoutTokenMaxAge,
                 checkJtiReplay: $checkJtiReplay,
                 refreshCache: true,
@@ -1369,14 +1378,33 @@ class RequestDataHandler
             }
         }
 
-        // Validate Audience (aud)
-        if ($expectedClientId !== null && !in_array($expectedClientId, $logoutTokenJws->getAudience(), true)) {
-            $error = sprintf(
-                'Logout token audience claim does not contain expected client ID "%s".',
-                $expectedClientId,
-            );
-            $this->logger?->error($error);
-            throw new OidcClientException($error);
+        // Validate Audience (aud) and Authorized Party (azp) the same way as
+        // for ID Tokens (specification section 2.6): the audience must contain
+        // the client ID, and when there are multiple audiences an 'azp' claim
+        // matching the client ID must be present.
+        if ($expectedClientId !== null) {
+            $aud = $logoutTokenJws->getAudience();
+
+            if (!in_array($expectedClientId, $aud, true)) {
+                $error = sprintf(
+                    'Logout token audience claim does not contain expected client ID "%s".',
+                    $expectedClientId,
+                );
+                $this->logger?->error($error);
+                throw new OidcClientException($error);
+            }
+
+            if (count($aud) > 1) {
+                $azp = $logoutTokenJws->getPayloadClaim(ClaimsEnum::Azp->value);
+                if ($azp !== $expectedClientId) {
+                    $error = sprintf(
+                        'Logout token authorized party (azp) claim does not match expected client ID "%s".',
+                        $expectedClientId,
+                    );
+                    $this->logger?->error($error);
+                    throw new OidcClientException($error);
+                }
+            }
         }
 
         // Explicit typing ('typ' header of 'logout+jwt') is only RECOMMENDED

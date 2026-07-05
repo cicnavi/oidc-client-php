@@ -53,41 +53,4 @@ final class MetadataHelperTest extends TestCase
 
         $this->assertNull(MetadataHelper::optionalString($metadata, 'issuer'));
     }
-
-    public function testOptionalStringListReturnsNonEmptyStrings(): void
-    {
-        $metadata = $this->metadata('id_token_signing_alg_values_supported', ['RS256', 'ES256']);
-
-        $this->assertSame(
-            ['RS256', 'ES256'],
-            MetadataHelper::optionalStringList($metadata, 'id_token_signing_alg_values_supported'),
-        );
-    }
-
-    public function testOptionalStringListReturnsNullWhenKeyNotAdvertised(): void
-    {
-        $metadata = $this->metadata('id_token_signing_alg_values_supported', null, throw: true);
-
-        $this->assertNull(
-            MetadataHelper::optionalStringList($metadata, 'id_token_signing_alg_values_supported'),
-        );
-    }
-
-    public function testToNonEmptyStringListOrNullFiltersOutNonStringsAndReindexes(): void
-    {
-        $this->assertSame(
-            ['RS256', 'ES256'],
-            MetadataHelper::toNonEmptyStringListOrNull(['RS256', 123, '', null, 'ES256']),
-        );
-    }
-
-    public function testToNonEmptyStringListOrNullReturnsNullForNonArray(): void
-    {
-        $this->assertNull(MetadataHelper::toNonEmptyStringListOrNull('RS256'));
-    }
-
-    public function testToNonEmptyStringListOrNullReturnsNullForEmptyResult(): void
-    {
-        $this->assertNull(MetadataHelper::toNonEmptyStringListOrNull([123, '', null]));
-    }
 }

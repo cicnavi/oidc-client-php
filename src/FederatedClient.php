@@ -12,7 +12,6 @@ use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Federation\RelyingPartyConfig;
 use Cicnavi\Oidc\Helpers\HttpHelper;
-use Cicnavi\Oidc\Helpers\MetadataHelper;
 use Cicnavi\Oidc\Protocol\RequestDataHandler;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -99,6 +98,11 @@ class FederatedClient
      * artifacts will be cached. Defaults to 6 hours.
      * @param \DateInterval $timestampValidationLeeway Leeway used for timestamp
      * validation. Defaults to 1 minute.
+     * @param ?string $idTokenSignedResponseAlg The JWS algorithm the OP uses
+     * to sign this RP's ID tokens and OIDC Back-Channel Logout tokens.
+     * Back-Channel Logout tokens signed with a different algorithm are
+     * rejected. Defaults to 'RS256' (the OpenID Connect default). Set to null
+     * to accept any supported algorithm.
      *
      * @throws CacheException
      */
@@ -151,6 +155,7 @@ class FederatedClient
         int $maxDiscoveryDepth = 10,
         ?EntityCollectionStoreInterface $entityCollectionStore = null,
         protected readonly ParModeEnum $parMode = ParModeEnum::Auto,
+        protected readonly ?string $idTokenSignedResponseAlg = SignatureAlgorithmEnum::RS256->value,
     ) {
         $this->validateResponseMode($this->responseMode);
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
@@ -1064,9 +1069,7 @@ class FederatedClient
                 jwksUri: $opJwksUri,
                 expectedIssuer: $issuer,
                 expectedClientId: $this->entityConfig->getEntityId(),
-                allowedSigningAlgorithms: MetadataHelper::toNonEmptyStringListOrNull(
-                    $opResolvedMetadata[ClaimsEnum::IdTokenSigningAlgValuesSupported->value] ?? null,
-                ),
+                expectedSigningAlgorithm: $this->idTokenSignedResponseAlg,
             );
 
             $this->requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);

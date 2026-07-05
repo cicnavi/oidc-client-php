@@ -1734,6 +1734,7 @@ final class RequestDataHandlerTest extends TestCase
      */
     private function configureValidLogoutToken(MockObject $logoutTokenJws): void
     {
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
         $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
         $logoutTokenJws->method('getAudience')->willReturn(['client-id']);
         $logoutTokenJws->method('getType')->willReturn('logout+jwt');
@@ -1802,6 +1803,7 @@ final class RequestDataHandlerTest extends TestCase
     public function testValidateLogoutTokenThrowsAfterRetryFailure(): void
     {
         $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
         $logoutTokenJws->method('verifyWithKeySet')->willThrowException(new Exception('Sig fail'));
 
         $this->expectException(OidcClientException::class);
@@ -1841,25 +1843,58 @@ final class RequestDataHandlerTest extends TestCase
         );
     }
 
-    public function testValidateLogoutTokenThrowsOnDisallowedSigningAlgorithm(): void
+    public function testValidateLogoutTokenThrowsOnAuthorizedPartyMismatchWithMultipleAudiences(): void
     {
         $logoutTokenJws = $this->mockLogoutTokenSetup();
-        // Validly signed, but with an algorithm the OP does not advertise.
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->method('getAudience')->willReturn(['client-id', 'other-audience']);
+        $logoutTokenJws->method('getPayloadClaim')->with('azp')->willReturn('other-client-id');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('authorized party (azp) claim does not match');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            expectedClientId: 'client-id',
+        );
+    }
+
+    public function testValidateLogoutTokenThrowsOnNoneAlgorithm(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('none');
+        // 'none' is rejected unconditionally, even without an expected algorithm.
+        $logoutTokenJws->expects($this->never())->method('verifyWithKeySet');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('unsigned or uses the "none" algorithm');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+        );
+    }
+
+    public function testValidateLogoutTokenThrowsOnUnexpectedSigningAlgorithm(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        // Validly signed, but with an algorithm other than the expected one.
         $logoutTokenJws->method('getAlgorithm')->willReturn('ES256');
         // The algorithm is rejected before the signature is even verified.
         $logoutTokenJws->expects($this->never())->method('verifyWithKeySet');
 
         $this->expectException(OidcClientException::class);
-        $this->expectExceptionMessage('is not among the expected algorithms');
+        $this->expectExceptionMessage('does not match the expected algorithm');
 
         $this->sut()->validateLogoutToken(
             'logout-token',
             'https://op.example.org/jwks',
-            allowedSigningAlgorithms: ['RS256'],
+            expectedSigningAlgorithm: 'RS256',
         );
     }
 
-    public function testValidateLogoutTokenAcceptsAllowedSigningAlgorithm(): void
+    public function testValidateLogoutTokenAcceptsExpectedSigningAlgorithm(): void
     {
         $logoutTokenJws = $this->mockLogoutTokenSetup();
         $this->configureValidLogoutToken($logoutTokenJws);
@@ -1869,7 +1904,7 @@ final class RequestDataHandlerTest extends TestCase
         $result = $this->sut()->validateLogoutToken(
             'logout-token',
             'https://op.example.org/jwks',
-            allowedSigningAlgorithms: ['RS256'],
+            expectedSigningAlgorithm: 'RS256',
         );
 
         $this->assertSame($logoutTokenJws, $result);
@@ -1878,6 +1913,7 @@ final class RequestDataHandlerTest extends TestCase
     public function testValidateLogoutTokenWarnsOnUnexpectedTypHeader(): void
     {
         $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
         $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
         $logoutTokenJws->method('getAudience')->willReturn(['client-id']);
         $logoutTokenJws->method('getType')->willReturn('JWT');
@@ -1895,6 +1931,7 @@ final class RequestDataHandlerTest extends TestCase
     public function testValidateLogoutTokenThrowsOnStaleIssuedAt(): void
     {
         $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
         $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
         $logoutTokenJws->method('getAudience')->willReturn(['client-id']);
         $logoutTokenJws->method('getType')->willReturn('logout+jwt');
@@ -1912,6 +1949,7 @@ final class RequestDataHandlerTest extends TestCase
     public function testValidateLogoutTokenAcceptsStaleIssuedAtWhenMaxAgeDisabled(): void
     {
         $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
         $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
         $logoutTokenJws->method('getAudience')->willReturn(['client-id']);
         $logoutTokenJws->method('getType')->willReturn('logout+jwt');

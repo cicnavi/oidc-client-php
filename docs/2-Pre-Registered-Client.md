@@ -306,12 +306,18 @@ $oidcClient->handleBackchannelLogoutRequest();
 ```
 
 The method validates the logout token from the request (signature against
-the OP JWKS, issuer, audience, required claims, freshness, and `jti` replay
-detection), records the requested login revocation, and emits the proper
-HTTP response itself (200 when the logout was performed, 400 with a JSON
-error body when not). It also accepts an optional PSR-7 server request to
-read from, and an optional PSR-7 `response` instance which will be
+the OP JWKS, signing algorithm, issuer, audience, required claims, freshness,
+and `jti` replay detection), records the requested login revocation, and
+emits the proper HTTP response itself (200 when the logout was performed, 400
+with a JSON error body when not). It also accepts an optional PSR-7 server
+request to read from, and an optional PSR-7 `response` instance which will be
 populated and returned instead of emitting output directly.
+
+The logout token must be signed with the algorithm the OP uses for this
+client's ID tokens (the `id_token_signed_response_alg` client metadata),
+which defaults to `RS256` per OpenID Connect. If your OP signs tokens with a
+different algorithm, set the `idTokenSignedResponseAlg` constructor parameter
+accordingly (or to `null` to accept any supported algorithm).
 
 ### How the affected login is terminated
 

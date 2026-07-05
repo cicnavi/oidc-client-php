@@ -157,6 +157,13 @@ class DynamicallyRegisteredClient
      * (whether the OP should include a 'sid' claim in logout tokens sent to
      * this client), null to leave it out. Only registered when
      * $backchannelLogoutUri is provided.
+     * @param ?string $idTokenSignedResponseAlg The JWS algorithm the OP uses
+     * to sign this client's ID tokens and OIDC Back-Channel Logout tokens.
+     * Back-Channel Logout tokens signed with a different algorithm are
+     * rejected. Defaults to 'RS256' (the OpenID Connect default). Set to null
+     * to accept any supported algorithm. When registering a specific
+     * 'id_token_signed_response_alg' via $additionalClientMetadata, set this
+     * to the same value.
      *
      * For other parameters, refer to PreRegisteredClient - they are forwarded
      * to the underlying client instance which is built after registration.
@@ -211,6 +218,7 @@ class DynamicallyRegisteredClient
         protected readonly array $postLogoutRedirectUris = [],
         protected readonly ?string $backchannelLogoutUri = null,
         protected readonly ?bool $backchannelLogoutSessionRequired = null,
+        protected readonly ?string $idTokenSignedResponseAlg = SignatureAlgorithmEnum::RS256->value,
     ) {
         $this->cache = $cache ?? new FileCache(
             'odrcpc-' . md5($this->opConfigurationUrl . '|' . $this->redirectUri),
@@ -821,10 +829,7 @@ class DynamicallyRegisteredClient
                 jwksUri: $opJwksUri,
                 expectedIssuer: MetadataHelper::optionalString($this->metadata, ClaimsEnum::Issuer->value),
                 expectedClientId: $clientId,
-                allowedSigningAlgorithms: MetadataHelper::optionalStringList(
-                    $this->metadata,
-                    ClaimsEnum::IdTokenSigningAlgValuesSupported->value,
-                ),
+                expectedSigningAlgorithm: $this->idTokenSignedResponseAlg,
             );
 
             $requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);

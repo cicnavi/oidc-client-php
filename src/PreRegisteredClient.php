@@ -93,6 +93,12 @@ class PreRegisteredClient
      * send HTTP requests.
      * @param Core|null $core Core library instance. If not provided, a new one
      * will be built using provided options.
+     * @param ?string $idTokenSignedResponseAlg The JWS algorithm the OP uses
+     * to sign this client's ID tokens and OIDC Back-Channel Logout tokens
+     * (the 'id_token_signed_response_alg' client metadata). Back-Channel
+     * Logout tokens signed with a different algorithm are rejected. Defaults
+     * to 'RS256' (the OpenID Connect default). Set to null to accept any
+     * supported algorithm.
      * @throws CacheException If cache could not be initialized.
      * @throws OidcClientException If cache could not be reinitialized.
      */
@@ -136,6 +142,7 @@ class PreRegisteredClient
         protected readonly ?ResponseModesEnum $responseMode = null,
         ?RequestDataHandler $requestDataHandler = null,
         protected readonly ParModeEnum $parMode = ParModeEnum::Auto,
+        protected readonly ?string $idTokenSignedResponseAlg = SignatureAlgorithmEnum::RS256->value,
     ) {
         $this->validateResponseMode($this->responseMode);
 
@@ -491,10 +498,7 @@ class PreRegisteredClient
                 jwksUri: $opJwksUri,
                 expectedIssuer: MetadataHelper::optionalString($this->metadata, ClaimsEnum::Issuer->value),
                 expectedClientId: $this->clientId,
-                allowedSigningAlgorithms: MetadataHelper::optionalStringList(
-                    $this->metadata,
-                    ClaimsEnum::IdTokenSigningAlgValuesSupported->value,
-                ),
+                expectedSigningAlgorithm: $this->idTokenSignedResponseAlg,
             );
 
             $this->requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);
