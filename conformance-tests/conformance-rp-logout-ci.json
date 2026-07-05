@@ -8,6 +8,7 @@
         "post_logout_redirect_uris": [
             "https://rp.local.conformance.test/logout-callback"
         ],
+        "backchannel_logout_uri": "https://rp.local.conformance.test/backchannel-logout",
         "request_type": "plain_http_request"
     },
     "browser": [

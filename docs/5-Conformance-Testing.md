@@ -72,7 +72,17 @@ application then continues every completed login with an RP-Initiated Logout: th
 redirects to `/logout` (which sends the logout request to the OP's `end_session_endpoint` with
 `id_token_hint`, `client_id`, `post_logout_redirect_uri` and `state`), and the OP redirects back
 to `/logout-callback`, where the state parameter is validated (an invalid or missing state is
-rejected, as exercised by the negative test modules):
+rejected, as exercised by the negative test modules).
+
+Note that the RP-Initiated Logout test modules require the client to also have a
+`backchannel_logout_uri` or `frontchannel_logout_uri` registered (condition
+`EnsureClientHasAtLeastOneOfBackOrFrontChannelLogoutUri`), and the suite sends a Back-Channel
+Logout request to it while handling the `end_session_endpoint` request. The RP test application
+therefore exposes a `/backchannel-logout` endpoint (currently a stub which acknowledges the
+request with `Cache-Control: no-store`, until Back-Channel Logout support lands in the library).
+It is registered statically via `backchannel_logout_uri` in
+`conformance-tests/conformance-rp-logout-ci.json`, and dynamically via the
+`DynamicallyRegisteredClient` `additionalClientMetadata` constructor parameter:
    ```bash
    LOGOUT_FLOW=rp_initiated docker compose -f docker/docker-compose.yml up --build -d
    # ... or, with dynamic client registration (post_logout_redirect_uris is then
@@ -107,11 +117,11 @@ rejected, as exercised by the negative test modules):
      conformance-tests/conformance-basic-dynamic-ci.json
    ```
 4. For the RP-Initiated Logout plan (with the RP test application started using
-   `LOGOUT_FLOW=rp_initiated`, see Step 2), run:
+   `LOGOUT_FLOW=rp_initiated`, see Step 2), run (without the `--expected-skips-file` option,
+   since the skipped test module only exists in the Basic plan):
    ```bash
    python3 /path/to/conformance-suite/scripts/run-test-plan.py \
      --expected-failures-file conformance-tests/basic-warnings.json \
-     --expected-skips-file conformance-tests/basic-skips.json \
      "oidcc-client-rp-initiated-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=static_client][request_type=plain_http_request]" \
      conformance-tests/conformance-rp-logout-ci.json
    ```
@@ -120,7 +130,6 @@ rejected, as exercised by the negative test modules):
    ```bash
    python3 /path/to/conformance-suite/scripts/run-test-plan.py \
      --expected-failures-file conformance-tests/basic-warnings.json \
-     --expected-skips-file conformance-tests/basic-skips.json \
      "oidcc-client-rp-initiated-logout-rp-basic[client_auth_type=client_secret_basic][client_registration=dynamic_client][request_type=plain_http_request]" \
      conformance-tests/conformance-rp-logout-dynamic-ci.json
    ```
