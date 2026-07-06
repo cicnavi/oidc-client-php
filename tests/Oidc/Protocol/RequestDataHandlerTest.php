@@ -1708,6 +1708,48 @@ final class RequestDataHandlerTest extends TestCase
         $this->sut()->parseBackchannelLogoutRequest($request);
     }
 
+    public function testParseBackchannelLogoutTokenAudienceInfoReturnsAudiencesAndAuthorizedParty(): void
+    {
+        $logoutTokenFactory = $this->createMock(LogoutTokenFactory::class);
+        $this->coreMock->method('logoutTokenFactory')->willReturn($logoutTokenFactory);
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenFactory->method('fromToken')->with('logout-token')->willReturn($logoutTokenJws);
+        $logoutTokenJws->method('getAudience')->willReturn(['client-a', 'client-b']);
+        $logoutTokenJws->method('getPayloadClaim')->with('azp')->willReturn('client-b');
+
+        $this->assertSame(
+            ['audiences' => ['client-a', 'client-b'], 'authorizedParty' => 'client-b'],
+            $this->sut()->parseBackchannelLogoutTokenAudienceInfo('logout-token'),
+        );
+    }
+
+    public function testParseBackchannelLogoutTokenAudienceInfoReturnsNullAuthorizedPartyWhenAbsent(): void
+    {
+        $logoutTokenFactory = $this->createMock(LogoutTokenFactory::class);
+        $this->coreMock->method('logoutTokenFactory')->willReturn($logoutTokenFactory);
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenFactory->method('fromToken')->willReturn($logoutTokenJws);
+        $logoutTokenJws->method('getAudience')->willReturn(['client-a']);
+        $logoutTokenJws->method('getPayloadClaim')->with('azp')->willReturn(null);
+
+        $this->assertSame(
+            ['audiences' => ['client-a'], 'authorizedParty' => null],
+            $this->sut()->parseBackchannelLogoutTokenAudienceInfo('logout-token'),
+        );
+    }
+
+    public function testParseBackchannelLogoutTokenAudienceInfoThrowsOnParseError(): void
+    {
+        $logoutTokenFactory = $this->createMock(LogoutTokenFactory::class);
+        $this->coreMock->method('logoutTokenFactory')->willReturn($logoutTokenFactory);
+        $logoutTokenFactory->method('fromToken')->willThrowException(new JwsException('Invalid token'));
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Error parsing Logout Token audience. Invalid token');
+
+        $this->sut()->parseBackchannelLogoutTokenAudienceInfo('logout-token');
+    }
+
     /**
      * Set up JWKS and logout token factory mocks, returning the LogoutToken
      * mock which the factory produces.

@@ -1053,6 +1053,11 @@ final class DynamicallyRegisteredClientTest extends TestCase
             ->with($request)
             ->willReturn('logout-token');
 
+        // The logout token is addressed to the current registration.
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutTokenAudienceInfo')
+            ->with('logout-token')
+            ->willReturn(['audiences' => ['registered-client-id'], 'authorizedParty' => null]);
+
         $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
             ['jwks_uri', 'https://op.example.org/jwks'],
             ['issuer', 'https://op.example.org'],
@@ -1091,16 +1096,18 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest($request, $response));
     }
 
-    public function testHandleBackchannelLogoutRequestRespondsWith400WithoutRegistration(): void
+    public function testHandleBackchannelLogoutRequestRespondsWith400WhenAudienceMatchesNoRegistration(): void
     {
         $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutTokenAudienceInfo')
+            ->willReturn(['audiences' => ['unknown-client-id'], 'authorizedParty' => null]);
 
         $this->metadataMock->expects($this->once())->method('get')->willReturnMap([
             ['jwks_uri', 'https://op.example.org/jwks'],
             ['issuer', 'https://op.example.org'],
         ]);
 
-        // No persisted client registration.
+        // No persisted client registration matches the audience.
         $this->registrationStoreMock->method('get')->willReturn(null);
 
         $this->requestDataHandlerMock->expects($this->never())->method('validateLogoutToken');
@@ -1108,7 +1115,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $body = $this->createMock(\Psr\Http\Message\StreamInterface::class);
         $body->expects($this->once())
             ->method('write')
-            ->with($this->stringContains('No persisted client registration found'));
+            ->with($this->stringContains('does not match any persisted client registration'));
 
         $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
         $response->expects($this->once())->method('withStatus')->with(400)->willReturn($response);
@@ -1121,6 +1128,8 @@ final class DynamicallyRegisteredClientTest extends TestCase
     public function testHandleBackchannelLogoutRequestRespondsWith400OnInvalidLogoutToken(): void
     {
         $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutTokenAudienceInfo')
+            ->willReturn(['audiences' => ['registered-client-id'], 'authorizedParty' => null]);
 
         $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
             ['jwks_uri', 'https://op.example.org/jwks'],
@@ -1146,6 +1155,105 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $response->expects($this->once())->method('withStatus')->with(400)->willReturn($response);
         $response->method('withHeader')->willReturn($response);
         $response->method('getBody')->willReturn($body);
+
+        $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest(null, $response));
+    }
+
+    public function testHandleBackchannelLogoutRequestHonorsReplacedClientRegistration(): void
+    {
+        // The current registration has a new client ID, but a logout token
+        // arrives for the old (replaced) client ID whose per-client entry is
+        // still persisted - it must be honored, not rejected.
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutTokenAudienceInfo')
+            ->willReturn(['audiences' => ['old-client-id'], 'authorizedParty' => null]);
+
+        $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
+            ['jwks_uri', 'https://op.example.org/jwks'],
+            ['issuer', 'https://op.example.org'],
+        ]);
+
+        $mainKey = $this->sut()->getRegistrationStoreKey();
+        $oldClientKey = $this->sut()->getClientRegistrationStoreKey('old-client-id');
+
+        $this->registrationStoreMock->expects($this->exactly(2))->method('get')->willReturnMap([
+            // Current registration (new client ID).
+            [$mainKey, ['client_id' => 'new-client-id', 'client_secret' => 'new-secret']],
+            // Retained per-client entry of the replaced registration.
+            [$oldClientKey, ['client_id' => 'old-client-id', 'client_secret' => 'old-secret']],
+        ]);
+
+        $logoutTokenJws = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
+
+        // The logout token is validated against the OLD (replaced) client ID.
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutToken')
+            ->with(
+                'logout-token',
+                'https://op.example.org/jwks',
+                'https://op.example.org',
+                'old-client-id',
+                'RS256',
+            )
+            ->willReturn($logoutTokenJws);
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('registerLogoutTokenRevocation')
+            ->with($logoutTokenJws);
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())->method('withStatus')->with(200)->willReturn($response);
+        $response->method('withHeader')->willReturn($response);
+
+        $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest(null, $response));
+    }
+
+    public function testHandleBackchannelLogoutRequestUsesAuthorizedPartyToDisambiguateMultipleAudiences(): void
+    {
+        // The logout token lists two audiences that are both persisted client
+        // IDs; the 'azp' claim must decide which one it is for.
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutTokenAudienceInfo')
+            ->willReturn([
+                'audiences' => ['client-a', 'client-b'],
+                'authorizedParty' => 'client-b',
+            ]);
+
+        $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
+            ['jwks_uri', 'https://op.example.org/jwks'],
+            ['issuer', 'https://op.example.org'],
+        ]);
+
+        $mainKey = $this->sut()->getRegistrationStoreKey();
+        $clientBKey = $this->sut()->getClientRegistrationStoreKey('client-b');
+
+        $this->registrationStoreMock->expects($this->exactly(2))->method('get')->willReturnMap([
+            // Current registration is 'client-a' (also a token audience).
+            [$mainKey, ['client_id' => 'client-a', 'client_secret' => 'secret-a']],
+            // 'client-b' is a retained per-client entry.
+            [$clientBKey, ['client_id' => 'client-b', 'client_secret' => 'secret-b']],
+        ]);
+
+        $logoutTokenJws = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
+
+        // Despite 'client-a' being the current registration and first audience,
+        // 'azp' selects 'client-b'.
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutToken')
+            ->with(
+                'logout-token',
+                'https://op.example.org/jwks',
+                'https://op.example.org',
+                'client-b',
+                'RS256',
+            )
+            ->willReturn($logoutTokenJws);
+
+        $this->requestDataHandlerMock->expects($this->once())->method('registerLogoutTokenRevocation');
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())->method('withStatus')->with(200)->willReturn($response);
+        $response->method('withHeader')->willReturn($response);
 
         $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest(null, $response));
     }

@@ -793,10 +793,13 @@ class DynamicallyRegisteredClient
      * 'backchannel_logout_uri' client metadata (see the $backchannelLogoutUri
      * constructor parameter).
      *
-     * The logout token audience is validated against the client ID of the
-     * persisted client registration - no client registration is performed
-     * or updated here. Without a persisted registration the logout token
-     * can not be validated, so the request is rejected.
+     * The logout token audience is validated against the persisted client
+     * registrations - the current one and any retained per-client entry of a
+     * replaced registration - so a logout for a superseded (but still
+     * persisted) registration is still honored while old-client sessions may
+     * exist. No client registration is performed or updated here. When the
+     * audience matches no persisted registration, the logout token can not be
+     * validated and the request is rejected.
      *
      * For notes on how the revocation terminates the affected login, refer
      * to PreRegisteredClient::handleBackchannelLogoutRequest().
@@ -816,11 +819,20 @@ class DynamicallyRegisteredClient
                 throw new OidcClientException('JWKS URI not found in OP metadata.');
             }
 
-            $clientId = $this->loadRegistrationData()?->getClientId();
+            // Determine which persisted client registration the logout token
+            // is addressed to (by audience / authorized party), so a logout
+            // for a replaced registration whose per-client entry is still
+            // persisted is honored - not only the current registration.
+            $audienceInfo = $requestDataHandler->parseBackchannelLogoutTokenAudienceInfo($logoutToken);
+            $clientId = $this->resolveRegisteredClientIdForLogout(
+                $audienceInfo['audiences'],
+                $audienceInfo['authorizedParty'],
+            );
 
             if ($clientId === null) {
                 throw new OidcClientException(
-                    'No persisted client registration found, so the logout token audience can not be validated.',
+                    'Logout token audience does not match any persisted client registration, ' .
+                    'so it can not be validated.',
                 );
             }
 
@@ -846,6 +858,62 @@ class DynamicallyRegisteredClient
         $this->logger?->debug('Back-channel logout performed.');
 
         return HttpHelper::dispatchBackchannelLogoutResponse($response, null, $this->logger);
+    }
+
+    /**
+     * Resolve which of this client's persisted registrations a back-channel
+     * logout token is addressed to, by matching the token audience(s) against
+     * the current registration and any retained per-client registration entry
+     * (of a replaced registration). Returns the matching client ID, or null
+     * when nothing matches a persisted registration. No client registration
+     * is performed or updated here (registration entries are only read).
+     *
+     * When the token has multiple audiences, its authorized party ('azp')
+     * identifies the party it is intended for, so it is preferred - this
+     * disambiguates the case where several audiences are persisted client
+     * IDs (and matches the 'azp' check performed during validation).
+     *
+     * @param mixed[] $audiences Logout token audience value(s).
+     * @param ?string $authorizedParty Logout token 'azp' claim value.
+     */
+    protected function resolveRegisteredClientIdForLogout(array $audiences, ?string $authorizedParty): ?string
+    {
+        if (is_string($authorizedParty) && $authorizedParty !== '') {
+            return $this->hasPersistedClientRegistration($authorizedParty) ? $authorizedParty : null;
+        }
+
+        foreach ($audiences as $audience) {
+            if (is_string($audience) && $audience !== '' && $this->hasPersistedClientRegistration($audience)) {
+                return $audience;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a client registration for the given client ID is persisted -
+     * either the current registration or a retained per-client entry of a
+     * replaced registration. Registration entries are only read; no client
+     * registration is performed or updated.
+     */
+    protected function hasPersistedClientRegistration(string $clientId): bool
+    {
+        if ($clientId === $this->loadRegistrationData()?->getClientId()) {
+            return true;
+        }
+
+        try {
+            return $this->registrationStore->get($this->getClientRegistrationStoreKey($clientId)) !== null;
+        } catch (Throwable $throwable) {
+            $this->logger?->warning(
+                'Error reading persisted client registration while resolving a back-channel ' .
+                'logout token audience. ' . $throwable->getMessage(),
+                ['clientId' => $clientId],
+            );
+
+            return false;
+        }
     }
 
     /**

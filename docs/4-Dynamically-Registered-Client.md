@@ -234,11 +234,14 @@ $oidcClient = new DynamicallyRegisteredClient(
 $oidcClient->handleBackchannelLogoutRequest();
 ```
 
-The logout token audience is validated against the client ID of the
-persisted client registration - no client registration is performed or
-updated while handling back-channel logout requests. Note that providing
-`backchannelLogoutUri` changes the client metadata set, so an existing
-client registration will be updated (or replaced) accordingly.
+The logout token audience is validated against the persisted client
+registrations - the current one and any retained per-client entry of a
+replaced registration - so a logout for a superseded (but still persisted)
+registration is still honored while old-client sessions may exist. No
+client registration is performed or updated while handling back-channel
+logout requests. Note that providing `backchannelLogoutUri` changes the
+client metadata set, so an existing client registration will be updated (or
+replaced) accordingly.
 
 ## Requirements on the OpenID Provider
 

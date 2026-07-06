@@ -1260,6 +1260,38 @@ class RequestDataHandler
     }
 
     /**
+     * Parse an OIDC Back-Channel Logout token WITHOUT verifying its
+     * signature, returning the claims used to determine which client the
+     * token is addressed to before selecting the client registration to
+     * validate it against (e.g. for dynamically registered clients whose
+     * registration may have been replaced): the audience(s) ('aud') and the
+     * authorized party ('azp'). When a token has multiple audiences, 'azp'
+     * identifies the party it is intended for. The token is still fully
+     * validated, including its signature, separately via validateLogoutToken().
+     *
+     * @return array{audiences: mixed[], authorizedParty: ?non-empty-string}
+     * @throws OidcClientException If the logout token can not be parsed.
+     */
+    public function parseBackchannelLogoutTokenAudienceInfo(string $logoutToken): array
+    {
+        try {
+            $logoutTokenJws = $this->core->logoutTokenFactory()->fromToken($logoutToken);
+            $authorizedParty = $logoutTokenJws->getPayloadClaim(ClaimsEnum::Azp->value);
+
+            return [
+                'audiences' => $logoutTokenJws->getAudience(),
+                'authorizedParty' => (is_string($authorizedParty) && $authorizedParty !== '') ?
+                    $authorizedParty :
+                    null,
+            ];
+        } catch (Throwable $throwable) {
+            $error = 'Error parsing Logout Token audience. ' . $throwable->getMessage();
+            $this->logger?->error($error);
+            throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
+        }
+    }
+
+    /**
      * Validate a logout token per OIDC Back-Channel Logout 1.0, section 2.6.
      *
      * Building the LogoutToken instance validates the claim set (required
