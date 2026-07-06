@@ -5,8 +5,8 @@ authenticate users through an OpenID Provider using Authorization Code Flow.
 
 It is built for practical OIDC integrations: provider discovery, JWKS key
 rotation, ID token validation, user claims extraction, `userinfo` fetching,
-PKCE, Pushed Authorization Requests, RP-Initiated Logout, and cache-backed
-metadata/key handling are included.
+PKCE, Pushed Authorization Requests, RP-Initiated and Back-Channel Logout,
+and cache-backed metadata/key handling are included.
 
 ## What It Supports
 

@@ -11,6 +11,7 @@ use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Helpers\HttpHelper;
+use Cicnavi\Oidc\Helpers\MetadataHelper;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use Cicnavi\Oidc\Protocol\OpMetadata;
 use Cicnavi\Oidc\Protocol\RequestDataHandler;
@@ -92,6 +93,17 @@ class PreRegisteredClient
      * send HTTP requests.
      * @param Core|null $core Core library instance. If not provided, a new one
      * will be built using provided options.
+     * @param ?string $idTokenSignedResponseAlg The JWS algorithm the OP uses
+     * to sign this client's ID tokens and OIDC Back-Channel Logout tokens
+     * (the 'id_token_signed_response_alg' client metadata). Back-Channel
+     * Logout tokens signed with a different algorithm are rejected. Defaults
+     * to 'RS256' (the OpenID Connect default). Set to null to accept any
+     * supported algorithm.
+     * @param bool $backchannelLogoutSessionRequired Whether this client was
+     * registered on the OP with 'backchannel_logout_session_required' true.
+     * When true, OIDC Back-Channel Logout tokens without a 'sid' claim are
+     * rejected (the OP is then expected to always identify the exact session
+     * to terminate, rather than falling back to a subject-wide logout).
      * @throws CacheException If cache could not be initialized.
      * @throws OidcClientException If cache could not be reinitialized.
      */
@@ -135,6 +147,8 @@ class PreRegisteredClient
         protected readonly ?ResponseModesEnum $responseMode = null,
         ?RequestDataHandler $requestDataHandler = null,
         protected readonly ParModeEnum $parMode = ParModeEnum::Auto,
+        protected readonly ?string $idTokenSignedResponseAlg = SignatureAlgorithmEnum::RS256->value,
+        protected readonly bool $backchannelLogoutSessionRequired = false,
     ) {
         $this->validateResponseMode($this->responseMode);
 
@@ -343,7 +357,10 @@ class PreRegisteredClient
             useNonce: $this->useNonce,
             fetchUserinfoClaims: $this->fetchUserinfoClaims,
             expectedIssuer: $expectedIssuer,
-            opEndSessionEndpoint: $this->getOptionalMetadataString(ClaimsEnum::EndSessionEndpoint->value),
+            opEndSessionEndpoint: MetadataHelper::optionalString(
+                $this->metadata,
+                ClaimsEnum::EndSessionEndpoint->value,
+            ),
         );
     }
 
@@ -389,7 +406,7 @@ class PreRegisteredClient
         ?ResponseInterface $response = null,
     ): ?ResponseInterface {
         $endSessionEndpoint = $this->requestDataHandler->getLoginEndSessionEndpoint() ??
-        $this->getOptionalMetadataString(ClaimsEnum::EndSessionEndpoint->value);
+        MetadataHelper::optionalString($this->metadata, ClaimsEnum::EndSessionEndpoint->value);
 
         if (!is_string($endSessionEndpoint)) {
             throw new OidcClientException(
@@ -447,6 +464,67 @@ class PreRegisteredClient
     }
 
     /**
+     * Handle an OIDC Back-Channel Logout request from the OP: validate the
+     * logout token from the request (signature against the OP JWKS, issuer,
+     * audience, claim set, freshness, 'jti' replay), record the login
+     * revocation it requests, and deliver the appropriate HTTP response
+     * (200 when the logout was performed, 400 with a JSON error body when
+     * not).
+     *
+     * Note that a back-channel logout request arrives outside the context
+     * of the End-User's session, so the affected login can not be removed
+     * from its session store here. Instead, the revocation is recorded in
+     * the login revocation registry (backed by the shared client cache by
+     * default), and the affected persisted login is observed as terminated
+     * on subsequent reads (see getLoginData()) - the application should
+     * treat that as the session being logged out. Register the URI of the
+     * endpoint calling this method as 'backchannel_logout_uri' client
+     * metadata on the OP.
+     *
+     * @param ?ServerRequestInterface $request Back-channel logout request.
+     * If not provided, it is read from PHP globals.
+     * @param ?ResponseInterface $response Optional HTTP response which will
+     * be populated with the proper status / headers / body and returned. If
+     * not provided, the response is emitted directly and the script is
+     * terminated.
+     */
+    public function handleBackchannelLogoutRequest(
+        ?ServerRequestInterface $request = null,
+        ?ResponseInterface $response = null,
+    ): ?ResponseInterface {
+        try {
+            $logoutToken = $this->requestDataHandler->parseBackchannelLogoutRequest($request);
+
+            if (!is_string($opJwksUri = $this->metadata->get(ClaimsEnum::JwksUri->value))) {
+                throw new OidcClientException('JWKS URI not found in OP metadata.');
+            }
+
+            $logoutTokenJws = $this->requestDataHandler->validateLogoutToken(
+                logoutToken: $logoutToken,
+                jwksUri: $opJwksUri,
+                expectedIssuer: MetadataHelper::optionalString($this->metadata, ClaimsEnum::Issuer->value),
+                expectedClientId: $this->clientId,
+                expectedSigningAlgorithm: $this->idTokenSignedResponseAlg,
+                requireSid: $this->backchannelLogoutSessionRequired,
+            );
+
+            $this->requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);
+        } catch (Throwable $throwable) {
+            $this->logger?->error('Back-channel logout request error. ' . $throwable->getMessage());
+
+            return HttpHelper::dispatchBackchannelLogoutResponse(
+                $response,
+                $throwable->getMessage(),
+                $this->logger,
+            );
+        }
+
+        $this->logger?->debug('Back-channel logout performed.');
+
+        return HttpHelper::dispatchBackchannelLogoutResponse($response, null, $this->logger);
+    }
+
+    /**
      * Raw ID token received at the last successful login, or null when not
      * available (no login was performed, no ID token was issued, or the
      * session expired).
@@ -466,21 +544,6 @@ class PreRegisteredClient
     public function getLoginData(): ?array
     {
         return $this->requestDataHandler->getLoginData();
-    }
-
-    /**
-     * Read an optional string value from OP metadata, returning null when the
-     * key is not advertised or its value is not a non-empty string.
-     */
-    protected function getOptionalMetadataString(string $key): ?string
-    {
-        try {
-            $value = $this->metadata->get($key);
-        } catch (OidcClientException) {
-            return null;
-        }
-
-        return (is_string($value) && $value !== '') ? $value : null;
     }
 
     /**
