@@ -2051,6 +2051,44 @@ final class RequestDataHandlerTest extends TestCase
         $this->sut()->registerLogoutTokenRevocation($logoutTokenJws);
     }
 
+    public function testRegisterLogoutTokenRevocationMarksJtiConsumedAfterSuccess(): void
+    {
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getSessionId')->willReturn('op-session-1');
+        $logoutTokenJws->method('getJwtId')->willReturn('jti-1');
+        $logoutTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+
+        $this->loginRevocationRegistryMock->expects($this->once())->method('revokeSession');
+
+        // The 'jti' is recorded as consumed only after the revocation succeeds.
+        $cacheMock = $this->createMock(CacheInterface::class);
+        $cacheMock->expects($this->once())
+            ->method('set')
+            ->with($this->stringStartsWith('bcl_jti_'));
+
+        $this->sut(cache: $cacheMock)->registerLogoutTokenRevocation($logoutTokenJws);
+    }
+
+    public function testRegisterLogoutTokenRevocationDoesNotMarkJtiConsumedWhenRevocationFails(): void
+    {
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getSessionId')->willReturn('op-session-1');
+
+        $this->loginRevocationRegistryMock->method('revokeSession')
+            ->willThrowException(new OidcClientException('Could not record login revocation.'));
+
+        // A failed revocation must NOT consume the 'jti', so the OP can retry
+        // the same logout token.
+        $cacheMock = $this->createMock(CacheInterface::class);
+        $cacheMock->expects($this->never())->method('set');
+
+        $this->expectException(OidcClientException::class);
+
+        $this->sut(cache: $cacheMock)->registerLogoutTokenRevocation($logoutTokenJws);
+    }
+
     public function testGetLoginDataClearsRevokedSessionLogin(): void
     {
         $loggedInAt = time() - 60;

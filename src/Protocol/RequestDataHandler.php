@@ -1433,7 +1433,7 @@ class RequestDataHandler
         }
 
         if ($checkJtiReplay) {
-            $this->validateLogoutTokenJtiNotReplayed($logoutTokenJws);
+            $this->assertLogoutTokenJtiNotConsumed($logoutTokenJws);
         }
 
         return $logoutTokenJws;
@@ -1441,21 +1441,19 @@ class RequestDataHandler
 
     /**
      * Reject logout tokens whose 'jti' value was already consumed (replay
-     * detection, per specification section 2.6, step 8). Consumed 'jti'
-     * values are recorded in the cache until the logout token itself can no
-     * longer validate (expiration plus slack). Cache errors disable the
-     * check (it is optional per specification) instead of rejecting logouts.
+     * detection, per specification section 2.6, step 8). A 'jti' is recorded
+     * as consumed only after the logout was actually performed (see
+     * registerLogoutTokenRevocation()), so this is a read-only check. Cache
+     * errors disable the check (it is optional per specification) instead of
+     * rejecting logouts.
      *
      * @throws OidcClientException If the logout token 'jti' was already
      * consumed.
      */
-    protected function validateLogoutTokenJtiNotReplayed(LogoutToken $logoutTokenJws): void
+    protected function assertLogoutTokenJtiNotConsumed(LogoutToken $logoutTokenJws): void
     {
-        $cacheKey = self::CACHE_KEY_PREFIX_LOGOUT_TOKEN_JTI .
-        substr(hash('sha256', $logoutTokenJws->getIssuer() . "\n" . $logoutTokenJws->getJwtId()), 0, 56);
-
         try {
-            $consumedAt = $this->cache->get($cacheKey);
+            $consumedAt = $this->cache->get($this->logoutTokenJtiCacheKey($logoutTokenJws));
         } catch (Throwable $throwable) {
             $this->logger?->error(
                 'Could not check for logout token replay, skipping the check. ' . $throwable->getMessage(),
@@ -1468,10 +1466,20 @@ class RequestDataHandler
             $this->logger?->error($error);
             throw new OidcClientException($error);
         }
+    }
 
+    /**
+     * Record the logout token's 'jti' as consumed (best-effort), so a later
+     * logout token with the same 'jti' is rejected as a replay. Called only
+     * after the logout was successfully performed, so a retry following a
+     * failed logout is not incorrectly rejected. Kept until the logout token
+     * itself can no longer validate (expiration plus slack).
+     */
+    protected function markLogoutTokenJtiConsumed(LogoutToken $logoutTokenJws): void
+    {
         try {
             $this->cache->set(
-                $cacheKey,
+                $this->logoutTokenJtiCacheKey($logoutTokenJws),
                 time(),
                 max(60, $logoutTokenJws->getExpirationTime() + 300 - time()),
             );
@@ -1482,12 +1490,23 @@ class RequestDataHandler
         }
     }
 
+    protected function logoutTokenJtiCacheKey(LogoutToken $logoutTokenJws): string
+    {
+        return self::CACHE_KEY_PREFIX_LOGOUT_TOKEN_JTI .
+        substr(hash('sha256', $logoutTokenJws->getIssuer() . "\n" . $logoutTokenJws->getJwtId()), 0, 56);
+    }
+
     /**
      * Record the login revocation requested by a (validated) logout token:
      * by OP issuer and 'sid' when present (that particular session), else by
      * OP issuer and 'sub' (all of the subject's sessions), per specification
      * section 2.7. Affected persisted logins are then observed as terminated
      * (see getLoginData()).
+     *
+     * On success the logout token's 'jti' is recorded as consumed (replay
+     * protection). This happens only after the revocation succeeds, so if the
+     * revocation fails the same token can still be retried (it is not left
+     * marked as a replay).
      *
      * @throws OidcClientException If the revocation could not be recorded
      * (the back-channel logout endpoint should respond with HTTP 400, since
@@ -1499,18 +1518,18 @@ class RequestDataHandler
 
         if (is_string($sid = $logoutTokenJws->getSessionId())) {
             $this->loginRevocationRegistry->revokeSession($issuer, $sid);
-            return;
-        }
-
-        if (is_string($sub = $logoutTokenJws->getSubject())) {
+        } elseif (is_string($sub = $logoutTokenJws->getSubject())) {
             $this->loginRevocationRegistry->revokeSubject($issuer, $sub);
-            return;
+        } else {
+            // Unreachable for validated logout tokens ('sub' and / or 'sid' is
+            // required), but do not silently acknowledge a logout which can
+            // not be correlated with any login.
+            throw new OidcClientException('Logout token does not identify a session or a subject.');
         }
 
-        // Unreachable for validated logout tokens ('sub' and / or 'sid' is
-        // required), but do not silently acknowledge a logout which can not
-        // be correlated with any login.
-        throw new OidcClientException('Logout token does not identify a session or a subject.');
+        // Only now that the logout has been performed, mark the token as
+        // consumed - a revocation failure above must not block a retry.
+        $this->markLogoutTokenJtiConsumed($logoutTokenJws);
     }
 
     protected function dateIntervalToSeconds(\DateInterval $dateInterval): int
