@@ -842,7 +842,7 @@ class DynamicallyRegisteredClient
                 expectedIssuer: MetadataHelper::optionalString($this->metadata, ClaimsEnum::Issuer->value),
                 expectedClientId: $clientId,
                 expectedSigningAlgorithm: $this->idTokenSignedResponseAlg,
-                requireSid: $this->backchannelLogoutSessionRequired === true,
+                requireSid: $this->isBackchannelLogoutSessionRequired(),
             );
 
             $requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);
@@ -859,6 +859,23 @@ class DynamicallyRegisteredClient
         $this->logger?->debug('Back-channel logout performed.');
 
         return HttpHelper::dispatchBackchannelLogoutResponse($response, null, $this->logger);
+    }
+
+    /**
+     * Whether this client's effective registration metadata declares
+     * 'backchannel_logout_session_required' as true. This is derived from the
+     * metadata actually registered on the OP (see
+     * buildClientRegistrationMetadata()), so it accounts for both the dedicated
+     * 'backchannelLogoutSessionRequired' constructor parameter and any
+     * 'additionalClientMetadata' override of that claim - the two are otherwise
+     * merged, and the override wins. When true, logout tokens without a 'sid'
+     * claim are rejected (a subject-wide fallback would be broader than what the
+     * OP was told this client requires).
+     */
+    protected function isBackchannelLogoutSessionRequired(): bool
+    {
+        return ($this->buildClientRegistrationMetadata()[ClaimsEnum::BackChannelLogoutSessionRequired->value] ?? null)
+        === true;
     }
 
     /**

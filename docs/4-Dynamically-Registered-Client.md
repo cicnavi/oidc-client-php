@@ -241,10 +241,13 @@ registration is still honored while old-client sessions may exist. No
 client registration is performed or updated while handling back-channel
 logout requests.
 
-When the client is registered with `backchannelLogoutSessionRequired: true`,
-a logout token that does not carry a `sid` claim is rejected (responded to
-with HTTP 400), since such a client asked the OP to always identify the exact
-session to terminate rather than falling back to a subject-wide logout.
+When the client's effective registration metadata declares
+`backchannel_logout_session_required` as true - whether through the
+`backchannelLogoutSessionRequired` constructor parameter or an
+`additionalClientMetadata` override - a logout token that does not carry a
+`sid` claim is rejected (responded to with HTTP 400), since such a client
+asked the OP to always identify the exact session to terminate rather than
+falling back to a subject-wide logout.
 Note that providing `backchannelLogoutUri` changes the
 client metadata set, so an existing client registration will be updated (or
 replaced) accordingly.
