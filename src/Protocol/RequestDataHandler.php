@@ -1315,6 +1315,11 @@ class RequestDataHandler
      * algorithms" as ID Token validation, per specification section 2.6, so
      * a logout token that is validly signed but with a different algorithm
      * than expected is rejected.
+     * @param bool $requireSid When true, a logout token without a 'sid' claim
+     * is rejected. Set this when the RP registered
+     * 'backchannel_logout_session_required' as true, since then the OP is
+     * expected to include a 'sid' identifying the specific session to
+     * terminate (specification sections 2.4 and 2.6).
      * @param ?\DateInterval $logoutTokenMaxAge Maximum accepted logout token
      * age ('iat' claim freshness), null to disable the check. Default is 5
      * minutes.
@@ -1330,6 +1335,7 @@ class RequestDataHandler
         ?string $expectedIssuer = null,
         ?string $expectedClientId = null,
         ?string $expectedSigningAlgorithm = null,
+        bool $requireSid = false,
         ?\DateInterval $logoutTokenMaxAge = new \DateInterval(self::DEFAULT_LOGOUT_TOKEN_MAX_AGE),
         bool $checkJtiReplay = true,
         bool $refreshCache = false,
@@ -1390,6 +1396,7 @@ class RequestDataHandler
                 expectedIssuer: $expectedIssuer,
                 expectedClientId: $expectedClientId,
                 expectedSigningAlgorithm: $expectedSigningAlgorithm,
+                requireSid: $requireSid,
                 logoutTokenMaxAge: $logoutTokenMaxAge,
                 checkJtiReplay: $checkJtiReplay,
                 refreshCache: true,
@@ -1437,6 +1444,18 @@ class RequestDataHandler
                     throw new OidcClientException($error);
                 }
             }
+        }
+
+        // When the RP registered 'backchannel_logout_session_required' as
+        // true, the OP is expected to include a 'sid' identifying the exact
+        // session to terminate (specification sections 2.4 and 2.6). A logout
+        // token without a 'sid' would otherwise fall back to a subject-wide
+        // revocation, which is broader than what such an RP asked for, so it
+        // is rejected here.
+        if ($requireSid && !is_string($logoutTokenJws->getSessionId())) {
+            $error = 'Logout token does not contain a "sid" claim, which is required for this client.';
+            $this->logger?->error($error);
+            throw new OidcClientException($error);
         }
 
         // Explicit typing ('typ' header of 'logout+jwt') is only RECOMMENDED

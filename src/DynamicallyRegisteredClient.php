@@ -842,6 +842,7 @@ class DynamicallyRegisteredClient
                 expectedIssuer: MetadataHelper::optionalString($this->metadata, ClaimsEnum::Issuer->value),
                 expectedClientId: $clientId,
                 expectedSigningAlgorithm: $this->idTokenSignedResponseAlg,
+                requireSid: $this->backchannelLogoutSessionRequired === true,
             );
 
             $requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);

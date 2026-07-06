@@ -1952,6 +1952,58 @@ final class RequestDataHandlerTest extends TestCase
         $this->assertSame($logoutTokenJws, $result);
     }
 
+    public function testValidateLogoutTokenThrowsOnMissingSidWhenRequired(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->expects($this->once())->method('verifyWithKeySet');
+        // A subject-only logout token (no 'sid') is rejected when 'sid' is required.
+        $logoutTokenJws->method('getSessionId')->willReturn(null);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not contain a "sid" claim');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            requireSid: true,
+        );
+    }
+
+    public function testValidateLogoutTokenAcceptsPresentSidWhenRequired(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $this->configureValidLogoutToken($logoutTokenJws);
+        $logoutTokenJws->expects($this->once())->method('verifyWithKeySet');
+
+        $result = $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            'https://op.example.org',
+            'client-id',
+            requireSid: true,
+        );
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
+    public function testValidateLogoutTokenAllowsMissingSidWhenNotRequired(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->method('getType')->willReturn('logout+jwt');
+        $logoutTokenJws->method('getIssuedAt')->willReturn(time());
+        $logoutTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $logoutTokenJws->method('getJwtId')->willReturn('jti-1');
+        $logoutTokenJws->method('getSessionId')->willReturn(null);
+        $logoutTokenJws->expects($this->once())->method('verifyWithKeySet');
+
+        // A subject-only logout token is accepted when 'sid' is not required.
+        $result = $this->sut()->validateLogoutToken('logout-token', 'https://op.example.org/jwks');
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
     public function testValidateLogoutTokenWarnsOnUnexpectedTypHeader(): void
     {
         $logoutTokenJws = $this->mockLogoutTokenSetup();

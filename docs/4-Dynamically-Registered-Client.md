@@ -239,7 +239,13 @@ registrations - the current one and any retained per-client entry of a
 replaced registration - so a logout for a superseded (but still persisted)
 registration is still honored while old-client sessions may exist. No
 client registration is performed or updated while handling back-channel
-logout requests. Note that providing `backchannelLogoutUri` changes the
+logout requests.
+
+When the client is registered with `backchannelLogoutSessionRequired: true`,
+a logout token that does not carry a `sid` claim is rejected (responded to
+with HTTP 400), since such a client asked the OP to always identify the exact
+session to terminate rather than falling back to a subject-wide logout.
+Note that providing `backchannelLogoutUri` changes the
 client metadata set, so an existing client registration will be updated (or
 replaced) accordingly.
 
