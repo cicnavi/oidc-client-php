@@ -824,25 +824,31 @@ class DynamicallyRegisteredClient
             // for a replaced registration whose per-client entry is still
             // persisted is honored - not only the current registration.
             $audienceInfo = $requestDataHandler->parseBackchannelLogoutTokenAudienceInfo($logoutToken);
-            $clientId = $this->resolveRegisteredClientIdForLogout(
+            $registrationData = $this->resolveRegistrationForLogout(
                 $audienceInfo['audiences'],
                 $audienceInfo['authorizedParty'],
             );
 
-            if ($clientId === null) {
+            if (!$registrationData instanceof \Cicnavi\Oidc\Registration\ClientRegistrationData) {
                 throw new OidcClientException(
                     'Logout token audience does not match any persisted client registration, ' .
                     'so it can not be validated.',
                 );
             }
 
+            // Validate against the policy of the matched registration itself,
+            // not the current one: a registration that was replaced (e.g. after
+            // changing 'id_token_signed_response_alg' or
+            // 'backchannel_logout_session_required') keeps the signing algorithm
+            // and 'sid' requirement it was registered with, so logout tokens for
+            // sessions under the old client are validated correctly.
             $logoutTokenJws = $requestDataHandler->validateLogoutToken(
                 logoutToken: $logoutToken,
                 jwksUri: $opJwksUri,
                 expectedIssuer: MetadataHelper::optionalString($this->metadata, ClaimsEnum::Issuer->value),
-                expectedClientId: $clientId,
-                expectedSigningAlgorithm: $this->idTokenSignedResponseAlg,
-                requireSid: $this->isBackchannelLogoutSessionRequired(),
+                expectedClientId: $registrationData->getClientId(),
+                expectedSigningAlgorithm: $this->registeredIdTokenSignedResponseAlg($registrationData),
+                requireSid: $this->registeredBackchannelLogoutSessionRequired($registrationData),
             );
 
             $requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);
@@ -862,29 +868,42 @@ class DynamicallyRegisteredClient
     }
 
     /**
-     * Whether this client's effective registration metadata declares
-     * 'backchannel_logout_session_required' as true. This is derived from the
-     * metadata actually registered on the OP (see
-     * buildClientRegistrationMetadata()), so it accounts for both the dedicated
-     * 'backchannelLogoutSessionRequired' constructor parameter and any
-     * 'additionalClientMetadata' override of that claim - the two are otherwise
-     * merged, and the override wins. When true, logout tokens without a 'sid'
-     * claim are rejected (a subject-wide fallback would be broader than what the
-     * OP was told this client requires).
+     * The signing algorithm the OP uses for the given registration's ID and
+     * logout tokens, read from that registration's own persisted metadata
+     * ('id_token_signed_response_alg'). Falls back to this client's configured
+     * 'idTokenSignedResponseAlg' when the registration does not carry the claim
+     * (e.g. it was not registered explicitly), so validation still applies the
+     * expected default (RS256).
      */
-    protected function isBackchannelLogoutSessionRequired(): bool
+    protected function registeredIdTokenSignedResponseAlg(ClientRegistrationData $registrationData): ?string
     {
-        return ($this->buildClientRegistrationMetadata()[ClaimsEnum::BackChannelLogoutSessionRequired->value] ?? null)
-        === true;
+        $alg = $registrationData->getClaims()[ClaimsEnum::IdTokenSignedResponseAlg->value] ?? null;
+
+        return (is_string($alg) && $alg !== '') ? $alg : $this->idTokenSignedResponseAlg;
+    }
+
+    /**
+     * Whether the given registration declares 'backchannel_logout_session_required'
+     * as true, read from that registration's own persisted metadata. When true,
+     * logout tokens without a 'sid' claim are rejected (a subject-wide fallback
+     * would be broader than what that registration required). Derived per
+     * registration so a replaced registration keeps the 'sid' policy it was
+     * registered with, independent of the current configuration.
+     */
+    protected function registeredBackchannelLogoutSessionRequired(ClientRegistrationData $registrationData): bool
+    {
+        return ($registrationData->getClaims()[ClaimsEnum::BackChannelLogoutSessionRequired->value] ?? null) === true;
     }
 
     /**
      * Resolve which of this client's persisted registrations a back-channel
      * logout token is addressed to, by matching the token audience(s) against
      * the current registration and any retained per-client registration entry
-     * (of a replaced registration). Returns the matching client ID, or null
-     * when nothing matches a persisted registration. No client registration
-     * is performed or updated here (registration entries are only read).
+     * (of a replaced registration). Returns the matching registration snapshot
+     * (so its own signing algorithm / 'sid' policy can be used for validation),
+     * or null when nothing matches a persisted registration. No client
+     * registration is performed or updated here (registration entries are only
+     * read).
      *
      * When the token has multiple audiences, its authorized party ('azp')
      * identifies the party it is intended for, so it is preferred - this
@@ -894,15 +913,22 @@ class DynamicallyRegisteredClient
      * @param mixed[] $audiences Logout token audience value(s).
      * @param ?string $authorizedParty Logout token 'azp' claim value.
      */
-    protected function resolveRegisteredClientIdForLogout(array $audiences, ?string $authorizedParty): ?string
-    {
+    protected function resolveRegistrationForLogout(
+        array $audiences,
+        ?string $authorizedParty,
+    ): ?ClientRegistrationData {
         if (is_string($authorizedParty) && $authorizedParty !== '') {
-            return $this->hasPersistedClientRegistration($authorizedParty) ? $authorizedParty : null;
+            return $this->loadPersistedClientRegistration($authorizedParty);
         }
 
         foreach ($audiences as $audience) {
-            if (is_string($audience) && $audience !== '' && $this->hasPersistedClientRegistration($audience)) {
-                return $audience;
+            if (
+                is_string($audience) &&
+                $audience !== '' &&
+                ($registrationData = $this->loadPersistedClientRegistration($audience))
+                instanceof \Cicnavi\Oidc\Registration\ClientRegistrationData
+            ) {
+                return $registrationData;
             }
         }
 
@@ -910,19 +936,26 @@ class DynamicallyRegisteredClient
     }
 
     /**
-     * Whether a client registration for the given client ID is persisted -
-     * either the current registration or a retained per-client entry of a
-     * replaced registration. Registration entries are only read; no client
-     * registration is performed or updated.
+     * Load a persisted client registration for the given client ID - either the
+     * current registration or a retained per-client entry of a replaced
+     * registration - or null when none is persisted (or it can not be read).
+     * Registration entries are only read; no client registration is performed
+     * or updated.
      */
-    protected function hasPersistedClientRegistration(string $clientId): bool
+    protected function loadPersistedClientRegistration(string $clientId): ?ClientRegistrationData
     {
-        if ($clientId === $this->loadRegistrationData()?->getClientId()) {
-            return true;
+        $currentRegistrationData = $this->loadRegistrationData();
+        if (
+            $currentRegistrationData instanceof ClientRegistrationData &&
+            $clientId === $currentRegistrationData->getClientId()
+        ) {
+            return $currentRegistrationData;
         }
 
         try {
-            return $this->registrationStore->get($this->getClientRegistrationStoreKey($clientId)) !== null;
+            $claims = $this->registrationStore->get($this->getClientRegistrationStoreKey($clientId));
+
+            return is_array($claims) ? new ClientRegistrationData($claims) : null;
         } catch (Throwable $throwable) {
             $this->logger?->warning(
                 'Error reading persisted client registration while resolving a back-channel ' .
@@ -930,7 +963,7 @@ class DynamicallyRegisteredClient
                 ['clientId' => $clientId],
             );
 
-            return false;
+            return null;
         }
     }
 

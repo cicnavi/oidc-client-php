@@ -237,20 +237,23 @@ $oidcClient->handleBackchannelLogoutRequest();
 The logout token audience is validated against the persisted client
 registrations - the current one and any retained per-client entry of a
 replaced registration - so a logout for a superseded (but still persisted)
-registration is still honored while old-client sessions may exist. No
-client registration is performed or updated while handling back-channel
-logout requests.
+registration is still honored while old-client sessions may exist. The
+logout token is validated using the policy of the matched registration
+itself - the signing algorithm (`id_token_signed_response_alg`) and the
+`sid` requirement (`backchannel_logout_session_required`) it was registered
+with - so a registration that was replaced after those settings changed
+still validates its own logout tokens correctly. No client registration is
+performed or updated while handling back-channel logout requests.
 
-When the client's effective registration metadata declares
-`backchannel_logout_session_required` as true - whether through the
-`backchannelLogoutSessionRequired` constructor parameter or an
-`additionalClientMetadata` override - a logout token that does not carry a
-`sid` claim is rejected (responded to with HTTP 400), since such a client
-asked the OP to always identify the exact session to terminate rather than
-falling back to a subject-wide logout.
-Note that providing `backchannelLogoutUri` changes the
-client metadata set, so an existing client registration will be updated (or
-replaced) accordingly.
+When the matched registration declares `backchannel_logout_session_required`
+as true, a logout token that does not carry a `sid` claim is rejected
+(responded to with HTTP 400), since such a client asked the OP to always
+identify the exact session to terminate rather than falling back to a
+subject-wide logout. This is registered through the
+`backchannelLogoutSessionRequired` constructor parameter (or an
+`additionalClientMetadata` override). Note that providing `backchannelLogoutUri`
+changes the client metadata set, so an existing client registration will be
+updated (or replaced) accordingly.
 
 ## Requirements on the OpenID Provider
 

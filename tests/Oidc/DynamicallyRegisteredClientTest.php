@@ -1258,10 +1258,12 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest(null, $response));
     }
 
-    public function testHandleBackchannelLogoutRequestRequiresSidWhenSessionRequired(): void
+    public function testHandleBackchannelLogoutRequestRequiresSidWhenRegistrationRequiresIt(): void
     {
-        // A client registered with 'backchannel_logout_session_required' true
-        // must have logout tokens validated with the 'sid' requirement on.
+        // The matched registration's own persisted metadata declares
+        // 'backchannel_logout_session_required' true (as the OP echoes it back
+        // at registration), so logout tokens are validated with the 'sid'
+        // requirement on.
         $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
         $this->requestDataHandlerMock->method('parseBackchannelLogoutTokenAudienceInfo')
             ->willReturn(['audiences' => ['registered-client-id'], 'authorizedParty' => null]);
@@ -1274,6 +1276,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $this->registrationStoreMock->method('get')->willReturn([
             'client_id' => 'registered-client-id',
             'client_secret' => 'client-secret',
+            'backchannel_logout_session_required' => true,
         ]);
 
         $logoutTokenJws = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
@@ -1296,42 +1299,51 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $response->expects($this->once())->method('withStatus')->with(200)->willReturn($response);
         $response->method('withHeader')->willReturn($response);
 
-        $sut = $this->sut(
-            backchannelLogoutUri: 'https://rp.example.org/backchannel-logout',
-            backchannelLogoutSessionRequired: true,
-        );
-        $this->assertSame($response, $sut->handleBackchannelLogoutRequest(null, $response));
+        $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest(null, $response));
     }
 
-    public function testHandleBackchannelLogoutRequestRequiresSidWhenSessionRequiredViaAdditionalMetadata(): void
+    public function testHandleBackchannelLogoutRequestUsesReplacedRegistrationPolicy(): void
     {
-        // 'backchannel_logout_session_required' can also be registered through
-        // additionalClientMetadata (which overrides the constructor option);
-        // the 'sid' requirement must be derived from the effective metadata.
+        // A logout token arrives for an old (replaced) client whose retained
+        // per-client entry was registered with a different signing algorithm
+        // and 'sid' policy than the current registration. Validation must use
+        // the OLD registration's algorithm and 'sid' requirement, not the
+        // current ones.
         $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
         $this->requestDataHandlerMock->method('parseBackchannelLogoutTokenAudienceInfo')
-            ->willReturn(['audiences' => ['registered-client-id'], 'authorizedParty' => null]);
+            ->willReturn(['audiences' => ['old-client-id'], 'authorizedParty' => null]);
 
         $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
             ['jwks_uri', 'https://op.example.org/jwks'],
             ['issuer', 'https://op.example.org'],
         ]);
 
-        $this->registrationStoreMock->method('get')->willReturn([
-            'client_id' => 'registered-client-id',
-            'client_secret' => 'client-secret',
+        $mainKey = $this->sut()->getRegistrationStoreKey();
+        $oldClientKey = $this->sut()->getClientRegistrationStoreKey('old-client-id');
+
+        $this->registrationStoreMock->expects($this->exactly(2))->method('get')->willReturnMap([
+            // Current registration: default RS256, no 'sid' requirement.
+            [$mainKey, ['client_id' => 'new-client-id', 'client_secret' => 'new-secret']],
+            // Old (replaced) registration: registered with ES256 and 'sid' required.
+            [$oldClientKey, [
+                'client_id' => 'old-client-id',
+                'client_secret' => 'old-secret',
+                'id_token_signed_response_alg' => 'ES256',
+                'backchannel_logout_session_required' => true,
+            ]],
         ]);
 
         $logoutTokenJws = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
 
+        // Validated with the OLD registration's ES256 + 'sid'-required policy.
         $this->requestDataHandlerMock->expects($this->once())
             ->method('validateLogoutToken')
             ->with(
                 'logout-token',
                 'https://op.example.org/jwks',
                 'https://op.example.org',
-                'registered-client-id',
-                'RS256',
+                'old-client-id',
+                'ES256',
                 true,
             )
             ->willReturn($logoutTokenJws);
@@ -1342,8 +1354,6 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $response->expects($this->once())->method('withStatus')->with(200)->willReturn($response);
         $response->method('withHeader')->willReturn($response);
 
-        // No dedicated constructor option - only the additionalClientMetadata override.
-        $sut = $this->sut(additionalClientMetadata: ['backchannel_logout_session_required' => true]);
-        $this->assertSame($response, $sut->handleBackchannelLogoutRequest(null, $response));
+        $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest(null, $response));
     }
 }

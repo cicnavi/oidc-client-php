@@ -319,6 +319,13 @@ which defaults to `RS256` per OpenID Connect. If your OP signs tokens with a
 different algorithm, set the `idTokenSignedResponseAlg` constructor parameter
 accordingly (or to `null` to accept any supported algorithm).
 
+If this client was registered on the OP with
+`backchannel_logout_session_required` set to true (meaning the OP always
+includes a `sid` identifying the exact session to terminate), set the
+`backchannelLogoutSessionRequired` constructor parameter to true. Logout
+tokens that then arrive without a `sid` claim are rejected (HTTP 400),
+instead of falling back to a broader subject-wide logout.
+
 ### How the affected login is terminated
 
 A back-channel logout request arrives outside the context of the End-User's

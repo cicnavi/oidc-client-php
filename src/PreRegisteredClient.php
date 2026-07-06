@@ -99,6 +99,11 @@ class PreRegisteredClient
      * Logout tokens signed with a different algorithm are rejected. Defaults
      * to 'RS256' (the OpenID Connect default). Set to null to accept any
      * supported algorithm.
+     * @param bool $backchannelLogoutSessionRequired Whether this client was
+     * registered on the OP with 'backchannel_logout_session_required' true.
+     * When true, OIDC Back-Channel Logout tokens without a 'sid' claim are
+     * rejected (the OP is then expected to always identify the exact session
+     * to terminate, rather than falling back to a subject-wide logout).
      * @throws CacheException If cache could not be initialized.
      * @throws OidcClientException If cache could not be reinitialized.
      */
@@ -143,6 +148,7 @@ class PreRegisteredClient
         ?RequestDataHandler $requestDataHandler = null,
         protected readonly ParModeEnum $parMode = ParModeEnum::Auto,
         protected readonly ?string $idTokenSignedResponseAlg = SignatureAlgorithmEnum::RS256->value,
+        protected readonly bool $backchannelLogoutSessionRequired = false,
     ) {
         $this->validateResponseMode($this->responseMode);
 
@@ -499,6 +505,7 @@ class PreRegisteredClient
                 expectedIssuer: MetadataHelper::optionalString($this->metadata, ClaimsEnum::Issuer->value),
                 expectedClientId: $this->clientId,
                 expectedSigningAlgorithm: $this->idTokenSignedResponseAlg,
+                requireSid: $this->backchannelLogoutSessionRequired,
             );
 
             $this->requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);

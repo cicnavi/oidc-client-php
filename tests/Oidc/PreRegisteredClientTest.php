@@ -149,6 +149,7 @@ final class PreRegisteredClientTest extends TestCase
         ?AuthorizationRequestMethodEnum $defaultAuthorizationRequestMethod = null,
         ?ResponseModesEnum $responseMode = null,
         ?RequestDataHandler $requestDataHandler = null,
+        bool $backchannelLogoutSessionRequired = false,
     ): PreRegisteredClient {
         return new PreRegisteredClient(
             $opConfigurationUrl ?? $this->opConfigrationUrl,
@@ -175,6 +176,7 @@ final class PreRegisteredClientTest extends TestCase
             $defaultAuthorizationRequestMethod ?? $this->defaultAuthorizationRequestMethod,
             $responseMode,
             $requestDataHandler ?? $this->requestDataHandlerMock,
+            backchannelLogoutSessionRequired: $backchannelLogoutSessionRequired,
         );
     }
 
@@ -806,6 +808,41 @@ final class PreRegisteredClientTest extends TestCase
             ->willReturn($response);
 
         $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest($request, $response));
+    }
+
+    public function testHandleBackchannelLogoutRequestRequiresSidWhenSessionRequired(): void
+    {
+        // A client manually registered with 'backchannel_logout_session_required'
+        // true must have logout tokens validated with the 'sid' requirement on.
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+
+        $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
+            ['jwks_uri', 'https://op.example.org/jwks'],
+            ['issuer', 'https://op.example.org'],
+        ]);
+
+        $logoutTokenJws = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutToken')
+            ->with(
+                'logout-token',
+                'https://op.example.org/jwks',
+                'https://op.example.org',
+                $this->clientId,
+                'RS256',
+                true,
+            )
+            ->willReturn($logoutTokenJws);
+
+        $this->requestDataHandlerMock->expects($this->once())->method('registerLogoutTokenRevocation');
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())->method('withStatus')->with(200)->willReturn($response);
+        $response->method('withHeader')->willReturn($response);
+
+        $sut = $this->sut(backchannelLogoutSessionRequired: true);
+        $this->assertSame($response, $sut->handleBackchannelLogoutRequest(null, $response));
     }
 
     public function testHandleBackchannelLogoutRequestRespondsWith400OnInvalidLogoutToken(): void

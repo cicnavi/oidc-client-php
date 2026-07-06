@@ -1070,6 +1070,7 @@ class FederatedClient
                 expectedIssuer: $issuer,
                 expectedClientId: $this->entityConfig->getEntityId(),
                 expectedSigningAlgorithm: $this->idTokenSignedResponseAlg,
+                requireSid: $this->isBackchannelLogoutSessionRequired(),
             );
 
             $this->requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);
@@ -1086,6 +1087,19 @@ class FederatedClient
         $this->logger?->debug('Back-channel logout performed.');
 
         return HttpHelper::dispatchBackchannelLogoutResponse($response, null, $this->logger);
+    }
+
+    /**
+     * Whether this RP publishes 'backchannel_logout_session_required' as true
+     * in its OpenID Relying Party federation metadata (via RelyingPartyConfig
+     * additional claims). When true, OIDC Back-Channel Logout tokens without a
+     * 'sid' claim are rejected, since the RP declared it always needs the exact
+     * session identified rather than falling back to a subject-wide logout.
+     */
+    protected function isBackchannelLogoutSessionRequired(): bool
+    {
+        return $this->relyingPartyConfig->getAdditionalClaimBag()
+            ->get(ClaimsEnum::BackChannelLogoutSessionRequired->value) === true;
     }
 
     /**

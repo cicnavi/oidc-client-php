@@ -203,6 +203,11 @@ be resolved from it to one of the configured Trust Anchors. The OP JWKS
 used to verify the logout token signature is taken from the resolved OP
 metadata.
 
+If this RP publishes `backchannel_logout_session_required` as true in its
+Relying Party metadata (via the Relying Party configuration additional
+claims), logout tokens that arrive without a `sid` claim are rejected
+(HTTP 400) instead of falling back to a broader subject-wide logout.
+
 ## Entity Configuration Endpoint
 
 To participate in a federation, your RP must publish its
