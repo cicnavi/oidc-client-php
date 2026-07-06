@@ -285,6 +285,78 @@ The raw ID token received at login is also available using the
 `getIdToken()` method (and related login data using `getLoginData()`), for
 example, if you need to build a custom logout request yourself.
 
+## Back-Channel Logout
+
+The client can also act as the receiving side of
+[OpenID Connect Back-Channel Logout](https://openid.net/specs/openid-connect-backchannel-1_0.html):
+the OP notifies the client about a logout (for example, initiated at the OP
+or at another client of the same End-User session) by sending a logout
+token directly to a dedicated client endpoint, outside of the user agent.
+
+To use it, register an endpoint URI as the `backchannel_logout_uri` client
+metadata on the OP, and on that endpoint call
+`handleBackchannelLogoutRequest()`:
+
+```php
+use Cicnavi\Oidc\PreRegisteredClient;
+/** @var PreRegisteredClient $oidcClient */
+
+// File: backchannel-logout.php (registered as 'backchannel_logout_uri')
+$oidcClient->handleBackchannelLogoutRequest();
+```
+
+The method validates the logout token from the request (signature against
+the OP JWKS, signing algorithm, issuer, audience, required claims, freshness,
+and `jti` replay detection), records the requested login revocation, and
+emits the proper HTTP response itself (200 when the logout was performed, 400
+with a JSON error body when not). It also accepts an optional PSR-7 server
+request to read from, and an optional PSR-7 `response` instance which will be
+populated and returned instead of emitting output directly.
+
+The logout token must be signed with the algorithm the OP uses for this
+client's ID tokens (the `id_token_signed_response_alg` client metadata),
+which defaults to `RS256` per OpenID Connect. If your OP signs tokens with a
+different algorithm, set the `idTokenSignedResponseAlg` constructor parameter
+accordingly (or to `null` to accept any supported algorithm).
+
+If this client was registered on the OP with
+`backchannel_logout_session_required` set to true (meaning the OP always
+includes a `sid` identifying the exact session to terminate), set the
+`backchannelLogoutSessionRequired` constructor parameter to true. Logout
+tokens that then arrive without a `sid` claim are rejected (HTTP 400),
+instead of falling back to a broader subject-wide logout.
+
+### How the affected login is terminated
+
+A back-channel logout request arrives outside the context of the End-User's
+session (no session cookie is sent with it), so the client can not remove
+the affected login data from its session store directly. Instead, the
+revocation is recorded in a login revocation registry, which is backed by
+the shared client cache by default (the same file-based cache used for OP
+configuration and JWKS content - shared between requests).
+
+Logins are matched against recorded revocations whenever the persisted
+login data is read (`getLoginData()`, `getIdToken()`...): a revoked login
+is cleared from the session store (local logout) and observed as absent. A
+logout token with a `sid` claim only terminates the login of that
+particular OP session, while a logout token with only a `sub` claim
+terminates all of that subject's logins (established before the
+revocation).
+
+For the application this means: if you use `getLoginData() !== null` (or
+similar) as your "user is logged in via OIDC" check on each request, logins
+terminated via Back-Channel Logout are picked up automatically. If you keep
+your own application session state independent of the login data, check the
+login data on each request and end your application session when it is
+gone. Note that the client does not (and can not) destroy the PHP session
+of the affected user itself.
+
+If you use a custom cache or session setup, make sure the cache passed to
+the client is shared between requests - otherwise revocations recorded on
+the back-channel logout endpoint would not be observable in user sessions.
+A custom registry implementation can be provided via the
+`RequestDataHandler` constructor (`loginRevocationRegistry` parameter).
+
 ## Note on Caching
 
 OIDC client uses caching to avoid sending HTTP requests to fetch OIDC

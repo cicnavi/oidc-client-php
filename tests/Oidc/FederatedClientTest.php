@@ -1190,4 +1190,202 @@ final class FederatedClientTest extends TestCase
         $result = $this->sut()->autoRegisterAndAuthenticate($opEntityId, response: $responseMock);
         $this->assertSame($responseMock, $result);
     }
+
+    /**
+     * Set up the logout token factory mock producing a LogoutToken stub
+     * with the given issuer (used to determine the OP to resolve trust for).
+     */
+    private function mockLogoutTokenWithIssuer(string $issuer): void
+    {
+        $logoutTokenFactoryMock = $this->createMock(\SimpleSAML\OpenID\Core\Factories\LogoutTokenFactory::class);
+        $this->coreMock->method('logoutTokenFactory')->willReturn($logoutTokenFactoryMock);
+        $logoutTokenStub = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
+        $logoutTokenStub->method('getIssuer')->willReturn($issuer);
+        $logoutTokenFactoryMock->method('fromToken')->willReturn($logoutTokenStub);
+    }
+
+    public function testHandleBackchannelLogoutRequestSuccess(): void
+    {
+        $opEntityId = 'https://op.example.org';
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('parseBackchannelLogoutRequest')
+            ->willReturn('logout-token');
+
+        $this->mockLogoutTokenWithIssuer($opEntityId);
+
+        $trustAnchorBagMock = $this->createMock(TrustAnchorConfigBag::class);
+        $trustAnchorBagMock->method('getAllEntityIds')->willReturn(['https://ta.example.org']);
+        $this->entityConfigMock->method('getTrustAnchorBag')->willReturn($trustAnchorBagMock);
+        $this->entityConfigMock->method('getEntityId')->willReturn('https://rp.example.org');
+
+        $opTrustChainBagMock = $this->createMock(TrustChainBag::class);
+        $trustChainResolverMock = $this->createMock(TrustChainResolver::class);
+        $this->federationMock->method('trustChainResolver')->willReturn($trustChainResolverMock);
+        $trustChainResolverMock->expects($this->once())
+            ->method('for')
+            ->with($opEntityId, ['https://ta.example.org'])
+            ->willReturn($opTrustChainBagMock);
+
+        $opTrustChainMock = $this->createMock(TrustChain::class);
+        $opTrustChainBagMock->method('getShortest')->willReturn($opTrustChainMock);
+        $opTrustChainMock->method('getResolvedMetadata')
+            ->willReturn(['jwks_uri' => 'https://op.example.org/jwks']);
+
+        $validatedLogoutTokenStub = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutToken')
+            ->with(
+                'logout-token',
+                'https://op.example.org/jwks',
+                $opEntityId,
+                'https://rp.example.org',
+            )
+            ->willReturn($validatedLogoutTokenStub);
+
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('registerLogoutTokenRevocation')
+            ->with($validatedLogoutTokenStub);
+
+        $responseMock = $this->createMock(ResponseInterface::class);
+        $responseMock->expects($this->once())->method('withStatus')->with(200)->willReturn($responseMock);
+        $responseMock->expects($this->once())
+            ->method('withHeader')
+            ->with('Cache-Control', 'no-store')
+            ->willReturn($responseMock);
+
+        $this->assertSame(
+            $responseMock,
+            $this->sut()->handleBackchannelLogoutRequest(null, $responseMock),
+        );
+    }
+
+    public function testHandleBackchannelLogoutRequestRequiresSidWhenSessionRequired(): void
+    {
+        $opEntityId = 'https://op.example.org';
+
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+        $this->mockLogoutTokenWithIssuer($opEntityId);
+
+        $trustAnchorBagMock = $this->createMock(TrustAnchorConfigBag::class);
+        $trustAnchorBagMock->method('getAllEntityIds')->willReturn(['https://ta.example.org']);
+        $this->entityConfigMock->method('getTrustAnchorBag')->willReturn($trustAnchorBagMock);
+        $this->entityConfigMock->method('getEntityId')->willReturn('https://rp.example.org');
+
+        $opTrustChainBagMock = $this->createMock(TrustChainBag::class);
+        $trustChainResolverMock = $this->createMock(TrustChainResolver::class);
+        $this->federationMock->method('trustChainResolver')->willReturn($trustChainResolverMock);
+        $trustChainResolverMock->method('for')->willReturn($opTrustChainBagMock);
+        $opTrustChainMock = $this->createMock(TrustChain::class);
+        $opTrustChainBagMock->method('getShortest')->willReturn($opTrustChainMock);
+        $opTrustChainMock->method('getResolvedMetadata')
+            ->willReturn(['jwks_uri' => 'https://op.example.org/jwks']);
+
+        // The RP publishes 'backchannel_logout_session_required' true in its
+        // OpenID Relying Party federation metadata (additional claims).
+        $this->realyingPartyConfigMock->method('getAdditionalClaimBag')
+            ->willReturn(new ClaimBag(['backchannel_logout_session_required' => true]));
+
+        $validatedLogoutTokenStub = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
+
+        // Validated with the 'sid' requirement on (last argument true).
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutToken')
+            ->with(
+                'logout-token',
+                'https://op.example.org/jwks',
+                $opEntityId,
+                'https://rp.example.org',
+                $this->anything(),
+                true,
+            )
+            ->willReturn($validatedLogoutTokenStub);
+
+        $this->requestDataHandlerMock->expects($this->once())->method('registerLogoutTokenRevocation');
+
+        $responseMock = $this->createMock(ResponseInterface::class);
+        $responseMock->expects($this->once())->method('withStatus')->with(200)->willReturn($responseMock);
+        $responseMock->method('withHeader')->willReturn($responseMock);
+
+        $this->assertSame(
+            $responseMock,
+            $this->sut()->handleBackchannelLogoutRequest(null, $responseMock),
+        );
+    }
+
+    public function testHandleBackchannelLogoutRequestRespondsWith400OnTrustChainError(): void
+    {
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+
+        $this->mockLogoutTokenWithIssuer('https://op.example.org');
+
+        $trustAnchorBagMock = $this->createMock(TrustAnchorConfigBag::class);
+        $trustAnchorBagMock->method('getAllEntityIds')->willReturn(['https://ta.example.org']);
+        $this->entityConfigMock->method('getTrustAnchorBag')->willReturn($trustAnchorBagMock);
+
+        $trustChainResolverMock = $this->createMock(TrustChainResolver::class);
+        $this->federationMock->method('trustChainResolver')->willReturn($trustChainResolverMock);
+        $trustChainResolverMock->method('for')
+            ->willThrowException(new TrustChainException('Resolution failed'));
+
+        $this->requestDataHandlerMock->expects($this->never())->method('validateLogoutToken');
+
+        $body = $this->createMock(StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->stringContains('Resolution failed'));
+
+        $responseMock = $this->createMock(ResponseInterface::class);
+        $responseMock->expects($this->once())->method('withStatus')->with(400)->willReturn($responseMock);
+        $responseMock->method('withHeader')->willReturn($responseMock);
+        $responseMock->method('getBody')->willReturn($body);
+
+        $this->assertSame(
+            $responseMock,
+            $this->sut()->handleBackchannelLogoutRequest(null, $responseMock),
+        );
+    }
+
+    public function testHandleBackchannelLogoutRequestRespondsWith400OnInvalidLogoutToken(): void
+    {
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+
+        $this->mockLogoutTokenWithIssuer('https://op.example.org');
+
+        $trustAnchorBagMock = $this->createMock(TrustAnchorConfigBag::class);
+        $trustAnchorBagMock->method('getAllEntityIds')->willReturn(['https://ta.example.org']);
+        $this->entityConfigMock->method('getTrustAnchorBag')->willReturn($trustAnchorBagMock);
+        $this->entityConfigMock->method('getEntityId')->willReturn('https://rp.example.org');
+
+        $opTrustChainBagMock = $this->createMock(TrustChainBag::class);
+        $trustChainResolverMock = $this->createMock(TrustChainResolver::class);
+        $this->federationMock->method('trustChainResolver')->willReturn($trustChainResolverMock);
+        $trustChainResolverMock->method('for')->willReturn($opTrustChainBagMock);
+
+        $opTrustChainMock = $this->createMock(TrustChain::class);
+        $opTrustChainBagMock->method('getShortest')->willReturn($opTrustChainMock);
+        $opTrustChainMock->method('getResolvedMetadata')
+            ->willReturn(['jwks_uri' => 'https://op.example.org/jwks']);
+
+        $this->requestDataHandlerMock->method('validateLogoutToken')
+            ->willThrowException(new OidcClientException('Logout token is not valid.'));
+
+        $this->requestDataHandlerMock->expects($this->never())->method('registerLogoutTokenRevocation');
+
+        $body = $this->createMock(StreamInterface::class);
+        $body->expects($this->once())
+            ->method('write')
+            ->with($this->stringContains('Logout token is not valid.'));
+
+        $responseMock = $this->createMock(ResponseInterface::class);
+        $responseMock->expects($this->once())->method('withStatus')->with(400)->willReturn($responseMock);
+        $responseMock->method('withHeader')->willReturn($responseMock);
+        $responseMock->method('getBody')->willReturn($body);
+
+        $this->assertSame(
+            $responseMock,
+            $this->sut()->handleBackchannelLogoutRequest(null, $responseMock),
+        );
+    }
 }

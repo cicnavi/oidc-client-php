@@ -98,6 +98,11 @@ class FederatedClient
      * artifacts will be cached. Defaults to 6 hours.
      * @param \DateInterval $timestampValidationLeeway Leeway used for timestamp
      * validation. Defaults to 1 minute.
+     * @param ?string $idTokenSignedResponseAlg The JWS algorithm the OP uses
+     * to sign this RP's ID tokens and OIDC Back-Channel Logout tokens.
+     * Back-Channel Logout tokens signed with a different algorithm are
+     * rejected. Defaults to 'RS256' (the OpenID Connect default). Set to null
+     * to accept any supported algorithm.
      *
      * @throws CacheException
      */
@@ -150,6 +155,7 @@ class FederatedClient
         int $maxDiscoveryDepth = 10,
         ?EntityCollectionStoreInterface $entityCollectionStore = null,
         protected readonly ParModeEnum $parMode = ParModeEnum::Auto,
+        protected readonly ?string $idTokenSignedResponseAlg = SignatureAlgorithmEnum::RS256->value,
     ) {
         $this->validateResponseMode($this->responseMode);
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
@@ -1018,6 +1024,136 @@ class FederatedClient
     public function validateLogoutCallback(?ServerRequestInterface $request = null): void
     {
         $this->requestDataHandler->validateLogoutCallbackResponse($request);
+    }
+
+    /**
+     * Handle an OIDC Back-Channel Logout request from an OP: validate the
+     * logout token from the request, record the login revocation it
+     * requests, and deliver the appropriate HTTP response (200 when the
+     * logout was performed, 400 with a JSON error body when not). Register
+     * the URI of the endpoint calling this method as the
+     * 'backchannel_logout_uri' claim in this RP's OpenID Relying Party
+     * federation metadata (see RelyingPartyConfig additional claims).
+     *
+     * The issuing OP is determined from the logout token 'iss' claim and
+     * trusted only if a federation Trust Chain can be resolved from it to
+     * one of the configured Trust Anchors - the OP JWKS URI used for logout
+     * token signature verification is taken from the resolved OP metadata.
+     *
+     * For notes on how the revocation terminates the affected login, refer
+     * to PreRegisteredClient::handleBackchannelLogoutRequest().
+     *
+     * @see PreRegisteredClient::handleBackchannelLogoutRequest()
+     */
+    public function handleBackchannelLogoutRequest(
+        ?ServerRequestInterface $request = null,
+        ?ResponseInterface $response = null,
+    ): ?ResponseInterface {
+        try {
+            $logoutToken = $this->requestDataHandler->parseBackchannelLogoutRequest($request);
+
+            // Build the logout token (this validates the claim set, but not
+            // the signature) to learn which OP issued it.
+            $issuer = $this->core->logoutTokenFactory()->fromToken($logoutToken)->getIssuer();
+
+            $opResolvedMetadata = $this->resolveOpMetadata($issuer);
+
+            $opJwksUri = $opResolvedMetadata[ClaimsEnum::JwksUri->value] ?? null;
+
+            if (!is_string($opJwksUri)) {
+                throw new OidcClientException('OpenID Provider JWKS URI not available in resolved metadata.');
+            }
+
+            $logoutTokenJws = $this->requestDataHandler->validateLogoutToken(
+                logoutToken: $logoutToken,
+                jwksUri: $opJwksUri,
+                expectedIssuer: $issuer,
+                expectedClientId: $this->entityConfig->getEntityId(),
+                expectedSigningAlgorithm: $this->idTokenSignedResponseAlg,
+                requireSid: $this->isBackchannelLogoutSessionRequired(),
+            );
+
+            $this->requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);
+        } catch (\Throwable $throwable) {
+            $this->logger?->error('Back-channel logout request error. ' . $throwable->getMessage());
+
+            return HttpHelper::dispatchBackchannelLogoutResponse(
+                $response,
+                $throwable->getMessage(),
+                $this->logger,
+            );
+        }
+
+        $this->logger?->debug('Back-channel logout performed.');
+
+        return HttpHelper::dispatchBackchannelLogoutResponse($response, null, $this->logger);
+    }
+
+    /**
+     * Whether this RP publishes 'backchannel_logout_session_required' as true
+     * in its OpenID Relying Party federation metadata (via RelyingPartyConfig
+     * additional claims). When true, OIDC Back-Channel Logout tokens without a
+     * 'sid' claim are rejected, since the RP declared it always needs the exact
+     * session identified rather than falling back to a subject-wide logout.
+     */
+    protected function isBackchannelLogoutSessionRequired(): bool
+    {
+        return $this->relyingPartyConfig->getAdditionalClaimBag()
+            ->get(ClaimsEnum::BackChannelLogoutSessionRequired->value) === true;
+    }
+
+    /**
+     * Resolve OpenID Provider metadata for the given OP entity ID by
+     * resolving a federation Trust Chain to it (using the configured Trust
+     * Anchors) and reading the resolved OpenID Provider metadata from the
+     * shortest chain.
+     *
+     * @param non-empty-string $opEntityId OpenID Provider Entity Identifier.
+     * @return array<mixed> Resolved OpenID Provider metadata.
+     * @throws OidcClientException If no Trust Chain could be resolved or the
+     * chain does not contain OpenID Provider metadata.
+     */
+    protected function resolveOpMetadata(string $opEntityId): array
+    {
+        $validTrustAnchorIds = $this->entityConfig->getTrustAnchorBag()->getAllEntityIds();
+
+        if ($validTrustAnchorIds === []) {
+            $this->logger?->error('No valid Trust Anchors configured for the client.');
+            throw new OidcClientException('No valid Trust Anchors configured for the client.');
+        }
+
+        try {
+            $opTrustChainBag = $this->federation->trustChainResolver()->for(
+                $opEntityId,
+                $validTrustAnchorIds,
+            );
+        } catch (TrustChainException $trustChainException) {
+            $this->logger?->error(
+                'Error resolving Trust Chain to OP: ' . $trustChainException->getMessage(),
+                [
+                    'openIdProviderId' => $opEntityId,
+                    'entityId' => $this->entityConfig->getEntityId(),
+                ],
+            );
+            throw new OidcClientException(
+                $trustChainException->getMessage(),
+                $trustChainException->getCode(),
+                $trustChainException,
+            );
+        }
+
+        $opResolvedMetadata = $opTrustChainBag->getShortest()
+            ->getResolvedMetadata(EntityTypesEnum::OpenIdProvider);
+
+        if (!is_array($opResolvedMetadata)) {
+            $this->logger?->error(
+                'OpenID Provider resolved metadata not available.',
+                ['entityId' => $opEntityId],
+            );
+            throw new OidcClientException('OpenID Provider resolved metadata not available.');
+        }
+
+        return $opResolvedMetadata;
     }
 
     /**

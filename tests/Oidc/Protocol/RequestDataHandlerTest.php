@@ -11,6 +11,7 @@ use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\StateNonceDataHandlerInterfac
 use Cicnavi\Oidc\DataStore\DataHandlers\StateNonce;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
+use Cicnavi\Oidc\Logout\Interfaces\LoginRevocationRegistryInterface;
 use Cicnavi\Oidc\Protocol\RequestDataHandler;
 use DateInterval;
 use Exception;
@@ -33,6 +34,8 @@ use SimpleSAML\OpenID\Core;
 use SimpleSAML\OpenID\Exceptions\JwsException;
 use SimpleSAML\OpenID\Core\IdToken;
 use SimpleSAML\OpenID\Core\Factories\IdTokenFactory;
+use SimpleSAML\OpenID\Core\Factories\LogoutTokenFactory;
+use SimpleSAML\OpenID\Core\LogoutToken;
 use SimpleSAML\OpenID\Jwks;
 use SimpleSAML\OpenID\Jwks\JwksDecorator;
 use SimpleSAML\OpenID\Jwks\JwksFetcher;
@@ -65,6 +68,8 @@ final class RequestDataHandlerTest extends TestCase
 
     private DateInterval $maxCacheDuration;
 
+    private MockObject&LoginRevocationRegistryInterface $loginRevocationRegistryMock;
+
     protected function setUp(): void
     {
         $this->sessionStoreMock = $this->createMock(SessionStoreInterface::class);
@@ -78,6 +83,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->pkceDataHandlerMock = $this->createMock(PkceDataHandlerInterface::class);
         $this->loggerMock = $this->createMock(LoggerInterface::class);
         $this->maxCacheDuration = new DateInterval('PT6H');
+        $this->loginRevocationRegistryMock = $this->createMock(LoginRevocationRegistryInterface::class);
     }
 
     protected function sut(
@@ -92,6 +98,7 @@ final class RequestDataHandlerTest extends TestCase
         ?PkceDataHandlerInterface $pkceDataHandler = null,
         ?LoggerInterface $logger = null,
         ?DateInterval $maxCacheDuration = null,
+        ?LoginRevocationRegistryInterface $loginRevocationRegistry = null,
     ): RequestDataHandler {
         $sessionStore ??= $this->sessionStoreMock;
         $core ??= $this->coreMock;
@@ -104,6 +111,7 @@ final class RequestDataHandlerTest extends TestCase
         $pkceDataHandler ??= $this->pkceDataHandlerMock;
         $logger ??= $this->loggerMock;
         $maxCacheDuration ??= $this->maxCacheDuration;
+        $loginRevocationRegistry ??= $this->loginRevocationRegistryMock;
 
         return new RequestDataHandler(
             $sessionStore,
@@ -117,7 +125,32 @@ final class RequestDataHandlerTest extends TestCase
             $pkceDataHandler,
             $logger,
             $maxCacheDuration,
+            $loginRevocationRegistry,
         );
+    }
+
+    /**
+     * Expect login data to be persisted in the session store with the given
+     * values plus a current 'logged_in_at' timestamp.
+     *
+     * @param array<string,mixed> $expectedLoginData Expected login data,
+     * without the 'logged_in_at' entry.
+     */
+    private function expectLoginDataPut(array $expectedLoginData): void
+    {
+        $this->sessionStoreMock->expects($this->once())
+            ->method('put')
+            ->with(
+                RequestDataHandler::KEY_LOGIN_DATA,
+                $this->callback(function (array $loginData) use ($expectedLoginData): bool {
+                    $loggedInAt = $loginData[RequestDataHandler::KEY_LOGGED_IN_AT] ?? null;
+                    unset($loginData[RequestDataHandler::KEY_LOGGED_IN_AT]);
+
+                    return $loginData === $expectedLoginData &&
+                        is_int($loggedInAt) &&
+                        abs($loggedInAt - time()) < 60;
+                }),
+            );
     }
 
     public function testCanCreateInstance(): void
@@ -1384,16 +1417,14 @@ final class RequestDataHandlerTest extends TestCase
             'sid' => 'op-session-1',
         ]);
 
-        $this->sessionStoreMock->expects($this->once())
-            ->method('put')
-            ->with(RequestDataHandler::KEY_LOGIN_DATA, [
-                'id_token' => 'id-token',
-                'iss' => 'https://op.example.org',
-                'sub' => 'user-1',
-                'sid' => 'op-session-1',
-                'end_session_endpoint' => 'https://op.example.org/end-session',
-                'client_id' => 'client-id',
-            ]);
+        $this->expectLoginDataPut([
+            'id_token' => 'id-token',
+            'iss' => 'https://op.example.org',
+            'sub' => 'user-1',
+            'sid' => 'op-session-1',
+            'end_session_endpoint' => 'https://op.example.org/end-session',
+            'client_id' => 'client-id',
+        ]);
 
         $this->sut()->storeLoginData('id-token', 'https://op.example.org/end-session', 'client-id');
     }
@@ -1406,16 +1437,14 @@ final class RequestDataHandlerTest extends TestCase
 
         $this->loggerMock->expects($this->once())->method('warning');
 
-        $this->sessionStoreMock->expects($this->once())
-            ->method('put')
-            ->with(RequestDataHandler::KEY_LOGIN_DATA, [
-                'id_token' => 'id-token',
-                'iss' => null,
-                'sub' => null,
-                'sid' => null,
-                'end_session_endpoint' => null,
-                'client_id' => null,
-            ]);
+        $this->expectLoginDataPut([
+            'id_token' => 'id-token',
+            'iss' => null,
+            'sub' => null,
+            'sid' => null,
+            'end_session_endpoint' => null,
+            'client_id' => null,
+        ]);
 
         $this->sut()->storeLoginData('id-token');
     }
@@ -1424,16 +1453,14 @@ final class RequestDataHandlerTest extends TestCase
     {
         $this->coreMock->expects($this->never())->method('idTokenFactory');
 
-        $this->sessionStoreMock->expects($this->once())
-            ->method('put')
-            ->with(RequestDataHandler::KEY_LOGIN_DATA, [
-                'id_token' => null,
-                'iss' => null,
-                'sub' => null,
-                'sid' => null,
-                'end_session_endpoint' => 'https://op.example.org/end-session',
-                'client_id' => 'client-id',
-            ]);
+        $this->expectLoginDataPut([
+            'id_token' => null,
+            'iss' => null,
+            'sub' => null,
+            'sid' => null,
+            'end_session_endpoint' => 'https://op.example.org/end-session',
+            'client_id' => 'client-id',
+        ]);
 
         $this->sut()->storeLoginData(null, 'https://op.example.org/end-session', 'client-id');
     }
@@ -1539,16 +1566,14 @@ final class RequestDataHandlerTest extends TestCase
             ->willReturnOnConsecutiveCalls($tokenResponse, $userInfoResponse);
 
         // Login data is persisted after successful login.
-        $this->sessionStoreMock->expects($this->once())
-            ->method('put')
-            ->with(RequestDataHandler::KEY_LOGIN_DATA, [
-                'id_token' => 'id-token',
-                'iss' => 'https://op.example.org',
-                'sub' => 'sub1',
-                'sid' => 'op-session-1',
-                'end_session_endpoint' => 'https://op.example.org/end-session',
-                'client_id' => 'client-id',
-            ]);
+        $this->expectLoginDataPut([
+            'id_token' => 'id-token',
+            'iss' => 'https://op.example.org',
+            'sub' => 'sub1',
+            'sid' => 'op-session-1',
+            'end_session_endpoint' => 'https://op.example.org/end-session',
+            'client_id' => 'client-id',
+        ]);
 
         $this->sut()->getUserData(
             ClientAuthenticationMethodsEnum::ClientSecretPost,
@@ -1647,5 +1672,599 @@ final class RequestDataHandlerTest extends TestCase
         $this->stateNonceDataHandlerMock->expects($this->never())->method('verify');
 
         $this->sut()->validateLogoutCallbackResponse($request, false);
+    }
+
+    public function testParseBackchannelLogoutRequestReturnsLogoutToken(): void
+    {
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getMethod')->willReturn('POST');
+        $request->method('getParsedBody')->willReturn([
+            RequestDataHandler::PARAM_LOGOUT_TOKEN => 'logout-token',
+        ]);
+
+        $this->assertSame('logout-token', $this->sut()->parseBackchannelLogoutRequest($request));
+    }
+
+    public function testParseBackchannelLogoutRequestThrowsOnNonPostMethod(): void
+    {
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getMethod')->willReturn('GET');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Back-channel logout request must use the HTTP POST method.');
+
+        $this->sut()->parseBackchannelLogoutRequest($request);
+    }
+
+    public function testParseBackchannelLogoutRequestThrowsOnMissingLogoutToken(): void
+    {
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getMethod')->willReturn('POST');
+        $request->method('getParsedBody')->willReturn([]);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Back-channel logout request does not contain a "logout_token"');
+
+        $this->sut()->parseBackchannelLogoutRequest($request);
+    }
+
+    public function testParseBackchannelLogoutTokenAudienceInfoReturnsAudiencesAndAuthorizedParty(): void
+    {
+        $logoutTokenFactory = $this->createMock(LogoutTokenFactory::class);
+        $this->coreMock->method('logoutTokenFactory')->willReturn($logoutTokenFactory);
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenFactory->method('fromToken')->with('logout-token')->willReturn($logoutTokenJws);
+        $logoutTokenJws->method('getAudience')->willReturn(['client-a', 'client-b']);
+        $logoutTokenJws->method('getPayloadClaim')->with('azp')->willReturn('client-b');
+
+        $this->assertSame(
+            ['audiences' => ['client-a', 'client-b'], 'authorizedParty' => 'client-b'],
+            $this->sut()->parseBackchannelLogoutTokenAudienceInfo('logout-token'),
+        );
+    }
+
+    public function testParseBackchannelLogoutTokenAudienceInfoReturnsNullAuthorizedPartyWhenAbsent(): void
+    {
+        $logoutTokenFactory = $this->createMock(LogoutTokenFactory::class);
+        $this->coreMock->method('logoutTokenFactory')->willReturn($logoutTokenFactory);
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenFactory->method('fromToken')->willReturn($logoutTokenJws);
+        $logoutTokenJws->method('getAudience')->willReturn(['client-a']);
+        $logoutTokenJws->method('getPayloadClaim')->with('azp')->willReturn(null);
+
+        $this->assertSame(
+            ['audiences' => ['client-a'], 'authorizedParty' => null],
+            $this->sut()->parseBackchannelLogoutTokenAudienceInfo('logout-token'),
+        );
+    }
+
+    public function testParseBackchannelLogoutTokenAudienceInfoThrowsOnParseError(): void
+    {
+        $logoutTokenFactory = $this->createMock(LogoutTokenFactory::class);
+        $this->coreMock->method('logoutTokenFactory')->willReturn($logoutTokenFactory);
+        $logoutTokenFactory->method('fromToken')->willThrowException(new JwsException('Invalid token'));
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Error parsing Logout Token audience. Invalid token');
+
+        $this->sut()->parseBackchannelLogoutTokenAudienceInfo('logout-token');
+    }
+
+    /**
+     * Set up JWKS and logout token factory mocks, returning the LogoutToken
+     * mock which the factory produces.
+     */
+    private function mockLogoutTokenSetup(): MockObject
+    {
+        $jwksFetcher = $this->createMock(JwksFetcher::class);
+        $this->jwksMock->method('jwksFetcher')->willReturn($jwksFetcher);
+        $keySet = $this->createMock(JwksDecorator::class);
+        $keySet->method('jsonSerialize')->willReturn(['keys' => []]);
+        $jwksFetcher->method('fromCacheOrJwksUri')->willReturn($keySet);
+        $jwksFetcher->method('fromJwksUri')->willReturn($keySet);
+
+        $logoutTokenFactory = $this->createMock(LogoutTokenFactory::class);
+        $this->coreMock->method('logoutTokenFactory')->willReturn($logoutTokenFactory);
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenFactory->method('fromToken')->willReturn($logoutTokenJws);
+
+        return $logoutTokenJws;
+    }
+
+    /**
+     * Configure a LogoutToken mock with a valid claim set.
+     */
+    private function configureValidLogoutToken(MockObject $logoutTokenJws): void
+    {
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getAudience')->willReturn(['client-id']);
+        $logoutTokenJws->method('getType')->willReturn('logout+jwt');
+        $logoutTokenJws->method('getIssuedAt')->willReturn(time());
+        $logoutTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $logoutTokenJws->method('getJwtId')->willReturn('jti-1');
+        $logoutTokenJws->method('getSessionId')->willReturn('op-session-1');
+    }
+
+    public function testValidateLogoutTokenReturnsVerifiedToken(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $this->configureValidLogoutToken($logoutTokenJws);
+        $logoutTokenJws->expects($this->once())->method('verifyWithKeySet');
+
+        $result = $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            'https://op.example.org',
+            'client-id',
+        );
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
+    public function testValidateLogoutTokenThrowsOnBuildError(): void
+    {
+        $jwksFetcher = $this->createMock(JwksFetcher::class);
+        $this->jwksMock->method('jwksFetcher')->willReturn($jwksFetcher);
+        $keySet = $this->createMock(JwksDecorator::class);
+        $keySet->method('jsonSerialize')->willReturn(['keys' => []]);
+        $jwksFetcher->method('fromCacheOrJwksUri')->willReturn($keySet);
+
+        $logoutTokenFactory = $this->createMock(LogoutTokenFactory::class);
+        $this->coreMock->method('logoutTokenFactory')->willReturn($logoutTokenFactory);
+        $logoutTokenFactory->method('fromToken')->willThrowException(new JwsException('Invalid token'));
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Error building Logout Token: Invalid token');
+
+        $this->sut()->validateLogoutToken('invalid-token', 'https://op.example.org/jwks');
+    }
+
+    public function testValidateLogoutTokenRetriesOnVerificationFailure(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $this->configureValidLogoutToken($logoutTokenJws);
+
+        // First verification fails, second (after JWKS refresh) succeeds.
+        $logoutTokenJws->expects($this->exactly(2))->method('verifyWithKeySet')
+            ->willReturnOnConsecutiveCalls(
+                $this->throwException(new Exception('Sig fail')),
+                null,
+            );
+
+        $result = $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            'https://op.example.org',
+            'client-id',
+        );
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
+    public function testValidateLogoutTokenThrowsAfterRetryFailure(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->method('verifyWithKeySet')->willThrowException(new Exception('Sig fail'));
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Logout token is not valid. Sig fail');
+
+        $this->sut()->validateLogoutToken('logout-token', 'https://op.example.org/jwks');
+    }
+
+    public function testValidateLogoutTokenThrowsOnIssuerMismatch(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $this->configureValidLogoutToken($logoutTokenJws);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not match expected issuer');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            'https://other-op.example.org',
+        );
+    }
+
+    public function testValidateLogoutTokenThrowsOnAudienceMismatch(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $this->configureValidLogoutToken($logoutTokenJws);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not contain expected client ID');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            'https://op.example.org',
+            'other-client-id',
+        );
+    }
+
+    public function testValidateLogoutTokenThrowsOnAuthorizedPartyMismatchWithMultipleAudiences(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->method('getAudience')->willReturn(['client-id', 'other-audience']);
+        $logoutTokenJws->method('getPayloadClaim')->with('azp')->willReturn('other-client-id');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('authorized party (azp) claim does not match');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            expectedClientId: 'client-id',
+        );
+    }
+
+    public function testValidateLogoutTokenThrowsOnNoneAlgorithm(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('none');
+        // 'none' is rejected unconditionally, even without an expected algorithm.
+        $logoutTokenJws->expects($this->never())->method('verifyWithKeySet');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('unsigned or uses the "none" algorithm');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+        );
+    }
+
+    public function testValidateLogoutTokenThrowsOnUnexpectedSigningAlgorithm(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        // Validly signed, but with an algorithm other than the expected one.
+        $logoutTokenJws->method('getAlgorithm')->willReturn('ES256');
+        // The algorithm is rejected before the signature is even verified.
+        $logoutTokenJws->expects($this->never())->method('verifyWithKeySet');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not match the expected algorithm');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            expectedSigningAlgorithm: 'RS256',
+        );
+    }
+
+    public function testValidateLogoutTokenAcceptsExpectedSigningAlgorithm(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $this->configureValidLogoutToken($logoutTokenJws);
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->expects($this->once())->method('verifyWithKeySet');
+
+        $result = $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            expectedSigningAlgorithm: 'RS256',
+        );
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
+    public function testValidateLogoutTokenThrowsOnMissingSidWhenRequired(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->expects($this->once())->method('verifyWithKeySet');
+        // A subject-only logout token (no 'sid') is rejected when 'sid' is required.
+        $logoutTokenJws->method('getSessionId')->willReturn(null);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not contain a "sid" claim');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            requireSid: true,
+        );
+    }
+
+    public function testValidateLogoutTokenAcceptsPresentSidWhenRequired(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $this->configureValidLogoutToken($logoutTokenJws);
+        $logoutTokenJws->expects($this->once())->method('verifyWithKeySet');
+
+        $result = $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            'https://op.example.org',
+            'client-id',
+            requireSid: true,
+        );
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
+    public function testValidateLogoutTokenAllowsMissingSidWhenNotRequired(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->method('getType')->willReturn('logout+jwt');
+        $logoutTokenJws->method('getIssuedAt')->willReturn(time());
+        $logoutTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $logoutTokenJws->method('getJwtId')->willReturn('jti-1');
+        $logoutTokenJws->method('getSessionId')->willReturn(null);
+        $logoutTokenJws->expects($this->once())->method('verifyWithKeySet');
+
+        // A subject-only logout token is accepted when 'sid' is not required.
+        $result = $this->sut()->validateLogoutToken('logout-token', 'https://op.example.org/jwks');
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
+    public function testValidateLogoutTokenWarnsOnUnexpectedTypHeader(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getAudience')->willReturn(['client-id']);
+        $logoutTokenJws->method('getType')->willReturn('JWT');
+        $logoutTokenJws->method('getIssuedAt')->willReturn(time());
+        $logoutTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $logoutTokenJws->method('getJwtId')->willReturn('jti-1');
+
+        $this->loggerMock->expects($this->once())->method('warning');
+
+        $result = $this->sut()->validateLogoutToken('logout-token', 'https://op.example.org/jwks');
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
+    public function testValidateLogoutTokenThrowsOnStaleIssuedAt(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getAudience')->willReturn(['client-id']);
+        $logoutTokenJws->method('getType')->willReturn('logout+jwt');
+        // Older than the default maximum age of 5 minutes.
+        $logoutTokenJws->method('getIssuedAt')->willReturn(time() - 600);
+        $logoutTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $logoutTokenJws->method('getJwtId')->willReturn('jti-1');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Logout token is too old');
+
+        $this->sut()->validateLogoutToken('logout-token', 'https://op.example.org/jwks');
+    }
+
+    public function testValidateLogoutTokenAcceptsStaleIssuedAtWhenMaxAgeDisabled(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getAudience')->willReturn(['client-id']);
+        $logoutTokenJws->method('getType')->willReturn('logout+jwt');
+        $logoutTokenJws->method('getIssuedAt')->willReturn(time() - 600);
+        $logoutTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $logoutTokenJws->method('getJwtId')->willReturn('jti-1');
+
+        $result = $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            logoutTokenMaxAge: null,
+        );
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
+    public function testValidateLogoutTokenThrowsOnJtiReplay(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $this->configureValidLogoutToken($logoutTokenJws);
+
+        // A logout token with the same jti was already consumed.
+        $this->cacheMock->method('get')->willReturn(time());
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Logout token replay detected');
+
+        $this->sut()->validateLogoutToken('logout-token', 'https://op.example.org/jwks');
+    }
+
+    public function testValidateLogoutTokenSkipsJtiReplayCheckWhenDisabled(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $this->configureValidLogoutToken($logoutTokenJws);
+
+        $this->cacheMock->method('get')->willReturn(time());
+
+        $result = $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            checkJtiReplay: false,
+        );
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
+    public function testValidateLogoutTokenSkipsJtiReplayCheckOnCacheError(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $this->configureValidLogoutToken($logoutTokenJws);
+
+        $this->cacheMock->method('get')->willThrowException(new Exception('Cache error.'));
+
+        $result = $this->sut()->validateLogoutToken('logout-token', 'https://op.example.org/jwks');
+
+        $this->assertSame($logoutTokenJws, $result);
+    }
+
+    public function testRegisterLogoutTokenRevocationRevokesSession(): void
+    {
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getSessionId')->willReturn('op-session-1');
+        $logoutTokenJws->method('getSubject')->willReturn('user-1');
+
+        $this->loginRevocationRegistryMock->expects($this->once())
+            ->method('revokeSession')
+            ->with('https://op.example.org', 'op-session-1');
+        $this->loginRevocationRegistryMock->expects($this->never())->method('revokeSubject');
+
+        $this->sut()->registerLogoutTokenRevocation($logoutTokenJws);
+    }
+
+    public function testRegisterLogoutTokenRevocationRevokesSubjectWithoutSessionId(): void
+    {
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getSessionId')->willReturn(null);
+        $logoutTokenJws->method('getSubject')->willReturn('user-1');
+
+        $this->loginRevocationRegistryMock->expects($this->never())->method('revokeSession');
+        $this->loginRevocationRegistryMock->expects($this->once())
+            ->method('revokeSubject')
+            ->with('https://op.example.org', 'user-1');
+
+        $this->sut()->registerLogoutTokenRevocation($logoutTokenJws);
+    }
+
+    public function testRegisterLogoutTokenRevocationThrowsWithoutSessionIdAndSubject(): void
+    {
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getSessionId')->willReturn(null);
+        $logoutTokenJws->method('getSubject')->willReturn(null);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Logout token does not identify a session or a subject.');
+
+        $this->sut()->registerLogoutTokenRevocation($logoutTokenJws);
+    }
+
+    public function testRegisterLogoutTokenRevocationMarksJtiConsumedAfterSuccess(): void
+    {
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getSessionId')->willReturn('op-session-1');
+        $logoutTokenJws->method('getJwtId')->willReturn('jti-1');
+        $logoutTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+
+        $this->loginRevocationRegistryMock->expects($this->once())->method('revokeSession');
+
+        // The 'jti' is recorded as consumed only after the revocation succeeds.
+        $cacheMock = $this->createMock(CacheInterface::class);
+        $cacheMock->expects($this->once())
+            ->method('set')
+            ->with($this->stringStartsWith('bcl_jti_'));
+
+        $this->sut(cache: $cacheMock)->registerLogoutTokenRevocation($logoutTokenJws);
+    }
+
+    public function testRegisterLogoutTokenRevocationDoesNotMarkJtiConsumedWhenRevocationFails(): void
+    {
+        $logoutTokenJws = $this->createMock(LogoutToken::class);
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getSessionId')->willReturn('op-session-1');
+
+        $this->loginRevocationRegistryMock->method('revokeSession')
+            ->willThrowException(new OidcClientException('Could not record login revocation.'));
+
+        // A failed revocation must NOT consume the 'jti', so the OP can retry
+        // the same logout token.
+        $cacheMock = $this->createMock(CacheInterface::class);
+        $cacheMock->expects($this->never())->method('set');
+
+        $this->expectException(OidcClientException::class);
+
+        $this->sut(cache: $cacheMock)->registerLogoutTokenRevocation($logoutTokenJws);
+    }
+
+    public function testGetLoginDataClearsRevokedSessionLogin(): void
+    {
+        $loggedInAt = time() - 60;
+        $this->sessionStoreMock->method('get')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA)
+            ->willReturn([
+                'iss' => 'https://op.example.org',
+                'sub' => 'user-1',
+                'sid' => 'op-session-1',
+                RequestDataHandler::KEY_LOGGED_IN_AT => $loggedInAt,
+            ]);
+
+        $this->loginRevocationRegistryMock->method('isSessionRevoked')
+            ->with('https://op.example.org', 'op-session-1', $loggedInAt)
+            ->willReturn(true);
+
+        $this->sessionStoreMock->expects($this->once())
+            ->method('delete')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA);
+
+        $this->assertNull($this->sut()->getLoginData());
+    }
+
+    public function testGetLoginDataClearsRevokedSubjectLogin(): void
+    {
+        $loggedInAt = time() - 60;
+        $this->sessionStoreMock->method('get')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA)
+            ->willReturn([
+                'iss' => 'https://op.example.org',
+                'sub' => 'user-1',
+                'sid' => 'op-session-1',
+                RequestDataHandler::KEY_LOGGED_IN_AT => $loggedInAt,
+            ]);
+
+        $this->loginRevocationRegistryMock->method('isSessionRevoked')->willReturn(false);
+        $this->loginRevocationRegistryMock->method('isSubjectRevoked')
+            ->with('https://op.example.org', 'user-1', $loggedInAt)
+            ->willReturn(true);
+
+        $this->sessionStoreMock->expects($this->once())
+            ->method('delete')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA);
+
+        $this->assertNull($this->sut()->getLoginData());
+    }
+
+    public function testGetLoginDataReturnsDataWhenNotRevoked(): void
+    {
+        $loginData = [
+            'iss' => 'https://op.example.org',
+            'sub' => 'user-1',
+            'sid' => 'op-session-1',
+            RequestDataHandler::KEY_LOGGED_IN_AT => time() - 60,
+        ];
+        $this->sessionStoreMock->method('get')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA)
+            ->willReturn($loginData);
+
+        $this->loginRevocationRegistryMock->method('isSessionRevoked')->willReturn(false);
+        $this->loginRevocationRegistryMock->method('isSubjectRevoked')->willReturn(false);
+
+        $this->sessionStoreMock->expects($this->never())->method('delete');
+
+        $this->assertSame($loginData, $this->sut()->getLoginData());
+    }
+
+    public function testGetLoginDataSkipsRevocationCheckWithoutIssuer(): void
+    {
+        $loginData = [
+            'iss' => null,
+            'sub' => 'user-1',
+            'sid' => 'op-session-1',
+            RequestDataHandler::KEY_LOGGED_IN_AT => time() - 60,
+        ];
+        $this->sessionStoreMock->method('get')
+            ->with(RequestDataHandler::KEY_LOGIN_DATA)
+            ->willReturn($loginData);
+
+        $this->loginRevocationRegistryMock->expects($this->never())->method('isSessionRevoked');
+        $this->loginRevocationRegistryMock->expects($this->never())->method('isSubjectRevoked');
+
+        $this->assertSame($loginData, $this->sut()->getLoginData());
     }
 }

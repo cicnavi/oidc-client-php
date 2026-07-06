@@ -171,4 +171,56 @@ class HttpHelper
         header('Location: ' . $uri);
         exit;
     }
+
+    /**
+     * Deliver the HTTP response for an OIDC Back-Channel Logout request:
+     * HTTP 200 when the logout was performed, HTTP 400 with a JSON error
+     * body when the logout request or token was invalid (per specification
+     * sections 2.8 and 2.9), with 'Cache-Control: no-store' in both cases.
+     *
+     * If a PSR-7 response instance is provided, it is populated and
+     * returned. Otherwise, the response is emitted directly and the script
+     * is terminated.
+     *
+     * @param ?string $error Error description when the logout failed, null
+     * when the logout was performed.
+     */
+    public static function dispatchBackchannelLogoutResponse(
+        ?ResponseInterface $response = null,
+        ?string $error = null,
+        ?LoggerInterface $logger = null,
+    ): ?ResponseInterface {
+        $statusCode = $error === null ? 200 : 400;
+
+        $body = null;
+        if (is_string($error)) {
+            $logger?->debug('Returning back-channel logout error response.', ['error' => $error]);
+            $encodedBody = json_encode(
+                ['error' => 'invalid_request', 'error_description' => $error],
+                JSON_UNESCAPED_SLASHES,
+            );
+            $body = is_string($encodedBody) ? $encodedBody : '{"error": "invalid_request"}';
+        }
+
+        if ($response instanceof ResponseInterface) {
+            $response = $response->withStatus($statusCode)->withHeader('Cache-Control', 'no-store');
+
+            if (is_string($body)) {
+                $response->getBody()->write($body);
+                $response = $response->withHeader('Content-Type', 'application/json');
+            }
+
+            return $response;
+        }
+
+        http_response_code($statusCode);
+        header('Cache-Control: no-store');
+
+        if (is_string($body)) {
+            header('Content-Type: application/json');
+            echo $body;
+        }
+
+        exit;
+    }
 }

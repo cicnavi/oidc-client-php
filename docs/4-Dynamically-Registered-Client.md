@@ -107,7 +107,11 @@ prepared from the constructor parameters:
 parameter),
 * `post_logout_redirect_uris` - if provided using the
 `postLogoutRedirectUris` parameter (used for RP-Initiated Logout, see
-below).
+below),
+* `backchannel_logout_uri` (and optionally
+`backchannel_logout_session_required`) - if provided using the
+`backchannelLogoutUri` / `backchannelLogoutSessionRequired` parameters
+(used for Back-Channel Logout, see below).
 
 Any additional client metadata claims can be provided using the
 `additionalClientMetadata` parameter. Claims provided here override the
@@ -204,6 +208,52 @@ $oidcClient->validateLogoutCallback();
 Note that providing `postLogoutRedirectUris` changes the client metadata
 set, so an existing client registration will be updated (or replaced)
 accordingly.
+
+### Back-Channel Logout
+
+Back-Channel Logout is also available, same as for the
+[Pre-Registered Client](2-Pre-Registered-Client.md#back-channel-logout):
+call `handleBackchannelLogoutRequest()` on the endpoint which receives
+back-channel logout requests from the OP. Register that endpoint as the
+`backchannel_logout_uri` client metadata using the `backchannelLogoutUri`
+constructor parameter (and optionally register
+`backchannel_logout_session_required` using the
+`backchannelLogoutSessionRequired` parameter):
+
+```php
+use Cicnavi\Oidc\DynamicallyRegisteredClient;
+
+$oidcClient = new DynamicallyRegisteredClient(
+    opConfigurationUrl: 'https://example.org/oidc/.well-known/openid-configuration',
+    redirectUri: 'https://your-example.org/callback',
+    scope: 'openid profile',
+    backchannelLogoutUri: 'https://your-example.org/backchannel-logout',
+);
+
+// File: backchannel-logout.php
+$oidcClient->handleBackchannelLogoutRequest();
+```
+
+The logout token audience is validated against the persisted client
+registrations - the current one and any retained per-client entry of a
+replaced registration - so a logout for a superseded (but still persisted)
+registration is still honored while old-client sessions may exist. The
+logout token is validated using the policy of the matched registration
+itself - the signing algorithm (`id_token_signed_response_alg`) and the
+`sid` requirement (`backchannel_logout_session_required`) it was registered
+with - so a registration that was replaced after those settings changed
+still validates its own logout tokens correctly. No client registration is
+performed or updated while handling back-channel logout requests.
+
+When the matched registration declares `backchannel_logout_session_required`
+as true, a logout token that does not carry a `sid` claim is rejected
+(responded to with HTTP 400), since such a client asked the OP to always
+identify the exact session to terminate rather than falling back to a
+subject-wide logout. This is registered through the
+`backchannelLogoutSessionRequired` constructor parameter (or an
+`additionalClientMetadata` override). Note that providing `backchannelLogoutUri`
+changes the client metadata set, so an existing client registration will be
+updated (or replaced) accordingly.
 
 ## Requirements on the OpenID Provider
 

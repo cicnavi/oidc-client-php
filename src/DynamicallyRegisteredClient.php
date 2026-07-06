@@ -11,6 +11,7 @@ use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Helpers\HttpHelper;
+use Cicnavi\Oidc\Helpers\MetadataHelper;
 use Cicnavi\Oidc\Interfaces\MetadataInterface;
 use Cicnavi\Oidc\Protocol\ClientRegistrationHandler;
 use Cicnavi\Oidc\Protocol\OpMetadata;
@@ -145,6 +146,24 @@ class DynamicallyRegisteredClient
      * used as the post logout redirect URI in RP-Initiated Logout (see
      * logout()). Note that providing this changes the client metadata set,
      * so an existing registration will be updated (or replaced) accordingly.
+     * @param ?string $backchannelLogoutUri URI to register as
+     * 'backchannel_logout_uri' during client registration - the endpoint on
+     * which this client handles OIDC Back-Channel Logout requests from the
+     * OP (see handleBackchannelLogoutRequest()). Note that providing this
+     * changes the client metadata set, so an existing registration will be
+     * updated (or replaced) accordingly.
+     * @param ?bool $backchannelLogoutSessionRequired Value to register as
+     * 'backchannel_logout_session_required' during client registration
+     * (whether the OP should include a 'sid' claim in logout tokens sent to
+     * this client), null to leave it out. Only registered when
+     * $backchannelLogoutUri is provided.
+     * @param ?string $idTokenSignedResponseAlg The JWS algorithm the OP uses
+     * to sign this client's ID tokens and OIDC Back-Channel Logout tokens.
+     * Back-Channel Logout tokens signed with a different algorithm are
+     * rejected. Defaults to 'RS256' (the OpenID Connect default). Set to null
+     * to accept any supported algorithm. When registering a specific
+     * 'id_token_signed_response_alg' via $additionalClientMetadata, set this
+     * to the same value.
      *
      * For other parameters, refer to PreRegisteredClient - they are forwarded
      * to the underlying client instance which is built after registration.
@@ -197,6 +216,9 @@ class DynamicallyRegisteredClient
         ?ClientRegistrationHandler $registrationHandler = null,
         protected ?PreRegisteredClient $preRegisteredClient = null,
         protected readonly array $postLogoutRedirectUris = [],
+        protected readonly ?string $backchannelLogoutUri = null,
+        protected readonly ?bool $backchannelLogoutSessionRequired = null,
+        protected readonly ?string $idTokenSignedResponseAlg = SignatureAlgorithmEnum::RS256->value,
     ) {
         $this->cache = $cache ?? new FileCache(
             'odrcpc-' . md5($this->opConfigurationUrl . '|' . $this->redirectUri),
@@ -271,6 +293,27 @@ class DynamicallyRegisteredClient
                 ClaimsEnum::PostLogoutRedirectUris->value,
                 $postLogoutRedirectUri,
             );
+        }
+
+        if (is_string($this->backchannelLogoutUri)) {
+            if ($this->backchannelLogoutUri === '') {
+                throw new OidcClientException(
+                    'Backchannel logout URI must be a non-empty string.',
+                );
+            }
+
+            $backchannelLogoutUriOverride = $clientMetadata[ClaimsEnum::BackChannelLogoutUri->value] ?? null;
+
+            if (
+                $backchannelLogoutUriOverride !== null &&
+                $backchannelLogoutUriOverride !== $this->backchannelLogoutUri
+            ) {
+                throw new OidcClientException(sprintf(
+                    'Client metadata claim "%s" must match the configured backchannel logout URI "%s".',
+                    ClaimsEnum::BackChannelLogoutUri->value,
+                    $this->backchannelLogoutUri,
+                ));
+            }
         }
     }
 
@@ -679,7 +722,7 @@ class DynamicallyRegisteredClient
         $requestDataHandler = $this->resolveRequestDataHandler();
 
         $endSessionEndpoint = $requestDataHandler->getLoginEndSessionEndpoint() ??
-        $this->getOptionalMetadataString(ClaimsEnum::EndSessionEndpoint->value);
+        MetadataHelper::optionalString($this->metadata, ClaimsEnum::EndSessionEndpoint->value);
 
         if (!is_string($endSessionEndpoint)) {
             throw new OidcClientException(
@@ -739,6 +782,205 @@ class DynamicallyRegisteredClient
     public function validateLogoutCallback(?ServerRequestInterface $request = null): void
     {
         $this->resolveRequestDataHandler()->validateLogoutCallbackResponse($request, $this->useState);
+    }
+
+    /**
+     * Handle an OIDC Back-Channel Logout request from the OP: validate the
+     * logout token from the request, record the login revocation it
+     * requests, and deliver the appropriate HTTP response (200 when the
+     * logout was performed, 400 with a JSON error body when not). Register
+     * the URI of the endpoint calling this method as the
+     * 'backchannel_logout_uri' client metadata (see the $backchannelLogoutUri
+     * constructor parameter).
+     *
+     * The logout token audience is validated against the persisted client
+     * registrations - the current one and any retained per-client entry of a
+     * replaced registration - so a logout for a superseded (but still
+     * persisted) registration is still honored while old-client sessions may
+     * exist. No client registration is performed or updated here. When the
+     * audience matches no persisted registration, the logout token can not be
+     * validated and the request is rejected.
+     *
+     * For notes on how the revocation terminates the affected login, refer
+     * to PreRegisteredClient::handleBackchannelLogoutRequest().
+     *
+     * @see PreRegisteredClient::handleBackchannelLogoutRequest()
+     */
+    public function handleBackchannelLogoutRequest(
+        ?ServerRequestInterface $request = null,
+        ?ResponseInterface $response = null,
+    ): ?ResponseInterface {
+        $requestDataHandler = $this->resolveRequestDataHandler();
+
+        try {
+            $logoutToken = $requestDataHandler->parseBackchannelLogoutRequest($request);
+
+            if (!is_string($opJwksUri = $this->metadata->get(ClaimsEnum::JwksUri->value))) {
+                throw new OidcClientException('JWKS URI not found in OP metadata.');
+            }
+
+            // Determine which persisted client registration the logout token
+            // is addressed to (by audience / authorized party), so a logout
+            // for a replaced registration whose per-client entry is still
+            // persisted is honored - not only the current registration.
+            $audienceInfo = $requestDataHandler->parseBackchannelLogoutTokenAudienceInfo($logoutToken);
+            $registrationData = $this->resolveRegistrationForLogout(
+                $audienceInfo['audiences'],
+                $audienceInfo['authorizedParty'],
+            );
+
+            if (!$registrationData instanceof \Cicnavi\Oidc\Registration\ClientRegistrationData) {
+                throw new OidcClientException(
+                    'Logout token audience does not match any persisted client registration, ' .
+                    'so it can not be validated.',
+                );
+            }
+
+            // Validate against the policy of the matched registration itself,
+            // not the current one: a registration that was replaced (e.g. after
+            // changing 'id_token_signed_response_alg' or
+            // 'backchannel_logout_session_required') keeps the signing algorithm
+            // and 'sid' requirement it was registered with, so logout tokens for
+            // sessions under the old client are validated correctly.
+            $logoutTokenJws = $requestDataHandler->validateLogoutToken(
+                logoutToken: $logoutToken,
+                jwksUri: $opJwksUri,
+                expectedIssuer: MetadataHelper::optionalString($this->metadata, ClaimsEnum::Issuer->value),
+                expectedClientId: $registrationData->getClientId(),
+                expectedSigningAlgorithm: $this->registeredIdTokenSignedResponseAlg($registrationData),
+                requireSid: $this->registeredBackchannelLogoutSessionRequired($registrationData),
+            );
+
+            $requestDataHandler->registerLogoutTokenRevocation($logoutTokenJws);
+        } catch (Throwable $throwable) {
+            $this->logger?->error('Back-channel logout request error. ' . $throwable->getMessage());
+
+            return HttpHelper::dispatchBackchannelLogoutResponse(
+                $response,
+                $throwable->getMessage(),
+                $this->logger,
+            );
+        }
+
+        $this->logger?->debug('Back-channel logout performed.');
+
+        return HttpHelper::dispatchBackchannelLogoutResponse($response, null, $this->logger);
+    }
+
+    /**
+     * The signing algorithm the OP uses for the given registration's ID and
+     * logout tokens, read from that registration's own persisted metadata
+     * ('id_token_signed_response_alg').
+     *
+     * When the registration does not carry the claim (e.g. it was registered
+     * with the default algorithm, and the OP did not echo it back), the
+     * fallback depends on which registration this is:
+     * - for the CURRENT registration, this client's configured
+     *   'idTokenSignedResponseAlg' applies (the expected algorithm for the live
+     *   client);
+     * - for a retained (replaced) registration, whose original configuration is
+     *   not known here, the OpenID Connect default 'RS256' applies - NOT the
+     *   current configuration, since a later config change (e.g. to 'ES256')
+     *   must not reject valid logout tokens for old-client sessions that were
+     *   signed with the previously effective algorithm.
+     */
+    protected function registeredIdTokenSignedResponseAlg(ClientRegistrationData $registrationData): ?string
+    {
+        $alg = $registrationData->getClaims()[ClaimsEnum::IdTokenSignedResponseAlg->value] ?? null;
+        if (is_string($alg) && $alg !== '') {
+            return $alg;
+        }
+
+        if ($registrationData->getClientId() === $this->loadRegistrationData()?->getClientId()) {
+            return $this->idTokenSignedResponseAlg;
+        }
+
+        return SignatureAlgorithmEnum::RS256->value;
+    }
+
+    /**
+     * Whether the given registration declares 'backchannel_logout_session_required'
+     * as true, read from that registration's own persisted metadata. When true,
+     * logout tokens without a 'sid' claim are rejected (a subject-wide fallback
+     * would be broader than what that registration required). Derived per
+     * registration so a replaced registration keeps the 'sid' policy it was
+     * registered with, independent of the current configuration.
+     */
+    protected function registeredBackchannelLogoutSessionRequired(ClientRegistrationData $registrationData): bool
+    {
+        return ($registrationData->getClaims()[ClaimsEnum::BackChannelLogoutSessionRequired->value] ?? null) === true;
+    }
+
+    /**
+     * Resolve which of this client's persisted registrations a back-channel
+     * logout token is addressed to, by matching the token audience(s) against
+     * the current registration and any retained per-client registration entry
+     * (of a replaced registration). Returns the matching registration snapshot
+     * (so its own signing algorithm / 'sid' policy can be used for validation),
+     * or null when nothing matches a persisted registration. No client
+     * registration is performed or updated here (registration entries are only
+     * read).
+     *
+     * When the token has multiple audiences, its authorized party ('azp')
+     * identifies the party it is intended for, so it is preferred - this
+     * disambiguates the case where several audiences are persisted client
+     * IDs (and matches the 'azp' check performed during validation).
+     *
+     * @param mixed[] $audiences Logout token audience value(s).
+     * @param ?string $authorizedParty Logout token 'azp' claim value.
+     */
+    protected function resolveRegistrationForLogout(
+        array $audiences,
+        ?string $authorizedParty,
+    ): ?ClientRegistrationData {
+        if (is_string($authorizedParty) && $authorizedParty !== '') {
+            return $this->loadPersistedClientRegistration($authorizedParty);
+        }
+
+        foreach ($audiences as $audience) {
+            if (
+                is_string($audience) &&
+                $audience !== '' &&
+                ($registrationData = $this->loadPersistedClientRegistration($audience))
+                instanceof \Cicnavi\Oidc\Registration\ClientRegistrationData
+            ) {
+                return $registrationData;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Load a persisted client registration for the given client ID - either the
+     * current registration or a retained per-client entry of a replaced
+     * registration - or null when none is persisted (or it can not be read).
+     * Registration entries are only read; no client registration is performed
+     * or updated.
+     */
+    protected function loadPersistedClientRegistration(string $clientId): ?ClientRegistrationData
+    {
+        $currentRegistrationData = $this->loadRegistrationData();
+        if (
+            $currentRegistrationData instanceof ClientRegistrationData &&
+            $clientId === $currentRegistrationData->getClientId()
+        ) {
+            return $currentRegistrationData;
+        }
+
+        try {
+            $claims = $this->registrationStore->get($this->getClientRegistrationStoreKey($clientId));
+
+            return is_array($claims) ? new ClientRegistrationData($claims) : null;
+        } catch (Throwable $throwable) {
+            $this->logger?->warning(
+                'Error reading persisted client registration while resolving a back-channel ' .
+                'logout token audience. ' . $throwable->getMessage(),
+                ['clientId' => $clientId],
+            );
+
+            return null;
+        }
     }
 
     /**
@@ -810,21 +1052,6 @@ class DynamicallyRegisteredClient
     }
 
     /**
-     * Read an optional string value from OP metadata, returning null when the
-     * key is not advertised or its value is not a non-empty string.
-     */
-    protected function getOptionalMetadataString(string $key): ?string
-    {
-        try {
-            $value = $this->metadata->get($key);
-        } catch (OidcClientException) {
-            return null;
-        }
-
-        return (is_string($value) && $value !== '') ? $value : null;
-    }
-
-    /**
      * @return MetadataInterface OIDC Configuration URL content (OIDC metadata).
      */
     public function getMetadata(): MetadataInterface
@@ -864,6 +1091,15 @@ class DynamicallyRegisteredClient
             $clientMetadata[ClaimsEnum::PostLogoutRedirectUris->value] = array_values(
                 $this->postLogoutRedirectUris,
             );
+        }
+
+        if (is_string($this->backchannelLogoutUri)) {
+            $clientMetadata[ClaimsEnum::BackChannelLogoutUri->value] = $this->backchannelLogoutUri;
+
+            if (is_bool($this->backchannelLogoutSessionRequired)) {
+                $clientMetadata[ClaimsEnum::BackChannelLogoutSessionRequired->value] =
+                $this->backchannelLogoutSessionRequired;
+            }
         }
 
         return array_merge($clientMetadata, $this->additionalClientMetadata);
