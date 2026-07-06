@@ -870,16 +870,32 @@ class DynamicallyRegisteredClient
     /**
      * The signing algorithm the OP uses for the given registration's ID and
      * logout tokens, read from that registration's own persisted metadata
-     * ('id_token_signed_response_alg'). Falls back to this client's configured
-     * 'idTokenSignedResponseAlg' when the registration does not carry the claim
-     * (e.g. it was not registered explicitly), so validation still applies the
-     * expected default (RS256).
+     * ('id_token_signed_response_alg').
+     *
+     * When the registration does not carry the claim (e.g. it was registered
+     * with the default algorithm, and the OP did not echo it back), the
+     * fallback depends on which registration this is:
+     * - for the CURRENT registration, this client's configured
+     *   'idTokenSignedResponseAlg' applies (the expected algorithm for the live
+     *   client);
+     * - for a retained (replaced) registration, whose original configuration is
+     *   not known here, the OpenID Connect default 'RS256' applies - NOT the
+     *   current configuration, since a later config change (e.g. to 'ES256')
+     *   must not reject valid logout tokens for old-client sessions that were
+     *   signed with the previously effective algorithm.
      */
     protected function registeredIdTokenSignedResponseAlg(ClientRegistrationData $registrationData): ?string
     {
         $alg = $registrationData->getClaims()[ClaimsEnum::IdTokenSignedResponseAlg->value] ?? null;
+        if (is_string($alg) && $alg !== '') {
+            return $alg;
+        }
 
-        return (is_string($alg) && $alg !== '') ? $alg : $this->idTokenSignedResponseAlg;
+        if ($registrationData->getClientId() === $this->loadRegistrationData()?->getClientId()) {
+            return $this->idTokenSignedResponseAlg;
+        }
+
+        return SignatureAlgorithmEnum::RS256->value;
     }
 
     /**

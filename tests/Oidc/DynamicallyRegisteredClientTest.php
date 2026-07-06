@@ -94,6 +94,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
         bool $injectRequestDataHandler = true,
         ?string $backchannelLogoutUri = null,
         ?bool $backchannelLogoutSessionRequired = null,
+        ?string $idTokenSignedResponseAlg = 'RS256',
     ): DynamicallyRegisteredClient {
         $registrationStore ??= $this->registrationStoreMock;
         $cache ??= $this->cacheMock;
@@ -132,6 +133,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
             postLogoutRedirectUris: $postLogoutRedirectUris,
             backchannelLogoutUri: $backchannelLogoutUri,
             backchannelLogoutSessionRequired: $backchannelLogoutSessionRequired,
+            idTokenSignedResponseAlg: $idTokenSignedResponseAlg,
         );
     }
 
@@ -1355,5 +1357,58 @@ final class DynamicallyRegisteredClientTest extends TestCase
         $response->method('withHeader')->willReturn($response);
 
         $this->assertSame($response, $this->sut()->handleBackchannelLogoutRequest(null, $response));
+    }
+
+    public function testHandleBackchannelLogoutRequestUsesRs256DefaultForOldRegistrationWithoutAlg(): void
+    {
+        // An old (replaced) registration whose stored client information
+        // response does NOT carry 'id_token_signed_response_alg' (it used the
+        // default). The current client is now configured with ES256, but the
+        // old-client logout token must be validated against the OpenID Connect
+        // default RS256 - the old registration's effective algorithm - not the
+        // current ES256 configuration.
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutRequest')->willReturn('logout-token');
+        $this->requestDataHandlerMock->method('parseBackchannelLogoutTokenAudienceInfo')
+            ->willReturn(['audiences' => ['old-client-id'], 'authorizedParty' => null]);
+
+        $this->metadataMock->expects($this->exactly(2))->method('get')->willReturnMap([
+            ['jwks_uri', 'https://op.example.org/jwks'],
+            ['issuer', 'https://op.example.org'],
+        ]);
+
+        $mainKey = $this->sut()->getRegistrationStoreKey();
+        $oldClientKey = $this->sut()->getClientRegistrationStoreKey('old-client-id');
+
+        $this->registrationStoreMock->expects($this->exactly(2))->method('get')->willReturnMap([
+            // Current registration (different client ID).
+            [$mainKey, ['client_id' => 'new-client-id', 'client_secret' => 'new-secret']],
+            // Old registration without an explicit signing algorithm claim.
+            [$oldClientKey, ['client_id' => 'old-client-id', 'client_secret' => 'old-secret']],
+        ]);
+
+        $logoutTokenJws = $this->createStub(\SimpleSAML\OpenID\Core\LogoutToken::class);
+
+        // Validated against RS256, not the current ES256 configuration.
+        $this->requestDataHandlerMock->expects($this->once())
+            ->method('validateLogoutToken')
+            ->with(
+                'logout-token',
+                'https://op.example.org/jwks',
+                'https://op.example.org',
+                'old-client-id',
+                'RS256',
+                false,
+            )
+            ->willReturn($logoutTokenJws);
+
+        $this->requestDataHandlerMock->expects($this->once())->method('registerLogoutTokenRevocation');
+
+        $response = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $response->expects($this->once())->method('withStatus')->with(200)->willReturn($response);
+        $response->method('withHeader')->willReturn($response);
+
+        // Current client is configured with ES256.
+        $sut = $this->sut(idTokenSignedResponseAlg: 'ES256');
+        $this->assertSame($response, $sut->handleBackchannelLogoutRequest(null, $response));
     }
 }
