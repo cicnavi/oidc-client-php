@@ -883,6 +883,13 @@ class RequestDataHandler
         $idTokenJws->getExpirationTime();
         $idTokenJws->getIssuedAt();
 
+        // Validate Subject (sub), likewise by reading it: the IdToken instance
+        // throws when the claim is absent, and enforces that it is ASCII and at
+        // most 255 characters. Without this the claim would go unchecked until
+        // something downstream indexed it - the ID token / UserInfo 'sub'
+        // cross-check being the usual place.
+        $idTokenJws->getSubject();
+
         if ($useNonce) {
             if (($nonce = $idTokenJws->getNonce()) === null) {
                 $this->logger?->error('ID token nonce not found.');
@@ -989,6 +996,18 @@ class RequestDataHandler
     ): void {
         if ($idTokenClaims === []) {
             return;
+        }
+
+        // Both claims are mandatory, and are validated before reaching this
+        // point - the ID token 'sub' when the token is parsed, the UserInfo
+        // 'sub' by validateUserinfoClaims(). Name whichever is missing anyway,
+        // rather than reporting an absent claim as an inequality.
+        if (! isset($idTokenClaims[ClaimsEnum::Sub->value])) {
+            throw new OidcClientException('ID token does not contain mandatory sub claim.');
+        }
+
+        if (! isset($userInfoClaims[ClaimsEnum::Sub->value])) {
+            throw new OidcClientException('UserInfo Response does not contain mandatory sub claim.');
         }
 
         // Per https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse

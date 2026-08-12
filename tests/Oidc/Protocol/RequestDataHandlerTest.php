@@ -1182,6 +1182,94 @@ final class RequestDataHandlerTest extends TestCase
         );
     }
 
+    /**
+     * The ID token payload is what the cross-check indexes, and an ID token
+     * whose payload carries no 'sub' must be named as such rather than
+     * reported as an inequality (or as an "Undefined array key" warning).
+     */
+    public function testGetClaimsThrowsOnIdTokenWithoutSub(): void
+    {
+        $jwksFetcher = $this->createMock(JwksFetcher::class);
+        $this->jwksMock->method('jwksFetcher')->willReturn($jwksFetcher);
+        $keySet = $this->createMock(JwksDecorator::class);
+        $keySet->method('jsonSerialize')->willReturn(['keys' => []]);
+        $jwksFetcher->method('fromCacheOrJwksUri')->willReturn($keySet);
+
+        $idTokenFactory = $this->createMock(IdTokenFactory::class);
+        $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
+        $idTokenJws = $this->createMock(IdToken::class);
+        $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
+        // Non-empty payload, but without the mandatory 'sub'.
+        $idTokenJws->method('getPayload')->willReturn(['iss' => 'https://op.example.com']);
+
+        $request = $this->createMock(RequestInterface::class);
+        $this->requestFactoryMock->method('createRequest')->willReturn($request);
+        $request->method('withHeader')->willReturn($request);
+
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $stream = $this->createMock(StreamInterface::class);
+        $stream->method('__toString')->willReturn('{"sub": "sub1"}');
+        $response->method('getBody')->willReturn($stream);
+        $this->httpClientMock->method('sendRequest')->willReturn($response);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('ID token does not contain mandatory sub claim.');
+
+        $this->sut()->getClaims(
+            [
+                ParamsEnum::AccessToken->value => 'at',
+                ParamsEnum::TokenType->value => 'Bearer',
+                ParamsEnum::IdToken->value => 'id-token',
+            ],
+            'https://op.example.com/jwks',
+            'https://op.example.com/userinfo',
+        );
+    }
+
+    /**
+     * 'sub' is REQUIRED, so reading it is what validates it - the IdToken
+     * instance throws when it is absent, and enforces its ASCII / 255-character
+     * limits. Without this call the claim would go unchecked on the token
+     * itself.
+     */
+    public function testGetDataFromIdTokenValidatesSubject(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $this->configureValidIdToken($idTokenJws);
+        $idTokenJws->expects($this->atLeastOnce())->method('getSubject')->willReturn('user');
+
+        $result = $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedIssuer: 'https://op.example.org',
+            expectedClientId: 'client-id',
+        );
+
+        $this->assertSame(['sub' => 'user'], $result);
+    }
+
+    public function testGetDataFromIdTokenPropagatesInvalidSubjectFailure(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $this->configureValidIdToken($idTokenJws);
+        $idTokenJws->method('getSubject')
+            ->willThrowException(new IdTokenException('No Subject claim found.'));
+
+        $this->expectException(IdTokenException::class);
+        $this->expectExceptionMessage('No Subject claim found.');
+
+        $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedIssuer: 'https://op.example.org',
+            expectedClientId: 'client-id',
+        );
+    }
+
     public function testGetClaimsSuccess(): void
     {
         // Mock JWKS

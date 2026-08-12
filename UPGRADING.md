@@ -27,6 +27,14 @@ regardless of `timestampValidationLeeway`, set that option to `PT0S`.
 - When no expected issuer or no expected client ID is available, the
 corresponding ID token check is skipped as before, but is now logged as a
 warning rather than passing silently.
+- **Potentially breaking**: the ID token's mandatory `sub` claim is now
+validated on the token itself. An ID token without a `sub`, or whose `sub` is
+not ASCII or exceeds 255 characters, is now rejected. Previously the claim went
+unchecked until the ID token / UserInfo `sub` cross-check indexed it, which
+produced an "Undefined array key" warning followed by a misleading "must be
+equal" error.
+- The ID token / UserInfo `sub` cross-check now reports which side is missing
+the claim, instead of reporting an absent claim as an inequality.
 
 ## [3.1.0] - 2026-05-04
 
