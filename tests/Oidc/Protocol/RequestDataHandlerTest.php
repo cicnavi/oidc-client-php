@@ -31,6 +31,7 @@ use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\ParamsEnum;
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 use SimpleSAML\OpenID\Core;
+use SimpleSAML\OpenID\Exceptions\IdTokenException;
 use SimpleSAML\OpenID\Exceptions\JwsException;
 use SimpleSAML\OpenID\Core\IdToken;
 use SimpleSAML\OpenID\Core\Factories\IdTokenFactory;
@@ -687,6 +688,296 @@ final class RequestDataHandlerTest extends TestCase
         $this->sut()->getDataFromIdToken('token', 'https://op.example.com/jwks');
     }
 
+    /**
+     * Set up JWKS and ID token factory mocks, returning the IdToken mock which
+     * the factory produces.
+     */
+    private function mockIdTokenSetup(): MockObject
+    {
+        $jwksFetcher = $this->createMock(JwksFetcher::class);
+        $this->jwksMock->method('jwksFetcher')->willReturn($jwksFetcher);
+        $keySet = $this->createMock(JwksDecorator::class);
+        $keySet->method('jsonSerialize')->willReturn(['keys' => []]);
+        $jwksFetcher->method('fromCacheOrJwksUri')->willReturn($keySet);
+        $jwksFetcher->method('fromJwksUri')->willReturn($keySet);
+
+        $idTokenFactory = $this->createMock(IdTokenFactory::class);
+        $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
+        $idTokenJws = $this->createMock(IdToken::class);
+        $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+
+        return $idTokenJws;
+    }
+
+    /**
+     * Configure an IdToken mock with a valid claim set.
+     */
+    private function configureValidIdToken(MockObject $idTokenJws): void
+    {
+        $idTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
+        $idTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $idTokenJws->method('getIssuedAt')->willReturn(time());
+        $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getPayload')->willReturn(['sub' => 'user']);
+    }
+
+    public function testGetDataFromIdTokenThrowsOnIssuerMismatch(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $this->configureValidIdToken($idTokenJws);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not match expected issuer');
+
+        $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedIssuer: 'https://other-op.example.org',
+        );
+    }
+
+    public function testGetDataFromIdTokenAcceptsMatchingIssuer(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $this->configureValidIdToken($idTokenJws);
+
+        $result = $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedIssuer: 'https://op.example.org',
+        );
+
+        $this->assertSame(['sub' => 'user'], $result);
+    }
+
+    /**
+     * Without an expected issuer there is nothing to compare the 'iss' claim
+     * against, so the check is skipped entirely. This happens when the OP
+     * discovery document carries no 'issuer', so it is worth a warning.
+     */
+    public function testGetDataFromIdTokenWarnsWhenIssuerCheckIsSkipped(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
+        $idTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $idTokenJws->method('getIssuedAt')->willReturn(time());
+        $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getPayload')->willReturn(['sub' => 'user']);
+        $idTokenJws->expects($this->never())->method('getIssuer');
+
+        $this->loggerMock->expects($this->atLeastOnce())
+            ->method('warning')
+            ->with($this->stringContains('issuer'));
+
+        $result = $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedClientId: 'client-id',
+        );
+
+        $this->assertSame(['sub' => 'user'], $result);
+    }
+
+    public function testGetDataFromIdTokenThrowsOnAudienceMismatch(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $this->configureValidIdToken($idTokenJws);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not contain expected client ID');
+
+        $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedClientId: 'other-client-id',
+        );
+    }
+
+    /**
+     * An empty 'aud' array cannot contain the client ID, so it must be
+     * rejected rather than treated as "nothing to check" - the same way the
+     * logout token path treats it.
+     */
+    public function testGetDataFromIdTokenThrowsOnEmptyAudience(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $idTokenJws->method('getAudience')->willReturn([]);
+        $idTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $idTokenJws->method('getIssuedAt')->willReturn(time());
+        $idTokenJws->method('getNonce')->willReturn('nonce');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not contain expected client ID');
+
+        $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedClientId: 'client-id',
+        );
+    }
+
+    public function testGetDataFromIdTokenThrowsOnMissingAuthorizedPartyWithMultipleAudiences(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $idTokenJws->method('getAudience')->willReturn(['client-id', 'other-audience']);
+        $idTokenJws->method('getAuthorizedParty')->willReturn(null);
+        $idTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $idTokenJws->method('getIssuedAt')->willReturn(time());
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Authorized party claim (azp) is missing');
+
+        $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedClientId: 'client-id',
+        );
+    }
+
+    public function testGetDataFromIdTokenThrowsOnAuthorizedPartyMismatchWithMultipleAudiences(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $idTokenJws->method('getAudience')->willReturn(['client-id', 'other-audience']);
+        $idTokenJws->method('getAuthorizedParty')->willReturn('other-client-id');
+        $idTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $idTokenJws->method('getIssuedAt')->willReturn(time());
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not match expected client ID');
+
+        $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedClientId: 'client-id',
+        );
+    }
+
+    public function testGetDataFromIdTokenAcceptsMatchingAuthorizedPartyWithMultipleAudiences(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $idTokenJws->method('getAudience')->willReturn(['client-id', 'other-audience']);
+        $idTokenJws->method('getAuthorizedParty')->willReturn('client-id');
+        $idTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $idTokenJws->method('getIssuedAt')->willReturn(time());
+        $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getPayload')->willReturn(['sub' => 'user']);
+
+        $result = $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedClientId: 'client-id',
+        );
+
+        $this->assertSame(['sub' => 'user'], $result);
+    }
+
+    /**
+     * Without an expected client ID neither the 'aud' nor the 'azp' claim can
+     * be checked. The parameter defaults to null on this public method, so a
+     * direct caller can reach this path - warn rather than stay silent.
+     */
+    public function testGetDataFromIdTokenWarnsWhenAudienceCheckIsSkipped(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $idTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $idTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $idTokenJws->method('getIssuedAt')->willReturn(time());
+        $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getPayload')->willReturn(['sub' => 'user']);
+        $idTokenJws->expects($this->never())->method('getAudience');
+
+        $this->loggerMock->expects($this->atLeastOnce())
+            ->method('warning')
+            ->with($this->stringContains('audience'));
+
+        $result = $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedIssuer: 'https://op.example.org',
+        );
+
+        $this->assertSame(['sub' => 'user'], $result);
+    }
+
+    /**
+     * Expiry is validated when the claim is read: the IdToken instance applies
+     * the configured timestamp validation leeway and throws on an expired
+     * token. A token expired by less than that leeway must therefore still be
+     * accepted here - re-checking 'exp' without the leeway would override the
+     * caller's configuration.
+     */
+    public function testGetDataFromIdTokenDelegatesExpirationValidationToIdToken(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $idTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
+        $idTokenJws->method('getIssuedAt')->willReturn(time());
+        $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getPayload')->willReturn(['sub' => 'user']);
+        // Just past 'exp', i.e. within any configured leeway. The IdToken
+        // instance accepted it, so this method must not second-guess that.
+        $idTokenJws->expects($this->atLeastOnce())
+            ->method('getExpirationTime')
+            ->willReturn(time() - 30);
+
+        $result = $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedIssuer: 'https://op.example.org',
+            expectedClientId: 'client-id',
+        );
+
+        $this->assertSame(['sub' => 'user'], $result);
+    }
+
+    /**
+     * Same delegation for 'iat': the IdToken instance rejects future-dated
+     * tokens using the configured leeway.
+     */
+    public function testGetDataFromIdTokenDelegatesIssuedAtValidationToIdToken(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $idTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
+        $idTokenJws->method('getExpirationTime')->willReturn(time() + 120);
+        $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getPayload')->willReturn(['sub' => 'user']);
+        $idTokenJws->expects($this->atLeastOnce())
+            ->method('getIssuedAt')
+            ->willReturn(time());
+
+        $result = $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedIssuer: 'https://op.example.org',
+            expectedClientId: 'client-id',
+        );
+
+        $this->assertSame(['sub' => 'user'], $result);
+    }
+
+    /**
+     * The 'iss', 'aud', 'exp' and 'iat' claims are REQUIRED, and the IdToken
+     * instance throws when one is absent. Make sure that failure is not
+     * swallowed on the way out.
+     */
+    public function testGetDataFromIdTokenPropagatesMissingRequiredClaimFailure(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $idTokenJws->method('getIssuer')
+            ->willThrowException(new IdTokenException('No Issuer claim found.'));
+
+        $this->expectException(IdTokenException::class);
+        $this->expectExceptionMessage('No Issuer claim found.');
+
+        $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedIssuer: 'https://op.example.org',
+        );
+    }
+
     public function testRequestUserDataFromUserInfoEndpointThrowsOnMissingSub(): void
     {
         $request = $this->createMock(RequestInterface::class);
@@ -740,6 +1031,7 @@ final class RequestDataHandlerTest extends TestCase
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
         $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn(['sub' => 'sub1']);
 
         // Mock UserInfo request
@@ -851,6 +1143,7 @@ final class RequestDataHandlerTest extends TestCase
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
         $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn(['sub' => 'sub1']);
 
         // UserInfo Response
@@ -1014,6 +1307,7 @@ final class RequestDataHandlerTest extends TestCase
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
         $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn(['sub' => 'sub1']);
 
         // UserInfo Response
@@ -1078,6 +1372,7 @@ final class RequestDataHandlerTest extends TestCase
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
         $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn(['sub' => 'sub1']);
 
         // Expect only 1 request (token)
@@ -1150,6 +1445,7 @@ final class RequestDataHandlerTest extends TestCase
         $idTokenJws->expects($this->never())->method('getNonce');
         $this->stateNonceDataHandlerMock->expects($this->never())->method('verify');
 
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn(['sub' => 'user']);
 
         $result = $this->sut()->getDataFromIdToken('token', 'https://op.example.com/jwks', false);
@@ -1550,6 +1846,7 @@ final class RequestDataHandlerTest extends TestCase
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
         $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn([
             'iss' => 'https://op.example.org',
             'sub' => 'sub1',

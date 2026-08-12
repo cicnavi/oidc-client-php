@@ -766,7 +766,14 @@ class RequestDataHandler
         }
 
         // Validate Issuer (iss)
-        if ($expectedIssuer !== null) {
+        if ($expectedIssuer === null) {
+            // Nothing to compare the claim against, so the check cannot run.
+            // This happens when the OP discovery document carries no 'issuer'
+            // (which makes it invalid), so make the gap visible.
+            $this->logger?->warning(
+                'No expected issuer given, skipping ID token issuer (iss) validation.',
+            );
+        } else {
             $iss = $idTokenJws->getIssuer();
             if ($iss !== $expectedIssuer) {
                 $error = sprintf('Issuer claim "%s" does not match expected issuer "%s".', $iss, $expectedIssuer);
@@ -776,9 +783,15 @@ class RequestDataHandler
         }
 
         // Validate Audience (aud) and Authorized Party (azp)
-        if ($expectedClientId !== null) {
+        if ($expectedClientId === null) {
+            $this->logger?->warning(
+                'No expected client ID given, skipping ID token audience (aud) and authorized party (azp) validation.',
+            );
+        } else {
+            // An empty 'aud' cannot contain the client ID, so it is rejected
+            // rather than skipped - matching validateLogoutToken().
             $aud = $idTokenJws->getAudience();
-            if ($aud !== [] && !in_array($expectedClientId, $aud, true)) {
+            if (!in_array($expectedClientId, $aud, true)) {
                 $error = sprintf('Audience claim does not contain expected client ID "%s".', $expectedClientId);
                 $this->logger?->error($error);
                 throw new OidcClientException($error);
@@ -804,22 +817,16 @@ class RequestDataHandler
             }
         }
 
-        // Validate Expiration Time (exp)
-        $exp = $idTokenJws->getExpirationTime();
-        if ($exp > 0 && time() > $exp) {
-            $error = 'ID Token has expired.';
-            $this->logger?->error($error);
-            throw new OidcClientException($error);
-        }
-
-        // Validate Issued At (iat)
-        $iat = $idTokenJws->getIssuedAt();
-        // Allow a small clock skew (e.g. 5 minutes or 300 seconds)
-        if ($iat > 0 && time() < ($iat - 300)) {
-            $error = 'ID Token was issued in the future.';
-            $this->logger?->error($error);
-            throw new OidcClientException($error);
-        }
+        // Validate Expiration Time (exp) and Issued At (iat). Both claims are
+        // REQUIRED, and reading them is what validates them: the IdToken
+        // instance throws if either is absent, if the token has expired, or if
+        // it is dated in the future - applying the timestamp validation leeway
+        // the client was configured with. Re-checking the values here with a
+        // leeway of our own would override that configuration, which is what
+        // an earlier zero-leeway 'exp' comparison did. The logout token path
+        // delegates the same way.
+        $idTokenJws->getExpirationTime();
+        $idTokenJws->getIssuedAt();
 
         if ($useNonce) {
             if (($nonce = $idTokenJws->getNonce()) === null) {
