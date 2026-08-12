@@ -361,6 +361,7 @@ class PreRegisteredClient
                 $this->metadata,
                 ClaimsEnum::EndSessionEndpoint->value,
             ),
+            expectedIdTokenSigningAlgorithm: $this->idTokenSignedResponseAlg,
         );
     }
 

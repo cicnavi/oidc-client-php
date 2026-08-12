@@ -31,6 +31,7 @@ use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\ParamsEnum;
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 use SimpleSAML\OpenID\Core;
+use SimpleSAML\OpenID\Exceptions\EntityStatementException;
 use SimpleSAML\OpenID\Exceptions\IdTokenException;
 use SimpleSAML\OpenID\Exceptions\JwsException;
 use SimpleSAML\OpenID\Core\IdToken;
@@ -623,6 +624,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
 
         // First verification fails
         $idTokenJws->expects($this->exactly(2))->method('verifyWithKeySet')
@@ -655,6 +657,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
 
         // Both verifications fail
         $idTokenJws->method('verifyWithKeySet')->willThrowException(new Exception('Sig fail'));
@@ -679,6 +682,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
 
         $idTokenJws->method('getNonce')->willReturn(null);
 
@@ -690,9 +694,10 @@ final class RequestDataHandlerTest extends TestCase
 
     /**
      * Set up JWKS and ID token factory mocks, returning the IdToken mock which
-     * the factory produces.
+     * the factory produces. The signing algorithm defaults to a valid 'RS256';
+     * pass null to leave it unstubbed (an unsigned token).
      */
-    private function mockIdTokenSetup(): MockObject
+    private function mockIdTokenSetup(?string $algorithm = 'RS256'): MockObject
     {
         $jwksFetcher = $this->createMock(JwksFetcher::class);
         $this->jwksMock->method('jwksFetcher')->willReturn($jwksFetcher);
@@ -705,6 +710,10 @@ final class RequestDataHandlerTest extends TestCase
         $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+
+        if ($algorithm !== null) {
+            $idTokenJws->method('getAlgorithm')->willReturn($algorithm);
+        }
 
         return $idTokenJws;
     }
@@ -978,6 +987,118 @@ final class RequestDataHandlerTest extends TestCase
         );
     }
 
+    /**
+     * ParsedJws::getAlgorithm() throws for an 'alg' of 'none' rather than
+     * returning it, so that is the path a real unsigned token takes. It must
+     * still surface as this library's own exception type, and be logged.
+     */
+    public function testGetDataFromIdTokenThrowsOnNoneAlgorithm(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup(algorithm: null);
+        $idTokenJws->method('getAlgorithm')
+            ->willThrowException(new JwsException('Invalid Algorithm header claim (none).'));
+        // 'none' is rejected unconditionally, even without an expected algorithm.
+        $idTokenJws->expects($this->never())->method('verifyWithKeySet');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('unsigned, unsupported or otherwise invalid signing algorithm');
+
+        $this->sut()->getDataFromIdToken('token', 'https://op.example.org/jwks');
+    }
+
+    /**
+     * Likewise for an algorithm the underlying library does not recognise.
+     */
+    public function testGetDataFromIdTokenThrowsOnUnrecognizedAlgorithm(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup(algorithm: null);
+        $idTokenJws->method('getAlgorithm')
+            ->willThrowException(new EntityStatementException('Invalid Algorithm header claim.'));
+        $idTokenJws->expects($this->never())->method('verifyWithKeySet');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('unsigned, unsupported or otherwise invalid signing algorithm');
+
+        $this->sut()->getDataFromIdToken('token', 'https://op.example.org/jwks');
+    }
+
+    /**
+     * A null return means the 'alg' header is absent altogether, which
+     * getAlgorithm() does not throw for.
+     */
+    public function testGetDataFromIdTokenThrowsOnMissingAlgorithm(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup(algorithm: null);
+        $idTokenJws->expects($this->never())->method('verifyWithKeySet');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('carries no "alg" header');
+
+        $this->sut()->getDataFromIdToken('token', 'https://op.example.org/jwks');
+    }
+
+    public function testGetDataFromIdTokenThrowsOnUnexpectedSigningAlgorithm(): void
+    {
+        // Validly signed, but not with the algorithm the RP registered.
+        $idTokenJws = $this->mockIdTokenSetup(algorithm: 'ES256');
+        // The algorithm is rejected before the signature is even verified.
+        $idTokenJws->expects($this->never())->method('verifyWithKeySet');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('does not match the expected algorithm');
+
+        $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedSigningAlgorithm: 'RS256',
+        );
+    }
+
+    public function testGetDataFromIdTokenAcceptsExpectedSigningAlgorithm(): void
+    {
+        $idTokenJws = $this->mockIdTokenSetup();
+        $this->configureValidIdToken($idTokenJws);
+        $idTokenJws->expects($this->once())->method('verifyWithKeySet');
+
+        $result = $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedIssuer: 'https://op.example.org',
+            expectedClientId: 'client-id',
+            expectedSigningAlgorithm: 'RS256',
+        );
+
+        $this->assertSame(['sub' => 'user'], $result);
+    }
+
+    /**
+     * The algorithm is checked before the signature, so a mismatch must not
+     * trigger the JWKS refresh retry that a verification failure would.
+     */
+    public function testGetDataFromIdTokenDoesNotRetryJwksOnAlgorithmMismatch(): void
+    {
+        $jwksFetcher = $this->createMock(JwksFetcher::class);
+        $this->jwksMock->method('jwksFetcher')->willReturn($jwksFetcher);
+        $keySet = $this->createMock(JwksDecorator::class);
+        $keySet->method('jsonSerialize')->willReturn(['keys' => []]);
+        $jwksFetcher->method('fromCacheOrJwksUri')->willReturn($keySet);
+        $jwksFetcher->expects($this->never())->method('fromJwksUri');
+
+        $idTokenFactory = $this->createMock(IdTokenFactory::class);
+        $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
+        $idTokenJws = $this->createMock(IdToken::class);
+        $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('ES256');
+
+        $this->expectException(OidcClientException::class);
+
+        $this->sut()->getDataFromIdToken(
+            'token',
+            'https://op.example.org/jwks',
+            expectedSigningAlgorithm: 'RS256',
+        );
+    }
+
     public function testRequestUserDataFromUserInfoEndpointThrowsOnMissingSub(): void
     {
         $request = $this->createMock(RequestInterface::class);
@@ -1030,6 +1151,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
         $idTokenJws->method('getNonce')->willReturn('nonce');
         $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn(['sub' => 'sub1']);
@@ -1074,6 +1196,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
         $idTokenJws->method('getNonce')->willReturn('nonce');
         $idTokenJws->method('getPayload')->willReturn(['sub' => 'sub1', 'email' => 'e1']);
 
@@ -1142,6 +1265,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
         $idTokenJws->method('getNonce')->willReturn('nonce');
         $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn(['sub' => 'sub1']);
@@ -1306,6 +1430,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
         $idTokenJws->method('getNonce')->willReturn('nonce');
         $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn(['sub' => 'sub1']);
@@ -1371,6 +1496,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
         $idTokenJws->method('getNonce')->willReturn('nonce');
         $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn(['sub' => 'sub1']);
@@ -1440,6 +1566,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
 
         // Should not call getNonce or verify
         $idTokenJws->expects($this->never())->method('getNonce');
@@ -1845,6 +1972,7 @@ final class RequestDataHandlerTest extends TestCase
         $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
         $idTokenJws = $this->createMock(IdToken::class);
         $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
         $idTokenJws->method('getNonce')->willReturn('nonce');
         $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn([
@@ -2199,15 +2327,35 @@ final class RequestDataHandlerTest extends TestCase
         );
     }
 
+    /**
+     * ParsedJws::getAlgorithm() throws for an 'alg' of 'none' rather than
+     * returning it, so that is the path a real unsigned token takes.
+     */
     public function testValidateLogoutTokenThrowsOnNoneAlgorithm(): void
     {
         $logoutTokenJws = $this->mockLogoutTokenSetup();
-        $logoutTokenJws->method('getAlgorithm')->willReturn('none');
+        $logoutTokenJws->method('getAlgorithm')
+            ->willThrowException(new JwsException('Invalid Algorithm header claim (none).'));
         // 'none' is rejected unconditionally, even without an expected algorithm.
         $logoutTokenJws->expects($this->never())->method('verifyWithKeySet');
 
         $this->expectException(OidcClientException::class);
-        $this->expectExceptionMessage('unsigned or uses the "none" algorithm');
+        $this->expectExceptionMessage('unsigned, unsupported or otherwise invalid signing algorithm');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+        );
+    }
+
+    public function testValidateLogoutTokenThrowsOnMissingAlgorithm(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn(null);
+        $logoutTokenJws->expects($this->never())->method('verifyWithKeySet');
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('carries no "alg" header');
 
         $this->sut()->validateLogoutToken(
             'logout-token',

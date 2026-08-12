@@ -1201,6 +1201,9 @@ class DynamicallyRegisteredClient
             responseMode: $this->responseMode,
             requestDataHandler: $this->requestDataHandler,
             parMode: $this->parMode,
+            // The algorithm the OP actually registered for this client, which
+            // is not necessarily this client's configured default.
+            idTokenSignedResponseAlg: $this->registeredIdTokenSignedResponseAlg($registrationData),
         );
     }
 

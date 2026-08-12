@@ -168,6 +168,7 @@ class RequestDataHandler
         bool $fetchUserinfoClaims = true,
         ?string $expectedIssuer = null,
         ?string $opEndSessionEndpoint = null,
+        ?string $expectedIdTokenSigningAlgorithm = null,
     ): array {
 
         $tokenData = $this->requestTokenData(
@@ -196,6 +197,7 @@ class RequestDataHandler
             fetchUserinfoClaims: $fetchUserinfoClaims,
             expectedIssuer: $expectedIssuer,
             expectedClientId: $clientId,
+            expectedIdTokenSigningAlgorithm: $expectedIdTokenSigningAlgorithm,
         );
 
         $this->storeLoginData(
@@ -684,6 +686,7 @@ class RequestDataHandler
         bool $fetchUserinfoClaims = true,
         ?string $expectedIssuer = null,
         ?string $expectedClientId = null,
+        ?string $expectedIdTokenSigningAlgorithm = null,
     ): array {
         $idTokenClaims = [];
         $userInfoClaims = [];
@@ -697,6 +700,7 @@ class RequestDataHandler
                 refreshCache: false,
                 expectedIssuer: $expectedIssuer,
                 expectedClientId: $expectedClientId,
+                expectedSigningAlgorithm: $expectedIdTokenSigningAlgorithm,
             );
         }
 
@@ -717,6 +721,12 @@ class RequestDataHandler
      * Validate provided ID token and get claims from it.
      *
      * @param string $idToken ID token received from token endpoint.
+     * @param ?string $expectedSigningAlgorithm When provided, the ID token
+     * 'alg' header must equal this value (the RP's
+     * 'id_token_signed_response_alg', which per OpenID Connect Dynamic Client
+     * Registration section 2 defaults to RS256). The OP signs this client's ID
+     * tokens with that single registered algorithm, so an ID token which is
+     * validly signed but with a different algorithm than expected is rejected.
      * @return mixed[] Claims from ID token
      * @throws JwsException
      * @throws OidcClientException
@@ -729,6 +739,7 @@ class RequestDataHandler
         bool $refreshCache = false,
         ?string $expectedIssuer = null,
         ?string $expectedClientId = null,
+        ?string $expectedSigningAlgorithm = null,
     ): array {
         $jwks = $this->getJwksUriContent($jwksUri, $refreshCache);
 
@@ -738,6 +749,49 @@ class RequestDataHandler
             $error = 'Error building ID Token: ' . $jwsException->getMessage();
             $this->logger?->error($error, ['idToken' => $idToken]);
             throw new OidcClientException($error, $jwsException->getCode(), $jwsException);
+        }
+
+        // Validate the 'alg' header parameter before verifying the signature,
+        // so an invalid-algorithm token is rejected without a needless JWKS
+        // refresh retry. Mirrors validateLogoutToken().
+        //
+        // ID Tokens MUST be signed (OpenID Connect Core section 2), so an 'alg'
+        // of 'none' is not acceptable here. Note the ID token is received over
+        // the TLS-protected token endpoint, where the specification does permit
+        // 'none' if the RP registered it - this client does not support that.
+        // Rejecting it is left to getAlgorithm(), which throws both for 'none'
+        // and for an unrecognized algorithm, and returns null only when the
+        // header is absent. Normalize those throws into OidcClientException, so
+        // they are logged and the caller sees this class' own exception type
+        // rather than a lower-level one.
+        try {
+            $alg = $idTokenJws->getAlgorithm();
+        } catch (Throwable $throwable) {
+            $error = sprintf(
+                'ID token uses an unsigned, unsupported or otherwise invalid signing algorithm. %s',
+                $throwable->getMessage(),
+            );
+            $this->logger?->error($error);
+            throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
+        }
+
+        if ($alg === null) {
+            $error = 'ID token is unsigned (it carries no "alg" header), which is not allowed.';
+            $this->logger?->error($error);
+            throw new OidcClientException($error);
+        }
+
+        // The algorithm the OP uses is the single one the RP registered
+        // ('id_token_signed_response_alg', default RS256) - not the OP's broad
+        // advertised 'id_token_signing_alg_values_supported' set.
+        if ($expectedSigningAlgorithm !== null && $alg !== $expectedSigningAlgorithm) {
+            $error = sprintf(
+                'ID token signing algorithm "%s" does not match the expected algorithm "%s".',
+                $alg,
+                $expectedSigningAlgorithm,
+            );
+            $this->logger?->error($error);
+            throw new OidcClientException($error);
         }
 
         try {
@@ -762,6 +816,7 @@ class RequestDataHandler
                 refreshCache: true,
                 expectedIssuer: $expectedIssuer,
                 expectedClientId: $expectedClientId,
+                expectedSigningAlgorithm: $expectedSigningAlgorithm,
             );
         }
 
@@ -1360,12 +1415,27 @@ class RequestDataHandler
         // Validate the 'alg' Header Parameter (specification section 2.6),
         // before verifying the signature so an invalid-algorithm token is
         // rejected without a needless JWKS refresh retry.
-        $alg = $logoutTokenJws->getAlgorithm();
-
+        //
         // An 'alg' of 'none' MUST NOT be used for Logout Tokens - they must be
-        // signed (a signed JWT also always carries an 'alg' header).
-        if ($alg === null || strcasecmp($alg, 'none') === 0) {
-            $error = 'Logout token is unsigned or uses the "none" algorithm, which is not allowed.';
+        // signed (a signed JWT also always carries an 'alg' header). Rejecting
+        // it is left to getAlgorithm(), which throws both for 'none' and for an
+        // unrecognized algorithm, and returns null only when the header is
+        // absent. Normalize those throws into OidcClientException, so they are
+        // logged and the back-channel logout endpoint reports them as a bad
+        // request like every other validation failure here.
+        try {
+            $alg = $logoutTokenJws->getAlgorithm();
+        } catch (Throwable $throwable) {
+            $error = sprintf(
+                'Logout token uses an unsigned, unsupported or otherwise invalid signing algorithm. %s',
+                $throwable->getMessage(),
+            );
+            $this->logger?->error($error);
+            throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
+        }
+
+        if ($alg === null) {
+            $error = 'Logout token is unsigned (it carries no "alg" header), which is not allowed.';
             $this->logger?->error($error);
             throw new OidcClientException($error);
         }

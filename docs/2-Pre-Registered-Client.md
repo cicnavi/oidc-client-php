@@ -120,6 +120,20 @@ extract claims from ID token (if it was returned, that is if the `openid`
 scope was used in client configuration), and will fetch user data from
 `userinfo` endpoint using access token for authentication.
 
+The ID token is validated before its claims are used: the signature against
+the OP JWKS, the signing algorithm, the issuer (`iss`), the audience (`aud`)
+and authorized party (`azp`), the timestamps (`exp`, `iat`) and the `nonce`.
+The ID token must be signed with the algorithm the OP uses for this client
+(the `id_token_signed_response_alg` client metadata), which defaults to
+`RS256` per OpenID Connect. If your OP signs ID tokens with a different
+algorithm, set the `idTokenSignedResponseAlg` constructor parameter
+accordingly (or to `null` to accept any supported algorithm). Unsigned ID
+tokens, and ID tokens using the `none` algorithm, are always rejected.
+
+Timestamps are validated using the `timestampValidationLeeway` constructor
+parameter (a `DateInterval`, `PT1M` by default), which sets how much clock
+skew is tolerated on `exp` and `iat`.
+
 ```php
 use Cicnavi\Oidc\PreRegisteredClient;
 /** @var PreRegisteredClient $oidcClient */
@@ -315,9 +329,9 @@ populated and returned instead of emitting output directly.
 
 The logout token must be signed with the algorithm the OP uses for this
 client's ID tokens (the `id_token_signed_response_alg` client metadata),
-which defaults to `RS256` per OpenID Connect. If your OP signs tokens with a
-different algorithm, set the `idTokenSignedResponseAlg` constructor parameter
-accordingly (or to `null` to accept any supported algorithm).
+which defaults to `RS256` per OpenID Connect. This is the same
+`idTokenSignedResponseAlg` constructor parameter that applies to ID tokens
+themselves (see above) - it is not a logout-specific setting.
 
 If this client was registered on the OP with
 `backchannel_logout_session_required` set to true (meaning the OP always

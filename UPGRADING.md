@@ -1,5 +1,33 @@
 # Upgrading
 
+## Unreleased
+
+### Changed
+
+- **Potentially breaking**: ID tokens are now validated against the RP's
+`idTokenSignedResponseAlg` configuration option, which defaults to `RS256`.
+Previously this option was only applied to back-channel logout tokens, and the
+ID token's `alg` header was not checked at all. If your OP signs ID tokens with
+an algorithm other than `RS256`, set `idTokenSignedResponseAlg` on the client to
+match (e.g. `SignatureAlgorithmEnum::ES256->value`) - otherwise the ID token is
+now rejected. This aligns ID token handling with the logout token handling, and
+with OpenID Connect Dynamic Client Registration section 2, which specifies that
+the OP signs a client's ID tokens with the single algorithm that client
+registered.
+- **Potentially breaking**: an ID token which is unsigned, or which uses the
+`none` algorithm, is now explicitly rejected.
+- An ID token whose `aud` claim is an empty array is now rejected. Previously an
+empty audience skipped both the audience and the authorized party (`azp`)
+checks.
+- ID token expiration (`exp`) is now validated using the configured
+`timestampValidationLeeway` instead of an additional zero-leeway comparison,
+which had been rejecting tokens that the configured leeway was meant to accept.
+If you relied on expired ID tokens being rejected the instant they expired,
+regardless of `timestampValidationLeeway`, set that option to `PT0S`.
+- When no expected issuer or no expected client ID is available, the
+corresponding ID token check is skipped as before, but is now logged as a
+warning rather than passing silently.
+
 ## [3.1.0] - 2026-05-04
 
 ### Added

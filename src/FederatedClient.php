@@ -924,6 +924,7 @@ class FederatedClient
             fetchUserinfoClaims: $this->fetchUserinfoClaims,
             expectedIssuer: $opEntityId,
             opEndSessionEndpoint: $opEndSessionEndpoint,
+            expectedIdTokenSigningAlgorithm: $this->idTokenSignedResponseAlg,
         );
     }
 
