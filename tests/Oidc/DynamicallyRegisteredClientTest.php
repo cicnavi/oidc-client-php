@@ -23,6 +23,8 @@ use PHPUnit\Framework\TestCase;
 #[UsesClass(PreRegisteredClient::class)]
 #[UsesClass(\Cicnavi\Oidc\DataStore\DataHandlers\AbstractDataHandler::class)]
 #[UsesClass(\Cicnavi\Oidc\Protocol\RequestDataHandler::class)]
+#[UsesClass(\Cicnavi\Oidc\Protocol\TokenValidator::class)]
+#[UsesClass(\Cicnavi\Oidc\Logout\CacheLoginRevocationRegistry::class)]
 #[UsesClass(\Cicnavi\Oidc\Helpers\HttpHelper::class)]
 #[UsesClass(\Cicnavi\Oidc\Helpers\MetadataHelper::class)]
 final class DynamicallyRegisteredClientTest extends TestCase

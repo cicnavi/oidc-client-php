@@ -13,10 +13,12 @@ use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Logout\Interfaces\LoginRevocationRegistryInterface;
 use Cicnavi\Oidc\Protocol\RequestDataHandler;
+use Cicnavi\Oidc\Protocol\TokenValidator;
 use DateInterval;
 use Exception;
 use GuzzleHttp\Client;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestFactoryInterface;
@@ -46,6 +48,10 @@ use SimpleSAML\OpenID\Jwks\JwksDecorator;
 use SimpleSAML\OpenID\Jwks\JwksFetcher;
 
 #[CoversClass(RequestDataHandler::class)]
+// The handler builds a real TokenValidator when none is injected, and these
+// tests deliberately exercise validation through it rather than against a
+// mock of it - so it is genuinely used here, not covered here.
+#[UsesClass(TokenValidator::class)]
 final class RequestDataHandlerTest extends TestCase
 {
     private MockObject $sessionStoreMock;
@@ -833,12 +839,14 @@ final class RequestDataHandlerTest extends TestCase
     {
         $idTokenJws = $this->mockIdTokenSetup();
         $idTokenJws->method('getAudience')->willReturn(['client-id', 'other-audience']);
-        $idTokenJws->method('getAuthorizedParty')->willReturn(null);
+        // Read as a raw payload claim, so the logout token - which has no
+        // getAuthorizedParty() - can go through the same validator.
+        $idTokenJws->method('getPayloadClaim')->with(ClaimsEnum::Azp->value)->willReturn(null);
         $idTokenJws->method('getExpirationTime')->willReturn(time() + 120);
         $idTokenJws->method('getIssuedAt')->willReturn(time());
 
         $this->expectException(OidcClientException::class);
-        $this->expectExceptionMessage('Authorized party claim (azp) is missing');
+        $this->expectExceptionMessage('authorized party (azp) claim is missing');
 
         $this->sut()->getDataFromIdToken(
             'token',
@@ -851,7 +859,7 @@ final class RequestDataHandlerTest extends TestCase
     {
         $idTokenJws = $this->mockIdTokenSetup();
         $idTokenJws->method('getAudience')->willReturn(['client-id', 'other-audience']);
-        $idTokenJws->method('getAuthorizedParty')->willReturn('other-client-id');
+        $idTokenJws->method('getPayloadClaim')->with(ClaimsEnum::Azp->value)->willReturn('other-client-id');
         $idTokenJws->method('getExpirationTime')->willReturn(time() + 120);
         $idTokenJws->method('getIssuedAt')->willReturn(time());
 
@@ -869,7 +877,7 @@ final class RequestDataHandlerTest extends TestCase
     {
         $idTokenJws = $this->mockIdTokenSetup();
         $idTokenJws->method('getAudience')->willReturn(['client-id', 'other-audience']);
-        $idTokenJws->method('getAuthorizedParty')->willReturn('client-id');
+        $idTokenJws->method('getPayloadClaim')->with(ClaimsEnum::Azp->value)->willReturn('client-id');
         $idTokenJws->method('getExpirationTime')->willReturn(time() + 120);
         $idTokenJws->method('getIssuedAt')->willReturn(time());
         $idTokenJws->method('getNonce')->willReturn('nonce');
@@ -2081,10 +2089,10 @@ final class RequestDataHandlerTest extends TestCase
 
     public function testStoreLoginDataStoresIdTokenAndClaims(): void
     {
-        $idTokenFactory = $this->createMock(IdTokenFactory::class);
-        $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
-        $idTokenJws = $this->createMock(IdToken::class);
-        $idTokenFactory->method('fromToken')->with('id-token')->willReturn($idTokenJws);
+        $idTokenHintFactory = $this->createMock(IdTokenHintFactory::class);
+        $this->coreMock->method('idTokenHintFactory')->willReturn($idTokenHintFactory);
+        $idTokenJws = $this->createMock(IdTokenHint::class);
+        $idTokenHintFactory->method('fromToken')->with('id-token')->willReturn($idTokenJws);
         $idTokenJws->method('getPayload')->willReturn([
             'iss' => 'https://op.example.org',
             'sub' => 'user-1',
@@ -2105,9 +2113,9 @@ final class RequestDataHandlerTest extends TestCase
 
     public function testStoreLoginDataStoresRawIdTokenOnClaimExtractionError(): void
     {
-        $idTokenFactory = $this->createMock(IdTokenFactory::class);
-        $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
-        $idTokenFactory->method('fromToken')->willThrowException(new JwsException('Parse error'));
+        $idTokenHintFactory = $this->createMock(IdTokenHintFactory::class);
+        $this->coreMock->method('idTokenHintFactory')->willReturn($idTokenHintFactory);
+        $idTokenHintFactory->method('fromToken')->willThrowException(new JwsException('Parse error'));
 
         $this->loggerMock->expects($this->once())->method('warning');
 
@@ -2125,7 +2133,7 @@ final class RequestDataHandlerTest extends TestCase
 
     public function testStoreLoginDataWithoutIdToken(): void
     {
-        $this->coreMock->expects($this->never())->method('idTokenFactory');
+        $this->coreMock->expects($this->never())->method('idTokenHintFactory');
 
         $this->expectLoginDataPut([
             'id_token' => null,
@@ -2227,6 +2235,19 @@ final class RequestDataHandlerTest extends TestCase
         $idTokenJws->method('getNonce')->willReturn('nonce');
         $idTokenJws->method('getAudience')->willReturn(['client-id']);
         $idTokenJws->method('getPayload')->willReturn([
+            'iss' => 'https://op.example.org',
+            'sub' => 'sub1',
+            'sid' => 'op-session-1',
+        ]);
+
+        // storeLoginData() reads the claims it persists back out of the raw ID
+        // token through the hint factory, which - unlike the ID token factory -
+        // does not reject a token that has since expired.
+        $idTokenHintFactory = $this->createMock(IdTokenHintFactory::class);
+        $this->coreMock->method('idTokenHintFactory')->willReturn($idTokenHintFactory);
+        $idTokenHint = $this->createMock(IdTokenHint::class);
+        $idTokenHintFactory->method('fromToken')->willReturn($idTokenHint);
+        $idTokenHint->method('getPayload')->willReturn([
             'iss' => 'https://op.example.org',
             'sub' => 'sub1',
             'sid' => 'op-session-1',
@@ -2711,11 +2732,47 @@ final class RequestDataHandlerTest extends TestCase
         $logoutTokenJws->method('getExpirationTime')->willReturn(time() + 120);
         $logoutTokenJws->method('getJwtId')->willReturn('jti-1');
 
-        $this->loggerMock->expects($this->once())->method('warning');
+        // The expectations are supplied so that the only warning left to
+        // account for is the one about the 'typ' header - skipping the issuer
+        // or audience check warns as well.
+        $this->loggerMock->expects($this->once())->method('warning')->with($this->stringContains('typ'));
 
-        $result = $this->sut()->validateLogoutToken('logout-token', 'https://op.example.org/jwks');
+        $result = $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            'https://op.example.org',
+            'client-id',
+        );
 
         $this->assertSame($logoutTokenJws, $result);
+    }
+
+    /**
+     * Expiry is validated when the claim is read, against the clock as it
+     * stands at that moment. Building the token read it once, but the JWKS
+     * refresh retry can put a network round trip between then and here - long
+     * enough for a short-lived logout token to expire - so it is read again
+     * rather than trusted.
+     */
+    public function testValidateLogoutTokenRejectsTokenWhichExpiredAfterBeingParsed(): void
+    {
+        $logoutTokenJws = $this->mockLogoutTokenSetup();
+        $logoutTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $logoutTokenJws->method('getIssuer')->willReturn('https://op.example.org');
+        $logoutTokenJws->method('getAudience')->willReturn(['client-id']);
+        $logoutTokenJws->method('getType')->willReturn('logout+jwt');
+        $logoutTokenJws->method('getExpirationTime')
+            ->willThrowException(new JwsException('Expiration Time claim (1) is lesser than current time.'));
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Logout token is no longer valid.');
+
+        $this->sut()->validateLogoutToken(
+            'logout-token',
+            'https://op.example.org/jwks',
+            'https://op.example.org',
+            'client-id',
+        );
     }
 
     public function testValidateLogoutTokenThrowsOnStaleIssuedAt(): void

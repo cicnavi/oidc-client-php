@@ -129,6 +129,8 @@ class RequestDataHandler
 
     protected LoginRevocationRegistryInterface $loginRevocationRegistry;
 
+    protected TokenValidator $tokenValidator;
+
     public function __construct(
         protected readonly SessionStoreInterface $sessionStore,
         protected readonly Core $core,
@@ -142,11 +144,13 @@ class RequestDataHandler
         protected readonly ?LoggerInterface $logger = null,
         protected readonly \DateInterval $maxCacheDuration = new \DateInterval('PT6H'),
         ?LoginRevocationRegistryInterface $loginRevocationRegistry = null,
+        ?TokenValidator $tokenValidator = null,
     ) {
         $this->stateNonceDataHandler = $stateNonceDataHandler ?? new StateNonce($this->sessionStore);
         $this->pkceDataHandler = $pkceDataHandler ?? new Pkce($this->sessionStore);
         $this->loginRevocationRegistry = $loginRevocationRegistry ??
         new CacheLoginRevocationRegistry($this->cache, logger: $this->logger);
+        $this->tokenValidator = $tokenValidator ?? new TokenValidator($this->logger);
     }
 
     /**
@@ -844,6 +848,9 @@ class RequestDataHandler
      * Validate provided ID token and get claims from it.
      *
      * @param string $idToken ID token received from token endpoint.
+     * @param bool $refreshCache Start from a freshly fetched JWKS rather than
+     * the cached one. Since that leaves no fresher keys to fall back on, it
+     * also disables the single signature verification retry.
      * @param ?string $expectedSigningAlgorithm When provided, the ID token
      * 'alg' header must equal this value (the RP's
      * 'id_token_signed_response_alg', which per OpenID Connect Dynamic Client
@@ -868,132 +875,30 @@ class RequestDataHandler
 
         try {
             $idTokenJws = $this->core->idTokenFactory()->fromToken($idToken);
-        } catch (JwsException $jwsException) {
-            $error = 'Error building ID Token: ' . $jwsException->getMessage();
-            $this->logger?->error($error, ['idToken' => $idToken]);
-            throw new OidcClientException($error, $jwsException->getCode(), $jwsException);
-        }
-
-        // Validate the 'alg' header parameter before verifying the signature,
-        // so an invalid-algorithm token is rejected without a needless JWKS
-        // refresh retry. Mirrors validateLogoutToken().
-        //
-        // ID Tokens MUST be signed (OpenID Connect Core section 2), so an 'alg'
-        // of 'none' is not acceptable here. Note the ID token is received over
-        // the TLS-protected token endpoint, where the specification does permit
-        // 'none' if the RP registered it - this client does not support that.
-        // Rejecting it is left to getAlgorithm(), which throws both for 'none'
-        // and for an unrecognized algorithm, and returns null only when the
-        // header is absent. Normalize those throws into OidcClientException, so
-        // they are logged and the caller sees this class' own exception type
-        // rather than a lower-level one.
-        try {
-            $alg = $idTokenJws->getAlgorithm();
         } catch (Throwable $throwable) {
-            $error = sprintf(
-                'ID token uses an unsigned, unsupported or otherwise invalid signing algorithm. %s',
-                $throwable->getMessage(),
-            );
-            $this->logger?->error($error);
+            $error = 'Error building ID Token: ' . $throwable->getMessage();
+            $this->logger?->error($error, ['idToken' => $idToken]);
             throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
         }
 
-        if ($alg === null) {
-            $error = 'ID token is unsigned (it carries no "alg" header), which is not allowed.';
-            $this->logger?->error($error);
-            throw new OidcClientException($error);
-        }
+        // Already holding a freshly fetched JWKS leaves nothing to retry with.
+        $refreshedJwksResolver = $refreshCache ? null : fn(): array => $this->getJwksUriContent($jwksUri, true);
 
-        // The algorithm the OP uses is the single one the RP registered
-        // ('id_token_signed_response_alg', default RS256) - not the OP's broad
+        // Signing algorithm, signature, 'iss', 'aud' and 'azp' are validated
+        // exactly as they are for a logout token, so both go through the same
+        // collaborator - see TokenValidator for the order and the reasoning.
+        // The expected signing algorithm is the single one the RP registered
+        // ('id_token_signed_response_alg', default RS256), not the OP's broad
         // advertised 'id_token_signing_alg_values_supported' set.
-        if ($expectedSigningAlgorithm !== null && $alg !== $expectedSigningAlgorithm) {
-            $error = sprintf(
-                'ID token signing algorithm "%s" does not match the expected algorithm "%s".',
-                $alg,
-                $expectedSigningAlgorithm,
-            );
-            $this->logger?->error($error);
-            throw new OidcClientException($error);
-        }
-
-        try {
-            $idTokenJws->verifyWithKeySet($jwks);
-        } catch (Throwable $throwable) {
-            // If we have already refreshed our cache (we have fresh JWKS), throw...
-            if ($refreshCache) {
-                $this->logger?->error('ID token is not valid. ' . $throwable->getMessage());
-                throw new OidcClientException(
-                    'ID token is not valid. ' . $throwable->getMessage(),
-                    $throwable->getCode(),
-                    $throwable,
-                );
-            }
-
-            $this->logger?->warning('ID Token signature verification failed, but trying once more with JWKS refresh.');
-            // Try once more with refreshing cache (fetch fresh JWKS).
-            return $this->getDataFromIdToken(
-                idToken: $idToken,
-                jwksUri: $jwksUri,
-                useNonce: $useNonce,
-                refreshCache: true,
-                expectedIssuer: $expectedIssuer,
-                expectedClientId: $expectedClientId,
-                expectedSigningAlgorithm: $expectedSigningAlgorithm,
-            );
-        }
-
-        // Validate Issuer (iss)
-        if ($expectedIssuer === null) {
-            // Nothing to compare the claim against, so the check cannot run.
-            // This happens when the OP discovery document carries no 'issuer'
-            // (which makes it invalid), so make the gap visible.
-            $this->logger?->warning(
-                'No expected issuer given, skipping ID token issuer (iss) validation.',
-            );
-        } else {
-            $iss = $idTokenJws->getIssuer();
-            if ($iss !== $expectedIssuer) {
-                $error = sprintf('Issuer claim "%s" does not match expected issuer "%s".', $iss, $expectedIssuer);
-                $this->logger?->error($error);
-                throw new OidcClientException($error);
-            }
-        }
-
-        // Validate Audience (aud) and Authorized Party (azp)
-        if ($expectedClientId === null) {
-            $this->logger?->warning(
-                'No expected client ID given, skipping ID token audience (aud) and authorized party (azp) validation.',
-            );
-        } else {
-            // An empty 'aud' cannot contain the client ID, so it is rejected
-            // rather than skipped - matching validateLogoutToken().
-            $aud = $idTokenJws->getAudience();
-            if (!in_array($expectedClientId, $aud, true)) {
-                $error = sprintf('Audience claim does not contain expected client ID "%s".', $expectedClientId);
-                $this->logger?->error($error);
-                throw new OidcClientException($error);
-            }
-
-            if (count($aud) > 1) {
-                $azp = $idTokenJws->getAuthorizedParty();
-                if ($azp === null) {
-                    $error = 'Authorized party claim (azp) is missing but multiple audiences are present.';
-                    $this->logger?->error($error);
-                    throw new OidcClientException($error);
-                }
-
-                if ($azp !== $expectedClientId) {
-                    $error = sprintf(
-                        'Authorized party claim "%s" does not match expected client ID "%s".',
-                        $azp,
-                        $expectedClientId,
-                    );
-                    $this->logger?->error($error);
-                    throw new OidcClientException($error);
-                }
-            }
-        }
+        $this->tokenValidator->validate(
+            jws: $idTokenJws,
+            tokenName: 'ID token',
+            jwks: $jwks,
+            refreshedJwksResolver: $refreshedJwksResolver,
+            expectedIssuer: $expectedIssuer,
+            expectedClientId: $expectedClientId,
+            expectedSigningAlgorithm: $expectedSigningAlgorithm,
+        );
 
         // Validate Expiration Time (exp) and Issued At (iat). Both claims are
         // REQUIRED, and reading them is what validates them: the IdToken
@@ -1196,7 +1101,12 @@ class RequestDataHandler
      *
      * Claim extraction is best-effort: the ID token was already validated
      * during login, so an extraction error is only logged and the raw ID
-     * token is stored anyway.
+     * token is stored anyway. It goes through the ID token hint factory
+     * rather than the ID token one, because the latter rejects an expired
+     * token outright - which would take this method down the best-effort path
+     * and persist a login with null 'iss', 'sub' and 'sid', leaving
+     * back-channel logout unable to correlate anything with it. The claims are
+     * only being read back out here, so expiry is beside the point.
      */
     public function storeLoginData(
         ?string $idToken,
@@ -1207,7 +1117,7 @@ class RequestDataHandler
 
         if (is_string($idToken)) {
             try {
-                $claims = $this->core->idTokenFactory()->fromToken($idToken)->getPayload();
+                $claims = $this->core->idTokenHintFactory()->fromToken($idToken)->getPayload();
             } catch (Throwable $throwable) {
                 $this->logger?->warning(
                     'Error extracting claims from ID token while storing login data. ' . $throwable->getMessage(),
@@ -1570,7 +1480,9 @@ class RequestDataHandler
      * minutes.
      * @param bool $checkJtiReplay Whether to reject logout tokens whose
      * 'jti' was already consumed (replay detection, uses the cache).
-     * @param bool $refreshCache Used internally for the JWKS refresh retry.
+     * @param bool $refreshCache Start from a freshly fetched JWKS rather than
+     * the cached one. Since that leaves no fresher keys to fall back on, it
+     * also disables the single signature verification retry.
      * @throws OidcClientException If the logout token is not valid (the
      * back-channel logout endpoint should respond with HTTP 400).
      */
@@ -1595,116 +1507,25 @@ class RequestDataHandler
             throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
         }
 
-        // Validate the 'alg' Header Parameter (specification section 2.6),
-        // before verifying the signature so an invalid-algorithm token is
-        // rejected without a needless JWKS refresh retry.
-        //
-        // An 'alg' of 'none' MUST NOT be used for Logout Tokens - they must be
-        // signed (a signed JWT also always carries an 'alg' header). Rejecting
-        // it is left to getAlgorithm(), which throws both for 'none' and for an
-        // unrecognized algorithm, and returns null only when the header is
-        // absent. Normalize those throws into OidcClientException, so they are
-        // logged and the back-channel logout endpoint reports them as a bad
-        // request like every other validation failure here.
-        try {
-            $alg = $logoutTokenJws->getAlgorithm();
-        } catch (Throwable $throwable) {
-            $error = sprintf(
-                'Logout token uses an unsigned, unsupported or otherwise invalid signing algorithm. %s',
-                $throwable->getMessage(),
-            );
-            $this->logger?->error($error);
-            throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
-        }
+        // Already holding a freshly fetched JWKS leaves nothing to retry with.
+        $refreshedJwksResolver = $refreshCache ? null : fn(): array => $this->getJwksUriContent($jwksUri, true);
 
-        if ($alg === null) {
-            $error = 'Logout token is unsigned (it carries no "alg" header), which is not allowed.';
-            $this->logger?->error($error);
-            throw new OidcClientException($error);
-        }
-
-        // Like ID Tokens, the algorithm the OP uses is the single one the RP
-        // registered ('id_token_signed_response_alg', default RS256) - not the
-        // OP's broad advertised 'id_token_signing_alg_values_supported' set.
-        if ($expectedSigningAlgorithm !== null && $alg !== $expectedSigningAlgorithm) {
-            $error = sprintf(
-                'Logout token signing algorithm "%s" does not match the expected algorithm "%s".',
-                $alg,
-                $expectedSigningAlgorithm,
-            );
-            $this->logger?->error($error);
-            throw new OidcClientException($error);
-        }
-
-        try {
-            $logoutTokenJws->verifyWithKeySet($jwks);
-        } catch (Throwable $throwable) {
-            // If we have already refreshed our cache (we have fresh JWKS), throw...
-            if ($refreshCache) {
-                $error = 'Logout token is not valid. ' . $throwable->getMessage();
-                $this->logger?->error($error);
-                throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
-            }
-
-            $this->logger?->warning(
-                'Logout token signature verification failed, but trying once more with JWKS refresh.',
-            );
-            // Try once more with refreshing cache (fetch fresh JWKS).
-            return $this->validateLogoutToken(
-                logoutToken: $logoutToken,
-                jwksUri: $jwksUri,
-                expectedIssuer: $expectedIssuer,
-                expectedClientId: $expectedClientId,
-                expectedSigningAlgorithm: $expectedSigningAlgorithm,
-                requireSid: $requireSid,
-                logoutTokenMaxAge: $logoutTokenMaxAge,
-                checkJtiReplay: $checkJtiReplay,
-                refreshCache: true,
-            );
-        }
-
-        // Validate Issuer (iss)
-        if ($expectedIssuer !== null) {
-            $iss = $logoutTokenJws->getIssuer();
-            if ($iss !== $expectedIssuer) {
-                $error = sprintf(
-                    'Logout token issuer claim "%s" does not match expected issuer "%s".',
-                    $iss,
-                    $expectedIssuer,
-                );
-                $this->logger?->error($error);
-                throw new OidcClientException($error);
-            }
-        }
-
-        // Validate Audience (aud) and Authorized Party (azp) the same way as
-        // for ID Tokens (specification section 2.6): the audience must contain
-        // the client ID, and when there are multiple audiences an 'azp' claim
-        // matching the client ID must be present.
-        if ($expectedClientId !== null) {
-            $aud = $logoutTokenJws->getAudience();
-
-            if (!in_array($expectedClientId, $aud, true)) {
-                $error = sprintf(
-                    'Logout token audience claim does not contain expected client ID "%s".',
-                    $expectedClientId,
-                );
-                $this->logger?->error($error);
-                throw new OidcClientException($error);
-            }
-
-            if (count($aud) > 1) {
-                $azp = $logoutTokenJws->getPayloadClaim(ClaimsEnum::Azp->value);
-                if ($azp !== $expectedClientId) {
-                    $error = sprintf(
-                        'Logout token authorized party (azp) claim does not match expected client ID "%s".',
-                        $expectedClientId,
-                    );
-                    $this->logger?->error($error);
-                    throw new OidcClientException($error);
-                }
-            }
-        }
+        // The signing algorithm, the signature, and the 'iss', 'aud' and 'azp'
+        // claims are validated exactly as they are for an ID token - which is
+        // what specification section 2.6 asks for, since it defines these
+        // checks by reference to ID Token validation - so both go through the
+        // same collaborator. See TokenValidator for the order and the
+        // reasoning. Validation failures surface as OidcClientException, which
+        // the back-channel logout endpoint reports as a bad request.
+        $this->tokenValidator->validate(
+            jws: $logoutTokenJws,
+            tokenName: 'Logout token',
+            jwks: $jwks,
+            refreshedJwksResolver: $refreshedJwksResolver,
+            expectedIssuer: $expectedIssuer,
+            expectedClientId: $expectedClientId,
+            expectedSigningAlgorithm: $expectedSigningAlgorithm,
+        );
 
         // When the RP registered 'backchannel_logout_session_required' as
         // true, the OP is expected to include a 'sid' identifying the exact
@@ -1728,6 +1549,22 @@ class RequestDataHandler
                 $typ,
                 JwtTypesEnum::LogoutJwt->value,
             ));
+        }
+
+        // Validate Expiration Time (exp) against the clock as it stands now.
+        // Reading the claim is what validates it: the LogoutToken instance
+        // rejects an expired token, applying the configured timestamp
+        // validation leeway. It was already read once while the token was
+        // being built, but the JWKS refresh retry can put a network round trip
+        // between that moment and this one - long enough for a short-lived
+        // logout token to expire - so it is read again rather than trusted.
+        // The ID token path reads 'exp' after validation for the same reason.
+        try {
+            $logoutTokenJws->getExpirationTime();
+        } catch (Throwable $throwable) {
+            $error = 'Logout token is no longer valid. ' . $throwable->getMessage();
+            $this->logger?->error($error);
+            throw new OidcClientException($error, (int) $throwable->getCode(), $throwable);
         }
 
         // Logout token freshness (iat). The specification encourages OPs to

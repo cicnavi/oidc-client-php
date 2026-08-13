@@ -75,6 +75,36 @@ the unmerged ID token claims. If you subclass `RequestDataHandler` and override
 `getUserData()`. The public signature of `getClaims()` is unchanged, and calling
 it directly behaves as before, as does an override of `storeLoginData()`, which
 `getUserData()` still calls.
+- The checks that OpenID Connect defines identically for ID tokens and logout
+tokens - the `alg` header, the signature (including the one-time JWKS refresh
+retry), and the `iss`, `aud` and `azp` claims - are now performed by a single
+new `Cicnavi\Oidc\Protocol\TokenValidator` collaborator instead of by two copies
+which had drifted apart. `RequestDataHandler` takes one as a new optional last
+constructor argument, and builds its own when none is given. Behaviour is
+unchanged apart from the two items below.
+- Logout token validation now logs a warning when it is asked to validate
+without an expected issuer or without an expected client ID, and so skips that
+check - as ID token validation already did.
+- Validation failure messages for both token types were unified, and now
+consistently name the token and the claim they are about (for example
+`ID token issuer (iss) claim "..." does not match expected issuer "..."`). If
+you match on the text of these messages rather than catching
+`OidcClientException`, revisit those matches.
+- `RequestDataHandler::storeLoginData()` now reads the claims it persists out of
+the ID token using the ID token *hint* factory rather than the ID token factory.
+The latter rejects an expired token, which would have sent the method down its
+best-effort path and persisted a login with a null `iss`, `sub` and `sid`,
+leaving back-channel logout unable to correlate anything with that login.
+- Logout token expiration (`exp`) is now checked once more after the signature
+has been verified, rather than only while the token is being built. The two
+moments are separated by a network round trip whenever the JWKS refresh retry
+runs, which is long enough for a deliberately short-lived logout token to
+expire in flight. Such a token is now rejected with
+`Logout token is no longer valid.` instead of being accepted.
+- An ID token which fails to build now surfaces as an `OidcClientException`
+regardless of what the underlying library threw. Previously only `JwsException`
+and its subclasses were wrapped, so an `InvalidValueException` from token
+parsing escaped unwrapped. Logout token handling already wrapped everything.
 
 ## [3.1.0] - 2026-05-04
 
