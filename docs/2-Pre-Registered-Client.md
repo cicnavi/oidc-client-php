@@ -134,6 +134,32 @@ Timestamps are validated using the `timestampValidationLeeway` constructor
 parameter (a `DateInterval`, `PT1M` by default), which sets how much clock
 skew is tolerated on `exp` and `iat`.
 
+`getUserData()` returns the ID token claims and the UserInfo claims combined
+into one array. UserInfo claims win for ordinary End-User claims, since that
+endpoint is the more complete and more current source for them. Claims that
+belong to the ID token itself stay as the signed token had them though - the
+JWT registered claims `iss`, `aud`, `exp`, `iat`, `nbf` and `jti`, the
+authentication context claims `auth_time`, `acr` and `amr`, and the binding and
+session claims `azp`, `nonce`, `at_hash`, `c_hash` and `sid` - so a UserInfo
+response cannot replace values that were
+validated on the signed token, or weaken the authentication context your
+application makes decisions on.
+
+If you want to assert something against the ID token itself rather than against
+the combined set, use `getIdTokenClaims()`, which returns the ID token claims as
+validated at login (or `null` when no login data is available):
+
+```php
+use Cicnavi\Oidc\PreRegisteredClient;
+/** @var PreRegisteredClient $oidcClient */
+
+$idTokenClaims = $oidcClient->getIdTokenClaims();
+```
+
+Like `getIdToken()`, it reads from the persisted login data, so it stops
+returning claims as soon as the login ends - on logout, session expiry, or a
+back-channel logout revocation.
+
 ```php
 use Cicnavi\Oidc\PreRegisteredClient;
 /** @var PreRegisteredClient $oidcClient */

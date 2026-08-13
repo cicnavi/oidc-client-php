@@ -536,6 +536,23 @@ class PreRegisteredClient
     }
 
     /**
+     * Claims of the ID token received at the last successful login, or null
+     * when not available.
+     *
+     * These are the claims as validated at login, without the UserInfo claims
+     * that getUserData() combines them with. Use this to assert something
+     * against the signed ID token itself - for example its 'iss' or 'aud' -
+     * rather than against the combined set, where End-User claims from the
+     * UserInfo response are also present.
+     *
+     * @return mixed[]|null
+     */
+    public function getIdTokenClaims(): ?array
+    {
+        return $this->requestDataHandler->getLoginIdTokenClaims();
+    }
+
+    /**
      * Login data persisted at the last successful login (raw ID token, its
      * 'iss' / 'sub' / 'sid' claims, OP end session endpoint), or null when
      * not available.

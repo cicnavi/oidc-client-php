@@ -26,6 +26,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamInterface;
 use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
+use SimpleSAML\OpenID\Codebooks\ClaimsEnum;
 use SimpleSAML\OpenID\Codebooks\ClientAssertionTypesEnum;
 use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
 use SimpleSAML\OpenID\Codebooks\ParamsEnum;
@@ -36,6 +37,8 @@ use SimpleSAML\OpenID\Exceptions\IdTokenException;
 use SimpleSAML\OpenID\Exceptions\JwsException;
 use SimpleSAML\OpenID\Core\IdToken;
 use SimpleSAML\OpenID\Core\Factories\IdTokenFactory;
+use SimpleSAML\OpenID\Core\Factories\IdTokenHintFactory;
+use SimpleSAML\OpenID\Core\IdTokenHint;
 use SimpleSAML\OpenID\Core\Factories\LogoutTokenFactory;
 use SimpleSAML\OpenID\Core\LogoutToken;
 use SimpleSAML\OpenID\Jwks;
@@ -1268,6 +1271,166 @@ final class RequestDataHandlerTest extends TestCase
             expectedIssuer: 'https://op.example.org',
             expectedClientId: 'client-id',
         );
+    }
+
+    /**
+     * A UserInfo response must not be able to replace the ID token's own
+     * protocol claims, which were validated on the signed token.
+     */
+    public function testGetClaimsDoesNotLetUserInfoShadowProtocolClaims(): void
+    {
+        $jwksFetcher = $this->createMock(JwksFetcher::class);
+        $this->jwksMock->method('jwksFetcher')->willReturn($jwksFetcher);
+        $keySet = $this->createMock(JwksDecorator::class);
+        $keySet->method('jsonSerialize')->willReturn(['keys' => []]);
+        $jwksFetcher->method('fromCacheOrJwksUri')->willReturn($keySet);
+
+        $idTokenFactory = $this->createMock(IdTokenFactory::class);
+        $this->coreMock->method('idTokenFactory')->willReturn($idTokenFactory);
+        $idTokenJws = $this->createMock(IdToken::class);
+        $idTokenFactory->method('fromToken')->willReturn($idTokenJws);
+        $idTokenJws->method('getAlgorithm')->willReturn('RS256');
+        $idTokenJws->method('getNonce')->willReturn('nonce');
+        $idTokenJws->method('getAudience')->willReturn(['client-id']);
+        $idTokenJws->method('getPayload')->willReturn([
+            'sub' => 'sub1',
+            'iss' => 'https://op.example.com',
+            'aud' => 'client-id',
+            'azp' => 'client-id',
+            'exp' => 1234,
+            'iat' => 1200,
+            'nonce' => 'nonce',
+            'nbf' => 1200,
+            'auth_time' => 1100,
+            'acr' => 'high',
+            'amr' => ['mfa', 'otp'],
+            'sid' => 'op-session-1',
+        ]);
+
+        $request = $this->createMock(RequestInterface::class);
+        $this->requestFactoryMock->method('createRequest')->willReturn($request);
+        $request->method('withHeader')->willReturn($request);
+
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $stream = $this->createMock(StreamInterface::class);
+        // A UserInfo response attempting to override every protocol claim,
+        // while also carrying a legitimate End-User claim.
+        $stream->method('__toString')->willReturn(
+            '{"sub": "sub1", "name": "n1", "iss": "https://evil.example.com", "aud": "other-client",' .
+            ' "azp": "other-client", "exp": 9999, "iat": 9998, "nbf": 9996, "nonce": "other-nonce",' .
+            ' "auth_time": 9997, "acr": "low", "amr": ["pwd"], "sid": "other-session"}',
+        );
+        $response->method('getBody')->willReturn($stream);
+        $this->httpClientMock->method('sendRequest')->willReturn($response);
+
+        $result = $this->sut()->getClaims(
+            [
+                ParamsEnum::AccessToken->value => 'at',
+                ParamsEnum::TokenType->value => 'Bearer',
+                ParamsEnum::IdToken->value => 'id-token',
+            ],
+            'https://op.example.com/jwks',
+            'https://op.example.com/userinfo',
+        );
+
+        $this->assertSame('https://op.example.com', $result['iss']);
+        $this->assertSame('client-id', $result['aud']);
+        $this->assertSame('client-id', $result['azp']);
+        $this->assertSame(1234, $result['exp']);
+        $this->assertSame(1200, $result['iat']);
+        $this->assertSame(1200, $result['nbf']);
+        $this->assertSame('nonce', $result['nonce']);
+        // Authentication context claims are what applications use to enforce
+        // assurance levels, MFA and reauthentication - an unsigned UserInfo
+        // value must not be able to weaken them.
+        $this->assertSame(1100, $result['auth_time']);
+        $this->assertSame('high', $result['acr']);
+        $this->assertSame(['mfa', 'otp'], $result['amr']);
+        $this->assertSame('op-session-1', $result['sid']);
+        // Ordinary End-User claims from UserInfo still come through.
+        $this->assertSame('n1', $result['name']);
+    }
+
+    /**
+     * Without an ID token there is no validated value to defend, so UserInfo
+     * claims pass through untouched.
+     */
+    public function testGetClaimsKeepsUserInfoClaimsWhenThereIsNoIdToken(): void
+    {
+        $request = $this->createMock(RequestInterface::class);
+        $this->requestFactoryMock->method('createRequest')->willReturn($request);
+        $request->method('withHeader')->willReturn($request);
+
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $stream = $this->createMock(StreamInterface::class);
+        $stream->method('__toString')->willReturn('{"sub": "sub1", "iss": "https://op.example.com"}');
+        $response->method('getBody')->willReturn($stream);
+        $this->httpClientMock->method('sendRequest')->willReturn($response);
+
+        $result = $this->sut()->getClaims(
+            [
+                ParamsEnum::AccessToken->value => 'at',
+                ParamsEnum::TokenType->value => 'Bearer',
+            ],
+            'https://op.example.com/jwks',
+            'https://op.example.com/userinfo',
+        );
+
+        $this->assertSame(['sub' => 'sub1', 'iss' => 'https://op.example.com'], $result);
+    }
+
+    public function testGetLoginIdTokenClaimsReturnsNullWithoutIdToken(): void
+    {
+        $this->sessionStoreMock->method('get')->willReturn(null);
+
+        $this->assertNull($this->sut()->getLoginIdTokenClaims());
+    }
+
+    /**
+     * Parsed as an ID Token Hint, not an ID Token: an ID token usually expires
+     * well before the login session does, and only the hint abstraction skips
+     * validating 'exp' against the current time. Parsing it as an ID Token
+     * would make this method go dark mid-session.
+     */
+    public function testGetLoginIdTokenClaimsParsesPersistedIdTokenToleratingExpiry(): void
+    {
+        $this->sessionStoreMock->method('get')->willReturn([
+            ParamsEnum::IdToken->value => 'id-token',
+            ClaimsEnum::Iss->value => 'https://op.example.com',
+            ClaimsEnum::Sub->value => 'sub1',
+            RequestDataHandler::KEY_LOGGED_IN_AT => time(),
+        ]);
+
+        // An expired ID token must not be parsed through idTokenFactory(),
+        // whose IdToken constructor validates 'exp' and would throw.
+        $this->coreMock->expects($this->never())->method('idTokenFactory');
+
+        $idTokenHintFactory = $this->createMock(IdTokenHintFactory::class);
+        $this->coreMock->method('idTokenHintFactory')->willReturn($idTokenHintFactory);
+        $idTokenHint = $this->createMock(IdTokenHint::class);
+        $idTokenHintFactory->method('fromToken')->with('id-token')->willReturn($idTokenHint);
+        $idTokenHint->method('getPayload')->willReturn(['sub' => 'sub1', 'iss' => 'https://op.example.com']);
+
+        $this->assertSame(
+            ['sub' => 'sub1', 'iss' => 'https://op.example.com'],
+            $this->sut()->getLoginIdTokenClaims(),
+        );
+    }
+
+    public function testGetLoginIdTokenClaimsReturnsNullOnParseError(): void
+    {
+        $this->sessionStoreMock->method('get')->willReturn([
+            ParamsEnum::IdToken->value => 'id-token',
+            RequestDataHandler::KEY_LOGGED_IN_AT => time(),
+        ]);
+
+        $idTokenHintFactory = $this->createMock(IdTokenHintFactory::class);
+        $this->coreMock->method('idTokenHintFactory')->willReturn($idTokenHintFactory);
+        $idTokenHintFactory->method('fromToken')->willThrowException(new JwsException('Parse error'));
+
+        $this->assertNull($this->sut()->getLoginIdTokenClaims());
     }
 
     public function testGetClaimsSuccess(): void

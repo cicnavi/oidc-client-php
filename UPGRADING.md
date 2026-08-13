@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- New `getIdTokenClaims()` method on `PreRegisteredClient`,
+`DynamicallyRegisteredClient` and `FederatedClient`, returning the claims of the
+ID token received at the last successful login, or `null` when not available.
+These are the claims as validated at login, without the UserInfo claims that
+`getUserData()` combines them with - use it to assert something against the
+signed ID token itself (its `iss` or `aud`, say) rather than against the
+combined set. The claims are derived from the raw ID token already persisted in
+the login data, so nothing extra is stored, and they become unavailable at the
+same moment the login does (logout, session expiry, or a back-channel logout
+revocation).
+
 ### Changed
 
 - **Potentially breaking**: ID tokens are now validated against the RP's
@@ -35,6 +48,33 @@ produced an "Undefined array key" warning followed by a misleading "must be
 equal" error.
 - The ID token / UserInfo `sub` cross-check now reports which side is missing
 the claim, instead of reporting an absent claim as an inequality.
+- **Potentially breaking**: the claims returned by `getUserData()` no longer let
+a UserInfo response override claims that belong to the ID token itself, rather
+than describing the End-User: the JWT registered claims `iss`, `aud`, `exp`,
+`iat`, `nbf` and `jti`, the authentication context claims `auth_time`, `acr` and
+`amr`, and the binding and session claims `azp`, `nonce`, `at_hash`, `c_hash`
+and `sid`. Previously the UserInfo
+values won for every claim, so a caller re-checking `iss` or `aud` on the
+returned array - or `acr` / `amr` / `auth_time` to enforce an assurance level,
+multi-factor authentication or reauthentication - was checking unsigned values
+rather than the ones validated on the signed token. Ordinary End-User claims
+still come from the UserInfo response as before, and a claim absent from the ID
+token is not affected. (`sub` was already required to be equal in both, so it is
+unchanged.) None of the protected claims belong to the UserInfo response claim
+set in the first place (OpenID Connect Core section 5.1), so a UserInfo response
+carrying one is already anomalous; a suppressed override is logged as a warning.
+If you were relying on one of these UserInfo values reaching your application,
+read it from the UserInfo endpoint yourself.
+- **Potentially breaking for subclasses**: `RequestDataHandler::getUserData()` no
+longer calls `getClaims()`. Both now build on two new protected methods -
+`resolveClaims()`, which gathers the ID token and UserInfo claims separately,
+and `combineClaims()`, which merges them. This is what lets `getUserData()` reach
+the unmerged ID token claims. If you subclass `RequestDataHandler` and override
+`getClaims()` to customise login behaviour, override `resolveClaims()` or
+`combineClaims()` instead - an override of `getClaims()` alone no longer affects
+`getUserData()`. The public signature of `getClaims()` is unchanged, and calling
+it directly behaves as before, as does an override of `storeLoginData()`, which
+`getUserData()` still calls.
 
 ## [3.1.0] - 2026-05-04
 

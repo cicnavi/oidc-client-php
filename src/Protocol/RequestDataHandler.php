@@ -60,6 +60,50 @@ class RequestDataHandler
     public const KEY_LOGGED_IN_AT = 'logged_in_at';
 
     /**
+     * ID token claims which belong to the token itself rather than describing
+     * the End-User: its protocol semantics, the authentication context it
+     * reports, and the values binding it to the rest of the flow. These are
+     * covered by the ID token signature and validated during login, so a
+     * UserInfo response must not be able to replace them with values of its own
+     * when the two claim sets are combined - a caller inspecting the result
+     * would otherwise see unsigned values where it expects validated ones.
+     *
+     * The authentication-context claims matter as much as the protocol ones
+     * here: applications use 'acr', 'amr' and 'auth_time' to enforce assurance
+     * levels, multi-factor authentication and reauthentication, so letting an
+     * unsigned UserInfo value win would undermine exactly those decisions.
+     *
+     * None of these are UserInfo response claims to begin with (OpenID Connect
+     * Core section 5.1 defines that set, and none of these appear in it), so a
+     * UserInfo response carrying one is already anomalous.
+     *
+     * Note 'sub' is deliberately absent: it is already required to be equal in
+     * both claim sets (see validateIdTokenAndUserinfoClaims()), so it cannot
+     * differ by the time they are combined.
+     *
+     * @var string[]
+     */
+    protected const ID_TOKEN_PROTOCOL_CLAIMS = [
+        // JWT registered claims (RFC 7519), less 'sub' - see above.
+        'iss',
+        'aud',
+        'exp',
+        'iat',
+        'nbf',
+        'jti',
+        // Authentication context claims.
+        'auth_time',
+        'acr',
+        'amr',
+        // Binding and session claims.
+        'azp',
+        'nonce',
+        'at_hash',
+        'c_hash',
+        'sid',
+    ];
+
+    /**
      * Back-channel logout request body parameter carrying the logout token,
      * per OIDC Back-Channel Logout 1.0, section 2.5.
      */
@@ -189,7 +233,7 @@ class RequestDataHandler
             $this->pkceDataHandler->removeCodeVerifier();
         }
 
-        $claims = $this->getClaims(
+        ['idTokenClaims' => $idTokenClaims, 'userInfoClaims' => $userInfoClaims] = $this->resolveClaims(
             tokenData: $tokenData,
             jwksUri: $opJwksUri,
             userinfoEndpoint: $opUserinfoEndpoint,
@@ -199,6 +243,11 @@ class RequestDataHandler
             expectedClientId: $clientId,
             expectedIdTokenSigningAlgorithm: $expectedIdTokenSigningAlgorithm,
         );
+
+        // Combine before persisting, so that a rejection raised while combining
+        // (by a subclass overriding combineClaims(), say) leaves no login data
+        // behind for the getters to report as a live login.
+        $claims = $this->combineClaims($idTokenClaims, $userInfoClaims);
 
         $this->storeLoginData(
             $tokenData[ParamsEnum::IdToken->value],
@@ -688,6 +737,45 @@ class RequestDataHandler
         ?string $expectedClientId = null,
         ?string $expectedIdTokenSigningAlgorithm = null,
     ): array {
+        ['idTokenClaims' => $idTokenClaims, 'userInfoClaims' => $userInfoClaims] = $this->resolveClaims(
+            tokenData: $tokenData,
+            jwksUri: $jwksUri,
+            userinfoEndpoint: $userinfoEndpoint,
+            useNonce: $useNonce,
+            fetchUserinfoClaims: $fetchUserinfoClaims,
+            expectedIssuer: $expectedIssuer,
+            expectedClientId: $expectedClientId,
+            expectedIdTokenSigningAlgorithm: $expectedIdTokenSigningAlgorithm,
+        );
+
+        return $this->combineClaims($idTokenClaims, $userInfoClaims);
+    }
+
+    /**
+     * Gather the ID token claims and the UserInfo claims separately, so a
+     * caller which needs to tell them apart (rather than work with the
+     * combined set getClaims() returns) can.
+     *
+     * @param array{
+     *      access_token: non-empty-string,
+     *      token_type: non-empty-string,
+     *      id_token: ?non-empty-string,
+     *  } $tokenData Array containing at least access_token and optionally id_token.
+     * @return array{idTokenClaims: mixed[], userInfoClaims: mixed[]}
+     * @throws InvalidValueException
+     * @throws JwsException
+     * @throws OidcClientException
+     */
+    protected function resolveClaims(
+        array $tokenData,
+        string $jwksUri,
+        ?string $userinfoEndpoint = null,
+        bool $useNonce = true,
+        bool $fetchUserinfoClaims = true,
+        ?string $expectedIssuer = null,
+        ?string $expectedClientId = null,
+        ?string $expectedIdTokenSigningAlgorithm = null,
+    ): array {
         $idTokenClaims = [];
         $userInfoClaims = [];
 
@@ -714,7 +802,42 @@ class RequestDataHandler
             $this->validateIdTokenAndUserinfoClaims($idTokenClaims, $userInfoClaims);
         }
 
-        return array_merge($idTokenClaims, $userInfoClaims);
+        return ['idTokenClaims' => $idTokenClaims, 'userInfoClaims' => $userInfoClaims];
+    }
+
+    /**
+     * Combine ID token and UserInfo claims into the single set callers receive.
+     *
+     * UserInfo claims win for ordinary (End-User) claims, since the UserInfo
+     * endpoint is the more complete and more current source for those. The ID
+     * token keeps its own protocol claims though - those were validated on the
+     * signed token, and letting a UserInfo response replace them would hand the
+     * caller unvalidated values under names it has every reason to trust.
+     *
+     * @param mixed[] $idTokenClaims
+     * @param mixed[] $userInfoClaims
+     * @return mixed[]
+     */
+    protected function combineClaims(array $idTokenClaims, array $userInfoClaims): array
+    {
+        $protocolClaims = array_intersect_key(
+            $idTokenClaims,
+            array_flip(static::ID_TOKEN_PROTOCOL_CLAIMS),
+        );
+
+        foreach ($protocolClaims as $claim => $value) {
+            if (array_key_exists($claim, $userInfoClaims) && $userInfoClaims[$claim] !== $value) {
+                $this->logger?->warning(sprintf(
+                    'UserInfo response carries a "%s" claim differing from the ID token, ignoring it.',
+                    $claim,
+                ));
+            }
+        }
+
+        // Re-apply the ID token's protocol claims last, so they survive the
+        // merge. A protocol claim absent from the ID token is not defended -
+        // there is no validated value to defend it with.
+        return array_merge($idTokenClaims, $userInfoClaims, $protocolClaims);
     }
 
     /**
@@ -1176,6 +1299,47 @@ class RequestDataHandler
     public function getLoginIdToken(): ?string
     {
         return $this->getLoginDataStringValue(ParamsEnum::IdToken->value);
+    }
+
+    /**
+     * Claims of the ID token received at the last successful login, or null
+     * when no ID token is available (no login was performed, no ID token was
+     * issued, the session expired, or the login was revoked).
+     *
+     * These are the claims as they were validated at login - unlike the array
+     * returned by getUserData(), which combines them with the UserInfo
+     * response. Use this when asserting something against the signed token
+     * itself rather than against the combined set.
+     *
+     * Derived from the raw ID token persisted in the login data, so no claims
+     * are stored twice. The token is immutable and was validated at login, so
+     * parsing it again yields those same validated values; its signature is
+     * not re-verified, as the token comes from this client's own session store.
+     *
+     * Parsed as an ID Token Hint rather than an ID Token, because an ID token
+     * typically expires long before the login session it established does.
+     * That is the one difference between the two abstractions: the hint does
+     * not validate 'exp' against the current time, which is exactly right for
+     * reading back a token that was already validated when it was fresh.
+     * Parsing it as an ID Token instead would make this method start returning
+     * null the moment the token expired, while the login was still live.
+     *
+     * @return mixed[]|null
+     */
+    public function getLoginIdTokenClaims(): ?array
+    {
+        if (($idToken = $this->getLoginIdToken()) === null) {
+            return null;
+        }
+
+        try {
+            return $this->core->idTokenHintFactory()->fromToken($idToken)->getPayload();
+        } catch (Throwable $throwable) {
+            $this->logger?->warning(
+                'Error extracting claims from the persisted ID token. ' . $throwable->getMessage(),
+            );
+            return null;
+        }
     }
 
     /**

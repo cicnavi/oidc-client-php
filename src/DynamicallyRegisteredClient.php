@@ -994,6 +994,18 @@ class DynamicallyRegisteredClient
     }
 
     /**
+     * Claims of the ID token received at the last successful login, or null
+     * when not available. These are the claims as validated at login, without
+     * the UserInfo claims that getUserData() combines them with.
+     *
+     * @return mixed[]|null
+     */
+    public function getIdTokenClaims(): ?array
+    {
+        return $this->resolveRequestDataHandler()->getLoginIdTokenClaims();
+    }
+
+    /**
      * Login data persisted at the last successful login, or null when not
      * available. Read from the session store - no client registration is
      * performed or updated here.

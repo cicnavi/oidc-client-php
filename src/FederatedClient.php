@@ -1168,6 +1168,18 @@ class FederatedClient
     }
 
     /**
+     * Claims of the ID token received at the last successful login, or null
+     * when not available. These are the claims as validated at login, without
+     * the UserInfo claims that getUserData() combines them with.
+     *
+     * @return mixed[]|null
+     */
+    public function getIdTokenClaims(): ?array
+    {
+        return $this->requestDataHandler->getLoginIdTokenClaims();
+    }
+
+    /**
      * Login data persisted at the last successful login (raw ID token, its
      * 'iss' / 'sub' / 'sid' claims, OP end session endpoint), or null when
      * not available.
