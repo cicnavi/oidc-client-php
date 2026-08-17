@@ -28,6 +28,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamInterface;
 use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
+use ReflectionMethod;
 use SimpleSAML\OpenID\Codebooks\ClaimsEnum;
 use SimpleSAML\OpenID\Codebooks\ClientAssertionTypesEnum;
 use SimpleSAML\OpenID\Codebooks\ClientAuthenticationMethodsEnum;
@@ -1309,9 +1310,13 @@ final class RequestDataHandlerTest extends TestCase
             'iat' => 1200,
             'nonce' => 'nonce',
             'nbf' => 1200,
+            'jti' => 'token-id-1',
             'auth_time' => 1100,
             'acr' => 'high',
             'amr' => ['mfa', 'otp'],
+            'at_hash' => 'at-hash-1',
+            'c_hash' => 'c-hash-1',
+            'sub_jwk' => ['kty' => 'RSA'],
             'sid' => 'op-session-1',
         ]);
 
@@ -1326,8 +1331,10 @@ final class RequestDataHandlerTest extends TestCase
         // while also carrying a legitimate End-User claim.
         $stream->method('__toString')->willReturn(
             '{"sub": "sub1", "name": "n1", "iss": "https://evil.example.com", "aud": "other-client",' .
-            ' "azp": "other-client", "exp": 9999, "iat": 9998, "nbf": 9996, "nonce": "other-nonce",' .
-            ' "auth_time": 9997, "acr": "low", "amr": ["pwd"], "sid": "other-session"}',
+            ' "azp": "other-client", "exp": 9999, "iat": 9998, "nbf": 9996, "jti": "other-token-id",' .
+            ' "nonce": "other-nonce", "auth_time": 9997, "acr": "low", "amr": ["pwd"],' .
+            ' "at_hash": "other-at-hash", "c_hash": "other-c-hash", "sub_jwk": {"kty": "EC"},' .
+            ' "sid": "other-session"}',
         );
         $response->method('getBody')->willReturn($stream);
         $this->httpClientMock->method('sendRequest')->willReturn($response);
@@ -1348,7 +1355,13 @@ final class RequestDataHandlerTest extends TestCase
         $this->assertSame(1234, $result['exp']);
         $this->assertSame(1200, $result['iat']);
         $this->assertSame(1200, $result['nbf']);
+        $this->assertSame('token-id-1', $result['jti']);
         $this->assertSame('nonce', $result['nonce']);
+        // Values binding the token to the rest of the flow, to a key, or to
+        // the OP session.
+        $this->assertSame('at-hash-1', $result['at_hash']);
+        $this->assertSame('c-hash-1', $result['c_hash']);
+        $this->assertSame(['kty' => 'RSA'], $result['sub_jwk']);
         // Authentication context claims are what applications use to enforce
         // assurance levels, MFA and reauthentication - an unsigned UserInfo
         // value must not be able to weaken them.
@@ -1358,6 +1371,45 @@ final class RequestDataHandlerTest extends TestCase
         $this->assertSame('op-session-1', $result['sid']);
         // Ordinary End-User claims from UserInfo still come through.
         $this->assertSame('n1', $result['name']);
+    }
+
+    /**
+     * The defended set is composed from three specification-defined groups
+     * rather than hand-listed, but composition alone cannot say whether a
+     * group is *complete*. This pins the result against the specifications the
+     * groups follow, so that editing one has to be justified against a
+     * specification rather than merely compile.
+     *
+     * Two groups are closed sets and are checked exhaustively here: RFC 7519
+     * section 4.1 defines exactly seven registered claims and directs
+     * everything later to the IANA registry, and OpenID Connect Core section 2
+     * defines the ID Token claim set. The binding group is open-ended - a
+     * later specification can add to it - so this can only record what is
+     * known today, not prove it complete.
+     */
+    public function testIdTokenProtocolClaimsMatchTheSpecifications(): void
+    {
+        $protocolClaims = (new ReflectionMethod(RequestDataHandler::class, 'idTokenProtocolClaims'))
+            ->invoke($this->sut());
+
+        $this->assertIsArray($protocolClaims);
+        $this->assertEqualsCanonicalizing(
+            [
+                // RFC 7519 section 4.1, less 'sub' - see the assertion below.
+                'iss', 'aud', 'exp', 'nbf', 'iat', 'jti',
+                // OpenID Connect Core section 2, the ID Token claim set.
+                'auth_time', 'nonce', 'acr', 'amr', 'azp',
+                // Binding claims: Core sections 3.1.3.6, 3.3.2.11 and 7.4,
+                // and Back-Channel Logout section 2.1.
+                'at_hash', 'c_hash', 'sub_jwk', 'sid',
+            ],
+            $protocolClaims,
+        );
+
+        // 'sub' is the one ID token claim deliberately left undefended: it is
+        // already required to be equal in both claim sets, so defending it
+        // would only mask a bug in that check.
+        $this->assertNotContains('sub', $protocolClaims);
     }
 
     /**

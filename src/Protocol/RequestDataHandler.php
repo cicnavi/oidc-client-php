@@ -60,47 +60,76 @@ class RequestDataHandler
     public const KEY_LOGGED_IN_AT = 'logged_in_at';
 
     /**
-     * ID token claims which belong to the token itself rather than describing
-     * the End-User: its protocol semantics, the authentication context it
-     * reports, and the values binding it to the rest of the flow. These are
-     * covered by the ID token signature and validated during login, so a
-     * UserInfo response must not be able to replace them with values of its own
-     * when the two claim sets are combined - a caller inspecting the result
-     * would otherwise see unsigned values where it expects validated ones.
-     *
-     * The authentication-context claims matter as much as the protocol ones
-     * here: applications use 'acr', 'amr' and 'auth_time' to enforce assurance
-     * levels, multi-factor authentication and reauthentication, so letting an
-     * unsigned UserInfo value win would undermine exactly those decisions.
-     *
-     * None of these are UserInfo response claims to begin with (OpenID Connect
-     * Core section 5.1 defines that set, and none of these appear in it), so a
-     * UserInfo response carrying one is already anomalous.
-     *
-     * Note 'sub' is deliberately absent: it is already required to be equal in
-     * both claim sets (see validateIdTokenAndUserinfoClaims()), so it cannot
-     * differ by the time they are combined.
+     * JWT registered claim names, RFC 7519 section 4.1. That specification
+     * defines exactly these seven and directs every later claim to the IANA
+     * "JSON Web Token Claims" registry instead, so this group is closed: it
+     * can be written out in full and checked against the specification, rather
+     * than being a list somebody has to remember to extend.
      *
      * @var string[]
      */
-    protected const ID_TOKEN_PROTOCOL_CLAIMS = [
-        // JWT registered claims (RFC 7519), less 'sub' - see above.
-        'iss',
-        'aud',
-        'exp',
-        'iat',
-        'nbf',
-        'jti',
-        // Authentication context claims.
-        'auth_time',
-        'acr',
-        'amr',
-        // Binding and session claims.
-        'azp',
-        'nonce',
-        'at_hash',
-        'c_hash',
-        'sid',
+    protected const JWT_REGISTERED_CLAIMS = [
+        ClaimsEnum::Iss->value,
+        ClaimsEnum::Sub->value,
+        ClaimsEnum::Aud->value,
+        ClaimsEnum::Exp->value,
+        ClaimsEnum::Nbf->value,
+        ClaimsEnum::Iat->value,
+        ClaimsEnum::Jti->value,
+    ];
+
+    /**
+     * ID token claims reporting how and when the End-User authenticated,
+     * from the ID Token claim set in OpenID Connect Core section 2, less the
+     * ones RFC 7519 already covers above.
+     *
+     * These matter as much as the protocol claims: applications use 'acr',
+     * 'amr' and 'auth_time' to enforce assurance levels, multi-factor
+     * authentication and reauthentication, so an unsigned value winning here
+     * would undermine exactly those decisions.
+     *
+     * @var string[]
+     */
+    protected const ID_TOKEN_AUTHENTICATION_CLAIMS = [
+        ClaimsEnum::AuthTime->value,
+        ClaimsEnum::Nonce->value,
+        ClaimsEnum::Acr->value,
+        ClaimsEnum::Amr->value,
+        ClaimsEnum::Azp->value,
+    ];
+
+    /**
+     * Claims binding the ID token to the rest of the flow, to the OP session,
+     * or to a key: 'at_hash' (OpenID Connect Core section 3.1.3.6), 'c_hash'
+     * (section 3.3.2.11), 'sub_jwk' (section 7.4, Self-Issued OPs) and 'sid'
+     * (Back-Channel Logout section 2.1, Front-Channel Logout section 3).
+     *
+     * Unlike the two groups above this one is open-ended - a future
+     * specification can define another binding claim - so it is the group to
+     * revisit when one appears.
+     *
+     * @var string[]
+     */
+    protected const ID_TOKEN_BINDING_CLAIMS = [
+        ClaimsEnum::ATHash->value,
+        ClaimsEnum::CHash->value,
+        ClaimsEnum::SubJwk->value,
+        ClaimsEnum::Sid->value,
+    ];
+
+    /**
+     * Claims which belong to the ID token but are deliberately left
+     * unprotected.
+     *
+     * 'sub' is the only one: it is already required to be equal in both claim
+     * sets (see validateIdTokenAndUserinfoClaims()), so it cannot differ by
+     * the time they are combined, and defending it here would only mask a bug
+     * in that check.
+     *
+     * @var string[]
+     */
+    protected const UNPROTECTED_ID_TOKEN_CLAIMS = [
+        ClaimsEnum::Sub->value,
     ];
 
     /**
@@ -826,7 +855,7 @@ class RequestDataHandler
     {
         $protocolClaims = array_intersect_key(
             $idTokenClaims,
-            array_flip(static::ID_TOKEN_PROTOCOL_CLAIMS),
+            array_flip($this->idTokenProtocolClaims()),
         );
 
         foreach ($protocolClaims as $claim => $value) {
@@ -842,6 +871,46 @@ class RequestDataHandler
         // merge. A protocol claim absent from the ID token is not defended -
         // there is no validated value to defend it with.
         return array_merge($idTokenClaims, $userInfoClaims, $protocolClaims);
+    }
+
+    /**
+     * ID token claims which belong to the token itself rather than describing
+     * the End-User: its protocol semantics, the authentication context it
+     * reports, and the values binding it to the rest of the flow. These are
+     * covered by the ID token signature and validated during login, so a
+     * UserInfo response must not be able to replace them with values of its
+     * own when the two claim sets are combined - a caller inspecting the
+     * result would otherwise see unsigned values where it expects validated
+     * ones.
+     *
+     * None of these are UserInfo response claims to begin with (OpenID Connect
+     * Core section 5.1 defines that set, and none of these appear in it), so a
+     * UserInfo response carrying one is already anomalous.
+     *
+     * Composed from the specification groups declared above rather than
+     * written out as a single flat list. Each group is a set some
+     * specification defines, so it can be reviewed against that specification;
+     * a flat list can only be reviewed against somebody's recollection - and
+     * three claims had already slipped through that way, the authentication
+     * group and then 'nbf' during review, and 'sub_jwk' when the groups were
+     * finally written down and compared with the specifications.
+     *
+     * Override this to defend an additional claim - an OP-specific one an
+     * application relies on, say. Removing a claim from the result weakens the
+     * guarantee described above, so prefer adding to it.
+     *
+     * @return string[]
+     */
+    protected function idTokenProtocolClaims(): array
+    {
+        return array_values(array_diff(
+            [
+                ...static::JWT_REGISTERED_CLAIMS,
+                ...static::ID_TOKEN_AUTHENTICATION_CLAIMS,
+                ...static::ID_TOKEN_BINDING_CLAIMS,
+            ],
+            static::UNPROTECTED_ID_TOKEN_CLAIMS,
+        ));
     }
 
     /**

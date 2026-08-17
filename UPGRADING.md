@@ -51,10 +51,10 @@ the claim, instead of reporting an absent claim as an inequality.
 - **Potentially breaking**: the claims returned by `getUserData()` no longer let
 a UserInfo response override claims that belong to the ID token itself, rather
 than describing the End-User: the JWT registered claims `iss`, `aud`, `exp`,
-`iat`, `nbf` and `jti`, the authentication context claims `auth_time`, `acr` and
-`amr`, and the binding and session claims `azp`, `nonce`, `at_hash`, `c_hash`
-and `sid`. Previously the UserInfo
-values won for every claim, so a caller re-checking `iss` or `aud` on the
+`nbf`, `iat` and `jti` (RFC 7519 section 4.1), the authentication claims
+`auth_time`, `nonce`, `acr`, `amr` and `azp` (OpenID Connect Core section 2),
+and the binding claims `at_hash`, `c_hash`, `sub_jwk` and `sid`. Previously the
+UserInfo values won for every claim, so a caller re-checking `iss` or `aud` on the
 returned array - or `acr` / `amr` / `auth_time` to enforce an assurance level,
 multi-factor authentication or reauthentication - was checking unsigned values
 rather than the ones validated on the signed token. Ordinary End-User claims
@@ -75,6 +75,15 @@ the unmerged ID token claims. If you subclass `RequestDataHandler` and override
 `getUserData()`. The public signature of `getClaims()` is unchanged, and calling
 it directly behaves as before, as does an override of `storeLoginData()`, which
 `getUserData()` still calls.
+- The set of claims a UserInfo response cannot override is now composed from
+three specification groups - `JWT_REGISTERED_CLAIMS` (RFC 7519 section 4.1),
+`ID_TOKEN_AUTHENTICATION_CLAIMS` (OpenID Connect Core section 2) and
+`ID_TOKEN_BINDING_CLAIMS` - minus `UNPROTECTED_ID_TOKEN_CLAIMS`, by a new
+protected `RequestDataHandler::idTokenProtocolClaims()` method. Override that
+method to defend an additional claim, such as an OP-specific one your
+application relies on. Composing the set from groups that each map to a
+specification section is what turned up `sub_jwk`, which the single flat list it
+replaced was missing.
 - The checks that OpenID Connect defines identically for ID tokens and logout
 tokens - the `alg` header, the signature (including the one-time JWKS refresh
 retry), and the `iss`, `aud` and `azp` claims - are now performed by a single
