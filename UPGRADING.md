@@ -15,8 +15,43 @@ the login data, so nothing extra is stored, and they become unavailable at the
 same moment the login does (logout, session expiry, or a back-channel logout
 revocation).
 
+- New `Cicnavi\Oidc\DataStore\ArraySessionStore`, a `SessionStoreInterface`
+implementation backed by a plain array for the lifetime of the object. Inject it
+wherever a PHP session is unavailable or unwanted - a CLI entry point, a worker,
+or a test suite that must not leak state between cases. Nothing it holds
+outlives the object, so it is not a stand-in for `PhpSessionStore` in a web
+application: a login persisted there is gone by the next request. Its semantics
+match `PhpSessionStore`'s exactly, including that a value stored as `null` reads
+back as absent.
+
 ### Changed
 
+- **Potentially breaking**: `PhpSessionStore` no longer starts the PHP session
+in its constructor - it starts it on first access instead. Starting a session is
+a process-wide side effect which sends a `Set-Cookie` header, and constructing a
+store should not do that for a caller who may never touch the session. Two
+consequences: constructing the store no longer throws when a session cannot be
+started, and a session now starts slightly later, so an application which sends
+output before its first session access will see `Session start error - headers
+already sent.` where it previously succeeded. Access the store (or construct the
+client and perform the authorization request) before emitting output.
+- **Breaking for subclasses**: `PhpSessionStore` no longer declares a
+constructor, so a subclass constructor calling `parent::__construct()` now fails
+with `Error: Cannot call constructor`. Delete that call. A no-op constructor
+was considered and rejected: a subclass calling it is calling it *to start the
+session*, and quietly doing nothing would change that subclass's behaviour
+without saying so, where the fatal points straight at the line to remove. The
+protected `startSession()` method is retained under its own name, so a subclass
+overriding it still has its version called - on first access now, rather than
+during construction.
+- **Potentially breaking**: `PhpSessionStore` no longer substitutes an in-memory
+array when the SAPI is `cli`. That check silently gave console and worker
+deployments throwaway storage - a login appeared to succeed and was then lost -
+and, because the substitution reset `$_SESSION` unconditionally, constructing a
+second store discarded whatever the first had stored. PHP sessions in fact work
+under the CLI SAPI, so the check was never needed for them to function; it
+existed to isolate this library's own tests. Inject an `ArraySessionStore` where
+you relied on that behaviour.
 - **Potentially breaking**: ID tokens are now validated against the RP's
 `idTokenSignedResponseAlg` configuration option, which defaults to `RS256`.
 Previously this option was only applied to back-channel logout tokens, and the

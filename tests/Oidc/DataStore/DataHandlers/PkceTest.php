@@ -6,6 +6,7 @@ namespace Cicnavi\Tests\Oidc\DataStore\DataHandlers;
 
 use Cicnavi\Oidc\DataStore\DataHandlers\Interfaces\DataHandlerInterface;
 use Cicnavi\Oidc\DataStore\DataHandlers\Pkce;
+use Cicnavi\Oidc\DataStore\ArraySessionStore;
 use Cicnavi\Oidc\DataStore\PhpSessionStore;
 use Cicnavi\Oidc\Helpers\StringHelper;
 use Exception;
@@ -15,6 +16,7 @@ use PHPUnit\Framework\TestCase;
 use SimpleSAML\OpenID\Codebooks\PkceCodeChallengeMethodEnum;
 
 #[CoversClass(Pkce::class)]
+#[UsesClass(ArraySessionStore::class)]
 #[UsesClass(PhpSessionStore::class)]
 #[UsesClass(StringHelper::class)]
 final class PkceTest extends TestCase
@@ -31,7 +33,7 @@ final class PkceTest extends TestCase
     {
         $this->expectException(Exception::class);
 
-        (new Pkce())->generateCodeChallengeFromCodeVerifier('invalid');
+        (new Pkce(new ArraySessionStore()))->generateCodeChallengeFromCodeVerifier('invalid');
     }
 
     /**
@@ -41,7 +43,7 @@ final class PkceTest extends TestCase
     {
         $this->assertSame(
             $this->testCodeVerifier,
-            (new Pkce())->generateCodeChallengeFromCodeVerifier(
+            (new Pkce(new ArraySessionStore()))->generateCodeChallengeFromCodeVerifier(
                 $this->testCodeVerifier,
                 PkceCodeChallengeMethodEnum::Plain,
             )
@@ -49,7 +51,7 @@ final class PkceTest extends TestCase
 
         $this->assertSame(
             $this->testCodeChallenge,
-            (new Pkce())->generateCodeChallengeFromCodeVerifier(
+            (new Pkce(new ArraySessionStore()))->generateCodeChallengeFromCodeVerifier(
                 $this->testCodeVerifier,
                 PkceCodeChallengeMethodEnum::S256,
             )
@@ -58,7 +60,7 @@ final class PkceTest extends TestCase
 
     public function testRemoveCodeVerifierParameter(): void
     {
-        $pkce = new Pkce();
+        $pkce = new Pkce(new ArraySessionStore());
 
         $codeVerifier = $pkce->getCodeVerifier();
 
@@ -112,8 +114,8 @@ final class PkceTest extends TestCase
 
     public function testSetStore(): void
     {
-        $store = new PhpSessionStore();
-        $pkce = new Pkce();
+        $store = new ArraySessionStore();
+        $pkce = new Pkce(new ArraySessionStore());
         $pkce->setSessionStore($store);
         $this->assertInstanceOf(DataHandlerInterface::class, $pkce);
     }

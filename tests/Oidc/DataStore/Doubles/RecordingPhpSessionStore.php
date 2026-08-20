@@ -1,0 +1,58 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Cicnavi\Tests\Oidc\DataStore\Doubles;
+
+use Cicnavi\Oidc\DataStore\PhpSessionStore;
+
+/**
+ * PhpSessionStore with its three calls into PHP's session machinery replaced
+ * by stand-ins which record what happened and can be told to fail.
+ *
+ * A real session would start perfectly well in the test suite, but it is
+ * process-wide: once active it stays active, and every later case would
+ * silently take the already-started path. Everything except the three
+ * overrides below is the real class.
+ */
+final class RecordingPhpSessionStore extends PhpSessionStore
+{
+    public int $startCount = 0;
+
+    public bool $sessionClosed = false;
+
+    public function __construct(
+        private readonly bool $cookieParamsSucceed = true,
+        private readonly bool $sessionStartSucceeds = true,
+    ) {
+    }
+
+    /**
+     * Mirrors PHP: a session is active once started, and stops being active
+     * when the application closes or destroys it.
+     */
+    protected function isSessionActive(): bool
+    {
+        return $this->startCount > 0 && ! $this->sessionClosed;
+    }
+
+    /**
+     * @param mixed[] $cookieParams
+     */
+    protected function setSessionCookieParams(array $cookieParams): bool
+    {
+        return $this->cookieParamsSucceed;
+    }
+
+    protected function startPhpSession(): bool
+    {
+        if (! $this->sessionStartSucceeds) {
+            return false;
+        }
+
+        ++$this->startCount;
+        $this->sessionClosed = false;
+
+        return true;
+    }
+}
