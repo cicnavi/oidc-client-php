@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\BackupGlobals;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 
 #[CoversClass(HttpHelper::class)]
 final class HttpHelperTest extends TestCase
@@ -114,6 +115,74 @@ final class HttpHelperTest extends TestCase
 
         $cookieParams['samesite'] = 'Strict';
         $this->assertSame('Lax', HttpHelper::normalizeSessionCookieParams($cookieParams)['samesite']);
+    }
+
+    /**
+     * Each override used to go to error_log(), which ignored whatever logging
+     * the application had configured. They now go to the injected logger, and
+     * nowhere at all when there is none.
+     */
+    public function testNormalizeSessionCookieParamsReportsOverridesToTheLogger(): void
+    {
+        $baseParams = [
+            'lifetime' => 0,
+            'path' => '/',
+            'domain' => '',
+            'secure' => false,
+            'httponly' => false,
+            'samesite' => 'invalid',
+        ];
+
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with($this->stringContains('Invalid SameSite'));
+
+        HttpHelper::normalizeSessionCookieParams($baseParams, $logger);
+    }
+
+    /**
+     * Strict is not invalid, and saying so was misleading - it is a stronger
+     * setting which this flow cannot use, because the browser would not send
+     * the cookie on the redirect back from the OP. Quietly weakening a setting
+     * an administrator chose deserves an accurate reason.
+     */
+    public function testNormalizeSessionCookieParamsExplainsWhyStrictIsDowngraded(): void
+    {
+        $cookieParams = [
+            'lifetime' => 0,
+            'path' => '/',
+            'domain' => '',
+            'secure' => true,
+            'httponly' => false,
+            'samesite' => 'Strict',
+        ];
+
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with($this->logicalAnd(
+                $this->stringContains('redirect back from the OpenID Provider'),
+                $this->logicalNot($this->stringContains('Invalid')),
+            ));
+
+        $this->assertSame('Lax', HttpHelper::normalizeSessionCookieParams($cookieParams, $logger)['samesite']);
+    }
+
+    public function testNormalizeSessionCookieParamsIsSilentWithoutALogger(): void
+    {
+        $cookieParams = [
+            'lifetime' => 0,
+            'path' => '/',
+            'domain' => '',
+            'secure' => false,
+            'httponly' => false,
+            'samesite' => 'Strict',
+        ];
+
+        $this->expectNotToPerformAssertions();
+
+        HttpHelper::normalizeSessionCookieParams($cookieParams);
     }
 
     public function testGenerateAutoSubmitPostForm(): void

@@ -80,6 +80,8 @@ class FederatedClient
 
     protected RequestDataHandler $requestDataHandler;
 
+    protected readonly SessionStoreInterface $sessionStore;
+
     protected Core $core;
 
     protected Jwks $jwks;
@@ -144,7 +146,7 @@ class FederatedClient
         protected readonly bool $usePkce = true,
         protected bool $fetchUserinfoClaims = true,
         protected readonly PkceCodeChallengeMethodEnum $pkceCodeChallengeMethod = PkceCodeChallengeMethodEnum::S256,
-        protected readonly SessionStoreInterface $sessionStore = new PhpSessionStore(),
+        ?SessionStoreInterface $sessionStore = null,
         protected readonly Client $httpClient = new Client(),
         ?Core $core = null,
         ?Jwks $jwks = null,
@@ -157,6 +159,11 @@ class FederatedClient
         protected readonly ParModeEnum $parMode = ParModeEnum::Auto,
         protected readonly ?string $idTokenSignedResponseAlg = SignatureAlgorithmEnum::RS256->value,
     ) {
+        // The default store is given this client's logger, so that anything
+        // it has to report about the session cookie reaches the same place as
+        // the rest of the client's logging.
+        $this->sessionStore = $sessionStore ?? new PhpSessionStore($this->logger);
+
         $this->validateResponseMode($this->responseMode);
         $this->cache = $cache ?? new FileCache('ofacpc-' . md5($this->entityConfig->getEntityId()));
         $this->signatureKeyPairFactory = $signatureKeyPairFactory ?? new SignatureKeyPairFactory($this->jwk);

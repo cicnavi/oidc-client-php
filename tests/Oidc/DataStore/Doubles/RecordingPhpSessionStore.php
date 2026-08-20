@@ -23,6 +23,12 @@ final class RecordingPhpSessionStore extends PhpSessionStore
 
     public int $regenerateCount = 0;
 
+    /**
+     * Deliberately does not call parent::__construct(). A subclass written
+     * against a version of PhpSessionStore which had no constructor would not
+     * have called it either, so every test using this double doubles as a
+     * check that the parent still works when it is skipped.
+     */
     public function __construct(
         private readonly bool $cookieParamsSucceed = true,
         private readonly bool $sessionStartSucceeds = true,

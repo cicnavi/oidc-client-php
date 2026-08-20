@@ -59,16 +59,27 @@ consequences: constructing the store no longer throws when a session cannot be
 started, and a session now starts slightly later, so an application which sends
 output before its first session access will see `Session start error - headers
 already sent.` where it previously succeeded. Access the store (or construct the
-client and perform the authorization request) before emitting output.
-- **Breaking for subclasses**: `PhpSessionStore` no longer declares a
-constructor, so a subclass constructor calling `parent::__construct()` now fails
-with `Error: Cannot call constructor`. Delete that call. A no-op constructor
-was considered and rejected: a subclass calling it is calling it *to start the
-session*, and quietly doing nothing would change that subclass's behaviour
-without saying so, where the fatal points straight at the line to remove. The
-protected `startSession()` method is retained under its own name, so a subclass
-overriding it still has its version called - on first access now, rather than
-during construction.
+client and perform the authorization request) before emitting output. A subclass
+whose constructor calls `parent::__construct()` still works, but that call no
+longer starts the session - the first access does. The protected
+`startSession()` method keeps its name and its already-running early return, so
+a subclass overriding it still has its version called.
+- **Potentially breaking**: `HttpHelper::normalizeSessionCookieParams()` takes
+an optional second argument, a `?LoggerInterface`, and reports overridden cookie
+settings through it instead of through `error_log()`. A library writing straight
+to `error_log()` ignores whatever logging the application configured. Nothing is
+reported when no logger is given, so pass one to keep seeing these messages.
+`PhpSessionStore` now takes an optional `?LoggerInterface` of its own and passes
+it along, and all three clients build their default session store with the
+logger they were given - so a client constructed with a logger reports these
+without any further wiring.
+- The message for `SameSite=Strict` no longer calls it invalid. It is a valid
+and stronger setting; it is simply incompatible with this flow, because the
+browser would not send the session cookie on the redirect back from the OpenID
+Provider, losing the state and nonce exactly when the authorization response
+needs checking against them. The value is still overridden to `Lax`, but the
+warning now says why. Two messages which ran their sentences together
+("php.ini.Reverting") are also fixed.
 - **Potentially breaking**: `PhpSessionStore` no longer substitutes an in-memory
 array when the SAPI is `cli`. That check silently gave console and worker
 deployments throwaway storage - a login appeared to succeed and was then lost -

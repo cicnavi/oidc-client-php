@@ -67,6 +67,8 @@ class PreRegisteredClient
 
     protected RequestDataHandler $requestDataHandler;
 
+    protected readonly SessionStoreInterface $sessionStore;
+
     /**
      * Client constructor.
      * @param string $opConfigurationUrl URL where the OP configuration can be
@@ -136,7 +138,7 @@ class PreRegisteredClient
         protected readonly SupportedSerializers $supportedSerializers = new SupportedSerializers(),
         protected readonly ?LoggerInterface $logger = null,
         ?CacheInterface $cache = null,
-        protected readonly SessionStoreInterface $sessionStore = new PhpSessionStore(),
+        ?SessionStoreInterface $sessionStore = null,
         protected readonly Client $httpClient = new Client(),
         ?MetadataInterface $metadata = null,
         ?Core $core = null,
@@ -150,6 +152,11 @@ class PreRegisteredClient
         protected readonly ?string $idTokenSignedResponseAlg = SignatureAlgorithmEnum::RS256->value,
         protected readonly bool $backchannelLogoutSessionRequired = false,
     ) {
+        // The default store is given this client's logger, so that anything
+        // it has to report about the session cookie reaches the same place as
+        // the rest of the client's logging.
+        $this->sessionStore = $sessionStore ?? new PhpSessionStore($this->logger);
+
         $this->validateResponseMode($this->responseMode);
 
         $this->cache = $cache ?? new FileCache('oprcpc-' . md5($this->clientId));

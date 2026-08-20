@@ -7,6 +7,7 @@ namespace Cicnavi\Oidc\DataStore;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
 use Cicnavi\Oidc\Helpers\HttpHelper;
+use Psr\Log\LoggerInterface;
 
 /**
  * Session store backed by the PHP session ($_SESSION).
@@ -35,6 +36,29 @@ use Cicnavi\Oidc\Helpers\HttpHelper;
  */
 class PhpSessionStore implements SessionStoreInterface
 {
+    /**
+     * Two deliberate deviations from how the rest of this library holds a
+     * logger, both about not breaking existing subclasses of this class:
+     *
+     * - declared with a default rather than promoted, and so not readonly,
+     *   because a subclass written against the version of this class which had
+     *   no constructor will not call parent::__construct(); a promoted property
+     *   would then be uninitialized and fatal on first access instead of simply
+     *   being absent;
+     * - private rather than protected, because a subclass declaring a $logger
+     *   of its own - the obvious way to add logging to a session store - would
+     *   otherwise collide with this one and fatal while the class is loaded.
+     *
+     * Nothing outside this class needs it: a subclass wanting to log from an
+     * overridden startSession() can hold its own.
+     */
+    private ?LoggerInterface $logger = null;
+
+    public function __construct(?LoggerInterface $logger = null)
+    {
+        $this->logger = $logger;
+    }
+
     /**
      * Appended to session start failures. PHP reports these as a bare false,
      * so the alternative is worth naming rather than leaving the caller to
@@ -66,7 +90,7 @@ class PhpSessionStore implements SessionStoreInterface
 
         $this->validatePhpSession();
 
-        $cookieParams = HttpHelper::normalizeSessionCookieParams(session_get_cookie_params());
+        $cookieParams = HttpHelper::normalizeSessionCookieParams(session_get_cookie_params(), $this->logger);
 
         if (! $this->setSessionCookieParams($cookieParams)) {
             throw new OidcClientException('Could not set session cookie params. ' . self::SESSION_UNAVAILABLE_HINT);
