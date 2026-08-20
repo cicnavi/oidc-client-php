@@ -81,9 +81,48 @@ final class OpMetadataTest extends TestCase
     }
 
     /**
+     * Building the object must not reach the network. A consumer which never
+     * reads any metadata - performing a local logout, say - should not need
+     * the OP to be reachable, and should not pay for a round trip either.
+     */
+    public function testConstructionDoesNotFetchAnything(): void
+    {
+        $cacheMock = $this->createMock(FileCache::class);
+        $cacheMock->expects($this->never())->method('get');
+
+        $httpClientMock = $this->createMock(Client::class);
+        $httpClientMock->expects($this->never())->method('sendRequest');
+
+        new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheMock, $httpClientMock);
+    }
+
+    /**
+     * Once fetched, the document is kept - reading a second value must not go
+     * back to the cache or the OP for it.
+     */
+    public function testFetchesTheDocumentOnlyOnce(): void
+    {
+        $cacheStub = $this->createStub(FileCache::class);
+        $cacheStub->method('get')->willReturn(json_decode(self::$oidcConfigurationJson, true));
+
+        $httpClientMock = $this->createMock(Client::class);
+        $httpClientMock->expects($this->never())->method('sendRequest');
+
+        $metadata = new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientMock);
+
+        $metadata->get('issuer');
+        $metadata->get('token_endpoint');
+
+        $this->assertSame(
+            json_decode(self::$oidcConfigurationJson, true)['issuer'],
+            $metadata->get('issuer'),
+        );
+    }
+
+    /**
      * @throws \Exception
      */
-    public function testConstructThrowsOnRequestException(): void
+    public function testThrowsOnRequestException(): void
     {
         $cacheStub = $this->createStub(FileCache::class);
         $cacheStub->method('get')
@@ -103,13 +142,14 @@ final class OpMetadataTest extends TestCase
             );
 
         $this->expectException(\Exception::class);
-        new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub);
+        (new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub))
+            ->get('issuer');
     }
 
     /**
      * @throws \Exception
      */
-    public function testConstructThrowsOnWrongResposeCode(): void
+    public function testThrowsOnWrongResposeCode(): void
     {
         $cacheStub = $this->createStub(FileCache::class);
         $cacheStub->method('get')
@@ -128,13 +168,14 @@ final class OpMetadataTest extends TestCase
             ->willReturn($oidcConfigurationResponse);
 
         $this->expectException(\Exception::class);
-        new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub);
+        (new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub))
+            ->get('issuer');
     }
 
     /**
      * @throws \Exception
      */
-    public function testConstructThrowsOnCacheSetException(): void
+    public function testThrowsOnCacheSetException(): void
     {
         $cacheStub = $this->createStub(FileCache::class);
         $cacheStub->method('get')
@@ -155,7 +196,8 @@ final class OpMetadataTest extends TestCase
             ->willReturn($oidcConfigurationResponse);
 
         $this->expectException(\Exception::class);
-        new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub);
+        (new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub))
+            ->get('issuer');
     }
 
     /**
@@ -182,7 +224,8 @@ final class OpMetadataTest extends TestCase
             ->willReturn($oidcConfigurationResponse);
 
         $this->expectException(\Exception::class);
-        new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub);
+        (new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub))
+            ->get('issuer');
     }
 
     /**
@@ -211,7 +254,8 @@ final class OpMetadataTest extends TestCase
             ->willReturn($oidcConfigurationResponse);
 
         $this->expectException(\Exception::class);
-        new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub);
+        (new OpMetadata(self::$validConfigOptions['opConfigurationUrl'], $cacheStub, $httpClientStub))
+            ->get('issuer');
     }
 
     /**

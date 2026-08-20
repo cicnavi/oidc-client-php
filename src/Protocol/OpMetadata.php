@@ -14,12 +14,25 @@ use Psr\Http\Message\RequestFactoryInterface;
 use Psr\SimpleCache\CacheInterface;
 use Throwable;
 
+/**
+ * OpenID Provider metadata, from the OP's OIDC configuration URL.
+ *
+ * The document is fetched when a value is first asked for, not when this object
+ * is built. Constructing something should not make an HTTP request: it made
+ * every consumer pay for a network round trip whether or not it went on to read
+ * any metadata, and it made the object impossible to build at all while the OP
+ * was unreachable - which is how a local logout, needing nothing from the OP,
+ * ended up depending on the OP being up.
+ *
+ * @see \Cicnavi\Tests\Oidc\OpMetadataTest
+ */
 class OpMetadata implements MetadataInterface
 {
     /**
-     * @var mixed[] OpMetadata values (OIDC Configuration URL content).
+     * @var ?mixed[] OpMetadata values (OIDC Configuration URL content), or
+     * null until something asks for one of them.
      */
-    protected array $metadata;
+    protected ?array $metadata = null;
 
     /**
      * @var string Key used to store metadata values.
@@ -39,10 +52,6 @@ class OpMetadata implements MetadataInterface
         'id_token_signing_alg_values_supported',
     ];
 
-    /**
-     * OpMetadata constructor.
-     * @throws OidcClientException If OIDC Provider (OP) metadata could not be fetched.
-     */
     public function __construct(
         protected readonly string $opConfigurationUrl,
         protected readonly CacheInterface $cache,
@@ -50,31 +59,51 @@ class OpMetadata implements MetadataInterface
         protected readonly RequestFactoryInterface $httpRequestFactory = new RequestFactory(),
         protected ?int $defaultCacheTtl = null
     ) {
-        try {
-            if (!is_array($metadata = $this->cache->get(self::OIDC_METADATA_CACHE_KEY) ?? $this->requestMetadata())) {
-                throw new OidcClientException('Unexpected metadata type.');
-            }
-
-            $this->metadata = $metadata;
-        } catch (Throwable $throwable) {
-            throw new OidcClientException(
-                'OIDC Provider (OP) Metadata fetch error. ' . $throwable->getMessage(),
-                $throwable->getCode(),
-                $throwable,
-            );
-        }
     }
 
     /**
      * @inheritDoc
+     * @throws OidcClientException If OIDC Provider (OP) metadata could not be
+     * fetched, or the key does not exist.
      */
     public function get(string $key): mixed
     {
-        if (! isset($this->metadata[$key])) {
+        $metadata = $this->resolveMetadata();
+
+        if (! isset($metadata[$key])) {
             throw new OidcClientException(sprintf('OIDC metadata parameter not supported (%s)', $key));
         }
 
-        return $this->metadata[$key];
+        return $metadata[$key];
+    }
+
+    /**
+     * The metadata document, fetched from cache or from the OP the first time
+     * it is needed and kept for the lifetime of this object afterwards.
+     *
+     * @return mixed[]
+     * @throws OidcClientException If OIDC Provider (OP) metadata could not be
+     * fetched.
+     */
+    protected function resolveMetadata(): array
+    {
+        if ($this->metadata !== null) {
+            return $this->metadata;
+        }
+
+        try {
+            if (!is_array($metadata = $this->cache->get(self::OIDC_METADATA_CACHE_KEY) ?? $this->requestMetadata())) {
+                throw new OidcClientException('Unexpected metadata type.');
+            }
+        } catch (Throwable $throwable) {
+            throw new OidcClientException(
+                'OIDC Provider (OP) Metadata fetch error. ' . $throwable->getMessage(),
+                (int) $throwable->getCode(),
+                $throwable,
+            );
+        }
+
+        return $this->metadata = $metadata;
     }
 
     /**

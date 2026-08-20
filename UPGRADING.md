@@ -26,6 +26,18 @@ back as absent.
 
 ### Changed
 
+- **Potentially breaking**: `OpMetadata` no longer fetches the OP's discovery
+document in its constructor - it fetches it when a metadata value is first asked
+for. Constructing an object should not make an HTTP request: it charged every
+consumer a network round trip whether or not it went on to read any metadata,
+and it made the object impossible to build while the OP was unreachable, which
+is how a local logout - needing nothing from the OP - ended up depending on the
+OP being up. Since all three clients build an `OpMetadata` in their own
+constructors, constructing a client no longer reaches the network either. The
+consequence to plan for is that `OidcClientException` for an unreachable or
+invalid discovery document now surfaces at the first metadata access rather than
+at construction, so a `try`/`catch` wrapped around client construction alone
+will no longer see it. The document is still fetched at most once per object.
 - **Breaking**: `SessionStoreInterface` gained a `regenerateId(): void` method,
 which every implementation must now provide. `RequestDataHandler` calls it as a
 login is established, before the login data is written, so that a session
