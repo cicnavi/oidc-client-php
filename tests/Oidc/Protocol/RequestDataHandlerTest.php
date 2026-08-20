@@ -2183,6 +2183,45 @@ final class RequestDataHandlerTest extends TestCase
         $this->sut()->storeLoginData('id-token');
     }
 
+    /**
+     * A login must not be recorded against the session identifier the browser
+     * arrived with: one fixed there before authentication would otherwise
+     * still address the session once it is authenticated.
+     */
+    public function testStoreLoginDataRotatesTheSessionIdentifierBeforeRecordingTheLogin(): void
+    {
+        $calls = [];
+        $this->sessionStoreMock->method('regenerateId')
+            ->willReturnCallback(function () use (&$calls): void {
+                $calls[] = 'regenerateId';
+            });
+        $this->sessionStoreMock->method('put')
+            ->willReturnCallback(function () use (&$calls): void {
+                $calls[] = 'put';
+            });
+
+        $this->sut()->storeLoginData('id-token');
+
+        // Order matters: rotating afterwards would leave the login readable
+        // under the old identifier for the rest of the request.
+        $this->assertSame(['regenerateId', 'put'], $calls);
+    }
+
+    /**
+     * If the identifier cannot be rotated, the login must not be recorded at
+     * all - storing it anyway is precisely what the rotation exists to stop.
+     */
+    public function testStoreLoginDataFailsWhenTheSessionIdentifierCannotBeRotated(): void
+    {
+        $this->sessionStoreMock->method('regenerateId')
+            ->willThrowException(new OidcClientException('Could not regenerate the PHP session ID.'));
+        $this->sessionStoreMock->expects($this->never())->method('put');
+
+        $this->expectException(OidcClientException::class);
+
+        $this->sut()->storeLoginData('id-token');
+    }
+
     public function testStoreLoginDataWithoutIdToken(): void
     {
         $this->coreMock->expects($this->never())->method('idTokenHintFactory');

@@ -62,4 +62,14 @@ class ArraySessionStore implements SessionStoreInterface
     {
         unset($this->data[$key]);
     }
+
+    /**
+     * @inheritDoc
+     *
+     * Nothing to do: this store is reachable only through the object holding
+     * it, so there is no identifier anybody could have fixed in advance.
+     */
+    public function regenerateId(): void
+    {
+    }
 }

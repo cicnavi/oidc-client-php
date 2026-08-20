@@ -122,6 +122,43 @@ final class PhpSessionDataStoreTest extends TestCase
         $this->assertSame(2, $sut->startCount);
     }
 
+    public function testRegenerateIdRotatesTheIdentifier(): void
+    {
+        $sut = new RecordingPhpSessionStore();
+
+        $sut->regenerateId();
+
+        $this->assertSame(1, $sut->regenerateCount);
+    }
+
+    /**
+     * There is no identifier to rotate until a session exists, so rotating one
+     * has to start it first - a login can be the very first thing that touches
+     * the session.
+     */
+    public function testRegenerateIdStartsTheSessionFirst(): void
+    {
+        $sut = new RecordingPhpSessionStore();
+
+        $sut->regenerateId();
+
+        $this->assertSame(1, $sut->startCount);
+    }
+
+    /**
+     * Failing to rotate is not something to log and carry on from: carrying on
+     * would record the login against an identifier that may already be known.
+     */
+    public function testThrowsWhenTheIdentifierCannotBeRotated(): void
+    {
+        $sut = new RecordingPhpSessionStore(regenerationSucceeds: false);
+
+        $this->expectException(OidcClientException::class);
+        $this->expectExceptionMessage('Could not regenerate the PHP session ID.');
+
+        $sut->regenerateId();
+    }
+
     public function testThrowsWhenSessionCookieParamsCannotBeSet(): void
     {
         $sut = new RecordingPhpSessionStore(cookieParamsSucceed: false);

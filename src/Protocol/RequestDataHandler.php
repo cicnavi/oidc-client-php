@@ -1168,6 +1168,10 @@ class RequestDataHandler
      * 'id_token_hint' even if the client registration changes in the
      * meantime, e.g. for dynamically registered clients).
      *
+     * Establishing a login also rotates the session identifier, so that one
+     * fixed on the browser before authentication cannot reach the session
+     * afterwards. A store with no identifier of its own does nothing.
+     *
      * Claim extraction is best-effort: the ID token was already validated
      * during login, so an extraction error is only logged and the raw ID
      * token is stored anyway. It goes through the ID token hint factory
@@ -1182,6 +1186,17 @@ class RequestDataHandler
         ?string $opEndSessionEndpoint = null,
         ?string $clientId = null,
     ): void {
+        // Rotate the session identifier before the login is recorded against
+        // it. An identifier an attacker managed to fix on the victim's browser
+        // beforehand would otherwise still address the session once it is
+        // authenticated, which is the whole of session fixation.
+        //
+        // Deliberately not wrapped in a try/catch, unlike the claim extraction
+        // below: if the identifier cannot be rotated then storing the login
+        // anyway produces exactly the situation the rotation exists to
+        // prevent, so the login fails instead.
+        $this->sessionStore->regenerateId();
+
         $claims = [];
 
         if (is_string($idToken)) {

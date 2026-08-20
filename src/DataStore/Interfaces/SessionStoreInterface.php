@@ -34,4 +34,25 @@ interface SessionStoreInterface
      * Delete the value from the data store for a provided key.
      */
     public function delete(string $key): void;
+
+    /**
+     * Rotate the identifier this session is stored under, keeping its
+     * contents.
+     *
+     * Called when a login is established. Without it, an identifier an
+     * attacker managed to fix on the victim's browser before authentication
+     * would still address the session afterwards, once it is authenticated -
+     * which is the whole of session fixation.
+     *
+     * An implementation with no identifier of its own to rotate, or one whose
+     * identifier belongs to a framework that already rotates it, should do
+     * nothing here.
+     *
+     * @throws \Cicnavi\Oidc\Exceptions\OidcClientException If the identifier
+     * could not be rotated. Refusing to continue is deliberate: carrying on
+     * would establish an authenticated session under an identifier which may
+     * already be known to somebody else, which is the outcome this exists to
+     * prevent.
+     */
+    public function regenerateId(): void;
 }

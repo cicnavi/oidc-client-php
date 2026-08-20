@@ -127,6 +127,16 @@ class PhpSessionStore implements SessionStoreInterface
     }
 
     /**
+     * Wrapper around the PHP function, for the same reason as above. The old
+     * session file is deleted rather than left behind, so the previous
+     * identifier stops addressing anything at all.
+     */
+    protected function regeneratePhpSessionId(): bool
+    {
+        return session_regenerate_id(true);
+    }
+
+    /**
      * @inheritDoc
      * @throws OidcClientException If the PHP session could not be started.
      */
@@ -168,5 +178,20 @@ class PhpSessionStore implements SessionStoreInterface
         $this->startSession();
 
         unset($_SESSION[$key]);
+    }
+
+    /**
+     * @inheritDoc
+     * @throws OidcClientException If the PHP session could not be started, or
+     * the identifier could not be rotated.
+     */
+    public function regenerateId(): void
+    {
+        // There has to be a session before there is an identifier to rotate.
+        $this->startSession();
+
+        if (! $this->regeneratePhpSessionId()) {
+            throw new OidcClientException('Could not regenerate the PHP session ID.');
+        }
     }
 }

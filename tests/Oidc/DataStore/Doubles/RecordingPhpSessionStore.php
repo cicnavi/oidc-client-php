@@ -21,9 +21,12 @@ final class RecordingPhpSessionStore extends PhpSessionStore
 
     public bool $sessionClosed = false;
 
+    public int $regenerateCount = 0;
+
     public function __construct(
         private readonly bool $cookieParamsSucceed = true,
         private readonly bool $sessionStartSucceeds = true,
+        private readonly bool $regenerationSucceeds = true,
     ) {
     }
 
@@ -52,6 +55,17 @@ final class RecordingPhpSessionStore extends PhpSessionStore
 
         ++$this->startCount;
         $this->sessionClosed = false;
+
+        return true;
+    }
+
+    protected function regeneratePhpSessionId(): bool
+    {
+        if (! $this->regenerationSucceeds) {
+            return false;
+        }
+
+        ++$this->regenerateCount;
 
         return true;
     }

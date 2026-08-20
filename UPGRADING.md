@@ -26,6 +26,19 @@ back as absent.
 
 ### Changed
 
+- **Breaking**: `SessionStoreInterface` gained a `regenerateId(): void` method,
+which every implementation must now provide. `RequestDataHandler` calls it as a
+login is established, before the login data is written, so that a session
+identifier fixed on the victim's browser before authentication cannot address
+the session afterwards - session fixation. `PhpSessionStore` implements it with
+`session_regenerate_id(true)`, which also deletes the old session file;
+`ArraySessionStore` does nothing, having no identifier anybody could have fixed
+in advance. If you supply your own implementation and its identifier is managed
+by a framework which already rotates it on authentication, implement this as a
+no-op; otherwise rotate. A failure to rotate throws and the login fails, rather
+than being logged and carried on from - continuing would produce exactly the
+situation the rotation prevents. Note the identifier is rotated on login only,
+not on logout.
 - **Potentially breaking**: `PhpSessionStore` no longer starts the PHP session
 in its constructor - it starts it on first access instead. Starting a session is
 a process-wide side effect which sends a `Set-Cookie` header, and constructing a

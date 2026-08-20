@@ -81,6 +81,20 @@ final class ArraySessionStoreTest extends TestCase
     }
 
     /**
+     * There is no identifier to rotate here, so rotating it is a no-op - but
+     * it must still leave the contents alone, since the login being recorded
+     * is written immediately afterwards.
+     */
+    public function testRegenerateIdKeepsContentsAndDoesNotThrow(): void
+    {
+        $this->sut->put('key', 'value');
+
+        $this->sut->regenerateId();
+
+        $this->assertSame('value', $this->sut->get('key'));
+    }
+
+    /**
      * Two stores are two sessions - nothing is shared through globals, which
      * is the whole point of using this one in a test suite.
      */
