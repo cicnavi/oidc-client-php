@@ -26,6 +26,12 @@ back as absent.
 
 ### Changed
 
+- **Breaking**: the minimum PHP version is now 8.3, raised from 8.2. PHP 8.2
+loses security support on 31 December 2026, so a major released now would ship
+with a floor going end-of-life almost immediately. PHP 8.3 is supported until
+31 December 2027. Nothing in the library requires 8.3 syntax; the floor moved
+because 8.2 is about to stop receiving fixes, not to adopt new language
+features.
 - **Potentially breaking**: `OpMetadata` no longer fetches the OP's discovery
 document in its constructor - it fetches it when a metadata value is first asked
 for. Constructing an object should not make an HTTP request: it charged every

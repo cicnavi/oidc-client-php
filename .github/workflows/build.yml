@@ -2,15 +2,15 @@ name: Build
 
 on:
   push:
-    branches: [ master, v3.x ]
+    branches: [ master, v4.x, v3.x ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, v4.x ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: cicnavi/dap:82
+      image: cicnavi/dap:83
     steps:
       - uses: actions/checkout@v4
       - name: Validate composer.json and composer.lock

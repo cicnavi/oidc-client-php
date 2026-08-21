@@ -40,6 +40,7 @@ final class RecordingPhpSessionStore extends PhpSessionStore
      * Mirrors PHP: a session is active once started, and stops being active
      * when the application closes or destroys it.
      */
+    #[\Override]
     protected function isSessionActive(): bool
     {
         return $this->startCount > 0 && ! $this->sessionClosed;
@@ -48,11 +49,13 @@ final class RecordingPhpSessionStore extends PhpSessionStore
     /**
      * @param mixed[] $cookieParams
      */
+    #[\Override]
     protected function setSessionCookieParams(array $cookieParams): bool
     {
         return $this->cookieParamsSucceed;
     }
 
+    #[\Override]
     protected function startPhpSession(): bool
     {
         if (! $this->sessionStartSucceeds) {
@@ -65,6 +68,7 @@ final class RecordingPhpSessionStore extends PhpSessionStore
         return true;
     }
 
+    #[\Override]
     protected function regeneratePhpSessionId(): bool
     {
         if (! $this->regenerationSucceeds) {

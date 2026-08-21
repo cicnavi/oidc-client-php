@@ -3,7 +3,7 @@
     "description": "OIDC client written in PHP",
     "type": "library",
     "require": {
-        "php": "^8.2",
+        "php": "^8.3",
         "ext-gmp": "*",
         "ext-json": "*",
         "ext-openssl": "*",

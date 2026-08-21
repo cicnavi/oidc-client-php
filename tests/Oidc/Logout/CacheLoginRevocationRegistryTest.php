@@ -17,7 +17,7 @@ use Psr\SimpleCache\CacheInterface;
 #[CoversClass(CacheLoginRevocationRegistry::class)]
 final class CacheLoginRevocationRegistryTest extends TestCase
 {
-    private const ISSUER = 'https://op.example.com';
+    private const string ISSUER = 'https://op.example.com';
 
     /**
      * @var array<string,mixed>
