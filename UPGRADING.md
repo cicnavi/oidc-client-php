@@ -64,6 +64,15 @@ whose constructor calls `parent::__construct()` still works, but that call no
 longer starts the session - the first access does. The protected
 `startSession()` method keeps its name and its already-running early return, so
 a subclass overriding it still has its version called.
+- **Breaking**: `StringHelper::random()`'s second argument changed from
+`string $randomBytesFunc` - the *name* of a function, which the method then
+invoked through `call_user_func()` - to `?Closure $randomBytes`. It exists to
+let the failure paths be tested, but as a string it put a caller-chosen function
+call behind a public static API, and behind the one guarding this library's
+randomness at that. Nothing in the library ever passed it. If you did, pass a
+closure instead; passing an uncallable value is now a `TypeError` rather than an
+`OidcClientException`, and the `'Provided random bytes function is not
+callable.'` failure no longer exists, a `Closure` always being callable.
 - **Potentially breaking**: `HttpHelper::normalizeSessionCookieParams()` takes
 an optional second argument, a `?LoggerInterface`, and reports overridden cookie
 settings through it instead of through `error_log()`. A library writing straight
