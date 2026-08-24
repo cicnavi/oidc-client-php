@@ -695,87 +695,6 @@ class DynamicallyRegisteredClient extends AbstractOidcClient
     }
 
     /**
-     * Perform RP-Initiated Logout: remove the login data persisted in the
-     * session store (local logout) and deliver a logout request to the OP's
-     * end session endpoint, carrying the ID token received at login as
-     * 'id_token_hint'.
-     *
-     * Logout only needs session-stored login data and OP metadata, so no
-     * client registration is performed or updated here - logout must not be
-     * blocked by dynamic client registration state (stale, expired, or
-     * missing registration, unavailable registration endpoint...). The
-     * 'client_id' logout parameter is the login-time client ID from the
-     * persisted login data, with a read-only fallback to the client ID of
-     * the persisted client registration.
-     *
-     * For notes on application session handling around logout, refer to
-     * PreRegisteredClient::logout().
-     *
-     * @param ?string $postLogoutRedirectUri URI to which the OP should
-     * redirect the user agent after logout. Must be one of the
-     * 'post_logout_redirect_uris' registered on the OP (see the
-     * $postLogoutRedirectUris constructor parameter).
-     * @see PreRegisteredClient::logout()
-     * @throws OidcClientException If the OP does not advertise an
-     * 'end_session_endpoint'.
-     */
-    public function logout(
-        ?string $postLogoutRedirectUri = null,
-        ?string $logoutHint = null,
-        ?string $uiLocales = null,
-        AuthorizationRequestMethodEnum $logoutRequestMethod = AuthorizationRequestMethodEnum::Query,
-        ?ResponseInterface $response = null,
-    ): ?ResponseInterface {
-        $requestDataHandler = $this->resolveRequestDataHandler();
-
-        $endSessionEndpoint = $requestDataHandler->getLoginEndSessionEndpoint() ??
-        MetadataHelper::optionalString($this->metadata, ClaimsEnum::EndSessionEndpoint->value);
-
-        if (!is_string($endSessionEndpoint)) {
-            throw new OidcClientException(
-                'End session endpoint not found in OP metadata, so RP-Initiated Logout is not available.',
-            );
-        }
-
-        $idTokenHint = $requestDataHandler->getLoginIdToken();
-
-        if ($idTokenHint === null) {
-            $this->logger?->warning(
-                'No ID token found in persisted login data, sending RP-Initiated Logout request without ' .
-                '"id_token_hint". The OpenID Provider may refuse the request or prompt the user for ' .
-                'confirmation. If the application session was destroyed before calling logout(), destroy ' .
-                'it after the logout request is prepared instead (see logout() documentation).',
-            );
-        }
-
-        $parameters = $requestDataHandler->buildEndSessionParameters(
-            idTokenHint: $idTokenHint,
-            // Prefer the client ID the login was performed with, so it
-            // matches the 'id_token_hint' even if the client registration
-            // changed in the meantime. The fallback only reads the persisted
-            // registration - no registration is performed or updated.
-            clientId: $requestDataHandler->getLoginClientId() ?? $this->loadRegistrationData()?->getClientId(),
-            postLogoutRedirectUri: $postLogoutRedirectUri,
-            state: $this->useState ? $requestDataHandler->getLogoutState() : null,
-            logoutHint: $logoutHint,
-            uiLocales: $uiLocales,
-        );
-
-        $this->logger?->debug('Logout request parameters', $parameters);
-
-        // Local logout: remove persisted login data.
-        $requestDataHandler->clearLoginData();
-
-        return HttpHelper::dispatchFrontChannelRequest(
-            $endSessionEndpoint,
-            $parameters,
-            $logoutRequestMethod,
-            $response,
-            $this->logger,
-        );
-    }
-
-    /**
      * Handle an OIDC Back-Channel Logout request from the OP: validate the
      * logout token from the request, record the login revocation it
      * requests, and deliver the appropriate HTTP response (200 when the
@@ -972,6 +891,38 @@ class DynamicallyRegisteredClient extends AbstractOidcClient
 
             return null;
         }
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function logger(): ?LoggerInterface
+    {
+        return $this->logger;
+    }
+
+    /**
+     * @inheritDoc
+     *
+     * The configured OP's 'end_session_endpoint', so that a logout can still
+     * be attempted when nothing was persisted at login.
+     */
+    protected function fallbackEndSessionEndpoint(): ?string
+    {
+        return MetadataHelper::optionalString($this->metadata, ClaimsEnum::EndSessionEndpoint->value);
+    }
+
+    /**
+     * @inheritDoc
+     *
+     * The client ID of the persisted client registration. Only reads it - no
+     * registration is performed or updated, so logout is never blocked by
+     * dynamic client registration state (stale, expired or missing
+     * registration, unavailable registration endpoint...).
+     */
+    protected function fallbackLogoutClientId(): ?string
+    {
+        return $this->loadRegistrationData()?->getClientId();
     }
 
     /**

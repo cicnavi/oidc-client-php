@@ -296,28 +296,6 @@ class PreRegisteredClient extends AbstractOidcClient
     }
 
     /**
-     * Deliver a front-channel request (authorization request, RP-Initiated
-     * Logout request) to the OP, either as an auto-submitting POST form or as
-     * a redirect with parameters in the query string.
-     *
-     * @param array<string,string> $parameters
-     */
-    protected function dispatchFrontChannelRequest(
-        string $endpoint,
-        array $parameters,
-        AuthorizationRequestMethodEnum $requestMethod,
-        ?ResponseInterface $response,
-    ): ?ResponseInterface {
-        return HttpHelper::dispatchFrontChannelRequest(
-            $endpoint,
-            $parameters,
-            $requestMethod,
-            $response,
-            $this->logger,
-        );
-    }
-
-    /**
      * Get user data by performing an HTTP request to a token endpoint first
      * and then to the userinfo endpoint using tokens to get user data.
      *
@@ -368,92 +346,6 @@ class PreRegisteredClient extends AbstractOidcClient
                 ClaimsEnum::EndSessionEndpoint->value,
             ),
             expectedIdTokenSigningAlgorithm: $this->idTokenSignedResponseAlg,
-        );
-    }
-
-    /**
-     * Perform RP-Initiated Logout: remove the login data persisted in the
-     * session store (local logout) and deliver a logout request to the OP's
-     * end session endpoint, carrying the ID token received at login as
-     * 'id_token_hint'.
-     *
-     * Note that this does not destroy the application session itself - the
-     * application should do that as part of its own logout handling. However,
-     * with the default PhpSessionStore the persisted login data lives in the
-     * same PHP session as the application data, so do not destroy the PHP
-     * session before calling this method - otherwise the ID token is gone and
-     * the logout request is sent without 'id_token_hint' (a weaker request
-     * which the OP may refuse or answer with a user confirmation prompt; a
-     * warning is logged in that case). Destroy the session on the post logout
-     * redirect page instead, or - when using the $response variant - after
-     * this method returns.
-     *
-     * @param ?string $postLogoutRedirectUri URI to which the OP should
-     * redirect the user agent after logout. Must be registered on the OP as
-     * one of this client's 'post_logout_redirect_uris'. Validate the
-     * redirected request using validateLogoutCallback().
-     * @param ?string $logoutHint Hint about the End-User that is logging out,
-     * analogous to 'login_hint' (e.g., e-mail address or phone number).
-     * @param ?string $uiLocales Preferred languages for the OP's logout user
-     * interface (space-separated language tags).
-     * @param AuthorizationRequestMethodEnum $logoutRequestMethod How to
-     * deliver the logout request to the OP. Defaults to Query (HTTP GET
-     * redirect), which every OP supporting RP-Initiated Logout accepts.
-     * @param ?ResponseInterface $response Optional HTTP response which will
-     * be populated with proper headers and returned. If not provided, an
-     * immediate redirect (or form output) is performed.
-     * @throws OidcClientException If the OP does not advertise an
-     * 'end_session_endpoint'.
-     */
-    public function logout(
-        ?string $postLogoutRedirectUri = null,
-        ?string $logoutHint = null,
-        ?string $uiLocales = null,
-        AuthorizationRequestMethodEnum $logoutRequestMethod = AuthorizationRequestMethodEnum::Query,
-        ?ResponseInterface $response = null,
-    ): ?ResponseInterface {
-        $endSessionEndpoint = $this->requestDataHandler->getLoginEndSessionEndpoint() ??
-        MetadataHelper::optionalString($this->metadata, ClaimsEnum::EndSessionEndpoint->value);
-
-        if (!is_string($endSessionEndpoint)) {
-            throw new OidcClientException(
-                'End session endpoint not found in OP metadata, so RP-Initiated Logout is not available.',
-            );
-        }
-
-        $idTokenHint = $this->requestDataHandler->getLoginIdToken();
-
-        if ($idTokenHint === null) {
-            $this->logger?->warning(
-                'No ID token found in persisted login data, sending RP-Initiated Logout request without ' .
-                '"id_token_hint". The OpenID Provider may refuse the request or prompt the user for ' .
-                'confirmation. If the application session was destroyed before calling logout(), destroy ' .
-                'it after the logout request is prepared instead (see logout() documentation).',
-            );
-        }
-
-        $parameters = $this->requestDataHandler->buildEndSessionParameters(
-            idTokenHint: $idTokenHint,
-            // Prefer the client ID the login was performed with, so it
-            // matches the 'id_token_hint' even if the client registration
-            // changed in the meantime (dynamically registered clients).
-            clientId: $this->requestDataHandler->getLoginClientId() ?? $this->clientId,
-            postLogoutRedirectUri: $postLogoutRedirectUri,
-            state: $this->useState ? $this->requestDataHandler->getLogoutState() : null,
-            logoutHint: $logoutHint,
-            uiLocales: $uiLocales,
-        );
-
-        $this->logger?->debug('Logout request parameters', $parameters);
-
-        // Local logout: remove persisted login data.
-        $this->requestDataHandler->clearLoginData();
-
-        return $this->dispatchFrontChannelRequest(
-            $endSessionEndpoint,
-            $parameters,
-            $logoutRequestMethod,
-            $response,
         );
     }
 
@@ -516,6 +408,33 @@ class PreRegisteredClient extends AbstractOidcClient
         $this->logger?->debug('Back-channel logout performed.');
 
         return HttpHelper::dispatchBackchannelLogoutResponse($response, null, $this->logger);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function logger(): ?LoggerInterface
+    {
+        return $this->logger;
+    }
+
+    /**
+     * @inheritDoc
+     *
+     * The configured OP's 'end_session_endpoint', so that a logout can still
+     * be attempted when nothing was persisted at login.
+     */
+    protected function fallbackEndSessionEndpoint(): ?string
+    {
+        return MetadataHelper::optionalString($this->metadata, ClaimsEnum::EndSessionEndpoint->value);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function fallbackLogoutClientId(): ?string
+    {
+        return $this->clientId;
     }
 
     /**

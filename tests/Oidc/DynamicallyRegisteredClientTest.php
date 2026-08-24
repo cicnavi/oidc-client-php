@@ -638,7 +638,7 @@ final class DynamicallyRegisteredClientTest extends TestCase
         );
 
         $this->expectException(OidcClientException::class);
-        $this->expectExceptionMessage('End session endpoint not found in OP metadata');
+        $this->expectExceptionMessage('End session endpoint not available');
 
         $this->sut()->logout();
     }

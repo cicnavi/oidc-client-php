@@ -626,7 +626,7 @@ final class PreRegisteredClientTest extends TestCase
         );
 
         $this->expectException(\Cicnavi\Oidc\Exceptions\OidcClientException::class);
-        $this->expectExceptionMessage('End session endpoint not found in OP metadata');
+        $this->expectExceptionMessage('End session endpoint not available');
 
         $this->sut()->logout();
     }

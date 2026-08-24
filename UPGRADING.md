@@ -42,15 +42,44 @@ back as absent.
 
 - **Potentially breaking**: `PreRegisteredClient`, `DynamicallyRegisteredClient`
 and `FederatedClient` now extend the new abstract
-`Cicnavi\Oidc\AbstractOidcClient`, which holds the four operations that all
-three implemented identically - `validateLogoutCallback()`, `getIdToken()`,
-`getIdTokenClaims()` and `getLoginData()`. Behaviour is unchanged, and so are
-the signatures, so ordinary use needs no change. It matters if you subclass one
-of the clients: two protected methods now exist on the hierarchy,
+`Cicnavi\Oidc\AbstractOidcClient`, which holds the operations that all three
+implemented identically - `validateLogoutCallback()`, `getIdToken()`,
+`getIdTokenClaims()`, `getLoginData()`, and `logout()` (see the next entry).
+Behaviour is unchanged, and so are the signatures, so ordinary use needs no
+change. It matters if you subclass one of the clients: two protected methods
+now exist on the hierarchy,
 `resolveRequestDataHandler(): RequestDataHandler` and `usesState(): bool`, and a
 subclass declaring members of its own under either name must be reconciled with
 them. `DynamicallyRegisteredClient::resolveRequestDataHandler()` already
 existed and keeps its behaviour; it now also satisfies the base class.
+`logout()` (see below) adds three more: `logger(): ?LoggerInterface`,
+`fallbackEndSessionEndpoint(): ?string` and `fallbackLogoutClientId(): ?string`.
+
+- **Potentially breaking**: `logout()` now lives on `AbstractOidcClient` for all
+three clients, and the exception thrown when no end session endpoint can be
+found carries a single message covering every case: *"End session endpoint not
+available, so RP-Initiated Logout is not available (the OpenID Provider did not
+advertise one, or no login was performed)."* It replaces the two messages used
+before (`PreRegisteredClient` and `DynamicallyRegisteredClient` said "not found
+in OP metadata"; `FederatedClient` said "not available in persisted login
+data"), so anything matching on the old text needs updating. The exception is
+now also logged at error level before being thrown by all three, which
+previously only `FederatedClient` did. Which endpoints are considered is
+unchanged: the one recorded at login first, then - for the pre-registered and
+dynamically registered clients only - the configured OP's
+`end_session_endpoint`. A federated client still has no fallback, because it
+resolves an OP's metadata per issuer through a federation Trust Chain and has
+no configured OP to ask outside of a login.
+
+- **Potentially breaking**: `FederatedClient::dispatchAuthorizationRequest()`
+has been removed. Front-channel delivery for all three clients now goes through
+the inherited `AbstractOidcClient::dispatchFrontChannelRequest()`, which has the
+same behaviour and the same signature but different parameter names
+(`$endpoint`, `$parameters`, `$requestMethod` rather than
+`$opAuthorizationEndpoint`, `$authorizationParameters`,
+`$authorizationRequestMethod`). Only subclasses are affected - both methods are
+protected. `PreRegisteredClient::dispatchFrontChannelRequest()` was identical
+and is now inherited rather than declared, so overrides of it keep working.
 
 - **Breaking**: the minimum PHP version is now 8.3, raised from 8.2. PHP 8.2
 loses security support on 31 December 2026, so a major released now would ship

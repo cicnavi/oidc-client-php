@@ -54,13 +54,25 @@ interface OidcClientInterface
      * 'id_token_hint'.
      *
      * This does not destroy the application session itself - the application
-     * should do that as part of its own logout handling, and only after this
-     * method has been called (refer to the implementation for details).
+     * should do that as part of its own logout handling. With the default
+     * PhpSessionStore, though, the persisted login data lives in the same PHP
+     * session as the application data, so do not destroy that session before
+     * calling this method: the ID token would be gone and the logout request
+     * would go out without 'id_token_hint', a weaker request which the OP may
+     * refuse or answer with a user confirmation prompt (a warning is logged in
+     * that case). Destroy the session on the post logout redirect page
+     * instead, or - when using the $response variant - after this method
+     * returns.
      *
      * @param ?string $postLogoutRedirectUri URI to which the OP should
      * redirect the user agent after logout. Must be registered on the OP as
-     * one of this client's 'post_logout_redirect_uris'. Validate the
-     * redirected request using validateLogoutCallback().
+     * one of this client's 'post_logout_redirect_uris' - how depends on the
+     * client: registered manually for a pre-registered one, sent during
+     * client registration for a dynamically registered one (see its
+     * $postLogoutRedirectUris constructor parameter), or published as a
+     * Relying Party metadata claim for a federated one (see the Relying Party
+     * configuration additional claims). Validate the redirected request using
+     * validateLogoutCallback().
      * @param ?string $logoutHint Hint about the End-User that is logging out,
      * analogous to 'login_hint' (e.g., e-mail address or phone number).
      * @param ?string $uiLocales Preferred languages for the OP's logout user
