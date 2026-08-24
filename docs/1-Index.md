@@ -36,6 +36,33 @@ can be used if the OpenID Provider supports OpenID Connect Dynamic Client
 Registration 1.0. The client registers itself with the OpenID Provider and
 uses the issued client credentials.
 
+### A common type for the part after login
+
+All three implement `Cicnavi\Oidc\Interfaces\OidcClientInterface`, which
+covers everything a client does once the authorization request has been sent:
+`getUserData()`, `logout()`, `validateLogoutCallback()`,
+`handleBackchannelLogoutRequest()`, `getIdToken()`, `getIdTokenClaims()`,
+`getLoginData()` and `getParMode()`. Code that only completes and ends logins -
+a callback endpoint, a logout controller, a back-channel logout endpoint - can
+type against the interface and stay indifferent to how the client is registered
+with the OpenID Provider:
+
+```php
+use Cicnavi\Oidc\Interfaces\OidcClientInterface;
+
+function handleCallback(OidcClientInterface $oidcClient): array
+{
+    return $oidcClient->getUserData();
+}
+```
+
+Sending the authorization request is deliberately not part of the interface.
+The pre-registered and dynamically registered clients send it with
+`authorize()`, while a federated client has no single pre-configured OpenID
+Provider and must be told which one to use, so its entry point takes the OP
+entity ID (`autoRegisterAndAuthenticate()`). Start the login through the
+concrete client, and hold the interface everywhere after that.
+
 Check the dedicated sections below for more details about each client type:
 * [Pre-registered Client](2-Pre-Registered-Client.md)
 * [Federated Client](3-Federated-Client.md)
