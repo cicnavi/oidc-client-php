@@ -41,7 +41,7 @@ use Throwable;
 /**
  * @see \Cicnavi\Tests\Oidc\PreRegisteredClientTest
  */
-class PreRegisteredClient
+class PreRegisteredClient extends AbstractOidcClient
 {
     /**
      * @var CacheInterface $cache Cache instance, which can be used to fetch
@@ -350,7 +350,6 @@ class PreRegisteredClient
         $expectedIssuer :
         null;
 
-
         return $this->requestDataHandler->getUserData(
             clientAuthenticationMethod: ClientAuthenticationMethodsEnum::ClientSecretBasic,
             authorizationCode: $authorizationCode,
@@ -459,19 +458,6 @@ class PreRegisteredClient
     }
 
     /**
-     * Validate the request made to the post logout redirect URI after an
-     * RP-Initiated Logout (the OP must return the logout state parameter
-     * unchanged). No-op when this client is configured not to use state.
-     *
-     * @throws OidcClientException If the state parameter is missing or does
-     * not match the one sent in the logout request.
-     */
-    public function validateLogoutCallback(?ServerRequestInterface $request = null): void
-    {
-        $this->requestDataHandler->validateLogoutCallbackResponse($request, $this->useState);
-    }
-
-    /**
      * Handle an OIDC Back-Channel Logout request from the OP: validate the
      * logout token from the request (signature against the OP JWKS, issuer,
      * audience, claim set, freshness, 'jti' replay), record the login
@@ -533,42 +519,19 @@ class PreRegisteredClient
     }
 
     /**
-     * Raw ID token received at the last successful login, or null when not
-     * available (no login was performed, no ID token was issued, or the
-     * session expired).
+     * @inheritDoc
      */
-    public function getIdToken(): ?string
+    protected function resolveRequestDataHandler(): RequestDataHandler
     {
-        return $this->requestDataHandler->getLoginIdToken();
+        return $this->requestDataHandler;
     }
 
     /**
-     * Claims of the ID token received at the last successful login, or null
-     * when not available.
-     *
-     * These are the claims as validated at login, without the UserInfo claims
-     * that getUserData() combines them with. Use this to assert something
-     * against the signed ID token itself - for example its 'iss' or 'aud' -
-     * rather than against the combined set, where End-User claims from the
-     * UserInfo response are also present.
-     *
-     * @return mixed[]|null
+     * @inheritDoc
      */
-    public function getIdTokenClaims(): ?array
+    protected function usesState(): bool
     {
-        return $this->requestDataHandler->getLoginIdTokenClaims();
-    }
-
-    /**
-     * Login data persisted at the last successful login (raw ID token, its
-     * 'iss' / 'sub' / 'sid' claims, OP end session endpoint), or null when
-     * not available.
-     *
-     * @return mixed[]|null
-     */
-    public function getLoginData(): ?array
-    {
-        return $this->requestDataHandler->getLoginData();
+        return $this->useState;
     }
 
     /**

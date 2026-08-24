@@ -15,6 +15,20 @@ the login data, so nothing extra is stored, and they become unavailable at the
 same moment the login does (logout, session expiry, or a back-channel logout
 revocation).
 
+- New `Cicnavi\Oidc\Interfaces\OidcClientInterface`, implemented by all three
+clients, covering everything a client can do once the authorization request has
+been sent: `getUserData()`, `logout()`, `validateLogoutCallback()`,
+`handleBackchannelLogoutRequest()`, `getIdToken()`, `getIdTokenClaims()`,
+`getLoginData()` and `getParMode()`. Application code that only completes and
+ends logins - a callback endpoint, a logout controller, a back-channel logout
+endpoint - can now type against the interface rather than against a concrete
+client. Sending the authorization request is deliberately not part of the
+contract: `PreRegisteredClient` and `DynamicallyRegisteredClient` send it with
+`authorize()`, while `FederatedClient` has no single pre-configured OP and must
+be told which one to use, so its entry point takes the OP entity ID
+(`autoRegisterAndAuthenticate()`). That difference is essential rather than
+incidental, so no common login signature is imposed.
+
 - New `Cicnavi\Oidc\DataStore\ArraySessionStore`, a `SessionStoreInterface`
 implementation backed by a plain array for the lifetime of the object. Inject it
 wherever a PHP session is unavailable or unwanted - a CLI entry point, a worker,
@@ -25,6 +39,18 @@ match `PhpSessionStore`'s exactly, including that a value stored as `null` reads
 back as absent.
 
 ### Changed
+
+- **Potentially breaking**: `PreRegisteredClient`, `DynamicallyRegisteredClient`
+and `FederatedClient` now extend the new abstract
+`Cicnavi\Oidc\AbstractOidcClient`, which holds the four operations that all
+three implemented identically - `validateLogoutCallback()`, `getIdToken()`,
+`getIdTokenClaims()` and `getLoginData()`. Behaviour is unchanged, and so are
+the signatures, so ordinary use needs no change. It matters if you subclass one
+of the clients: two protected methods now exist on the hierarchy,
+`resolveRequestDataHandler(): RequestDataHandler` and `usesState(): bool`, and a
+subclass declaring members of its own under either name must be reconciled with
+them. `DynamicallyRegisteredClient::resolveRequestDataHandler()` already
+existed and keeps its behaviour; it now also satisfies the base class.
 
 - **Breaking**: the minimum PHP version is now 8.3, raised from 8.2. PHP 8.2
 loses security support on 31 December 2026, so a major released now would ship

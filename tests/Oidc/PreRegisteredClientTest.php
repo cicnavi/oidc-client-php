@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Cicnavi\Tests\Oidc;
 
+use Cicnavi\Oidc\AbstractOidcClient;
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
 use Cicnavi\Oidc\CodeBooks\ParModeEnum;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
@@ -23,6 +24,7 @@ use SimpleSAML\OpenID\SupportedSerializers;
 use Cicnavi\Oidc\Helpers\HttpHelper;
 
 #[CoversClass(PreRegisteredClient::class)]
+#[UsesClass(AbstractOidcClient::class)]
 #[UsesClass(HttpHelper::class)]
 #[UsesClass(\Cicnavi\Oidc\Helpers\MetadataHelper::class)]
 final class PreRegisteredClientTest extends TestCase
@@ -760,6 +762,13 @@ final class PreRegisteredClientTest extends TestCase
         $this->requestDataHandlerMock->method('getLoginIdToken')->willReturn('id-token');
 
         $this->assertSame('id-token', $this->sut()->getIdToken());
+    }
+
+    public function testGetIdTokenClaimsDelegates(): void
+    {
+        $this->requestDataHandlerMock->method('getLoginIdTokenClaims')->willReturn(['sub' => 'user-id']);
+
+        $this->assertSame(['sub' => 'user-id'], $this->sut()->getIdTokenClaims());
     }
 
     public function testGetLoginDataDelegates(): void

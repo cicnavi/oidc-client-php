@@ -52,7 +52,7 @@ use Throwable;
  * Registration Access Token issued at registration.
  * @see \Cicnavi\Tests\Oidc\DynamicallyRegisteredClientTest
  */
-class DynamicallyRegisteredClient
+class DynamicallyRegisteredClient extends AbstractOidcClient
 {
     /**
      * @var CacheInterface $cache Cache instance, which can be used to fetch
@@ -776,22 +776,6 @@ class DynamicallyRegisteredClient
     }
 
     /**
-     * Validate the request made to the post logout redirect URI after an
-     * RP-Initiated Logout (the OP must return the logout state parameter
-     * unchanged). No-op when this client is configured not to use state.
-     *
-     * Only verifies the logout state against the session store - no client
-     * registration is performed or updated here.
-     *
-     * @throws OidcClientException If the state parameter is missing or does
-     * not match the one sent in the logout request.
-     */
-    public function validateLogoutCallback(?ServerRequestInterface $request = null): void
-    {
-        $this->resolveRequestDataHandler()->validateLogoutCallbackResponse($request, $this->useState);
-    }
-
-    /**
      * Handle an OIDC Back-Channel Logout request from the OP: validate the
      * logout token from the request, record the login revocation it
      * requests, and deliver the appropriate HTTP response (200 when the
@@ -991,37 +975,11 @@ class DynamicallyRegisteredClient
     }
 
     /**
-     * Raw ID token received at the last successful login, or null when not
-     * available. Read from the session store - no client registration is
-     * performed or updated here.
+     * @inheritDoc
      */
-    public function getIdToken(): ?string
+    protected function usesState(): bool
     {
-        return $this->resolveRequestDataHandler()->getLoginIdToken();
-    }
-
-    /**
-     * Claims of the ID token received at the last successful login, or null
-     * when not available. These are the claims as validated at login, without
-     * the UserInfo claims that getUserData() combines them with.
-     *
-     * @return mixed[]|null
-     */
-    public function getIdTokenClaims(): ?array
-    {
-        return $this->resolveRequestDataHandler()->getLoginIdTokenClaims();
-    }
-
-    /**
-     * Login data persisted at the last successful login, or null when not
-     * available. Read from the session store - no client registration is
-     * performed or updated here.
-     *
-     * @return mixed[]|null
-     */
-    public function getLoginData(): ?array
-    {
-        return $this->resolveRequestDataHandler()->getLoginData();
+        return $this->useState;
     }
 
     /**
@@ -1029,8 +987,14 @@ class DynamicallyRegisteredClient
      * data operations. Uses the constructor-provided instance when
      * available, otherwise lazily builds one over the same session store
      * that the underlying pre-registered client instances use (so
-     * session-stored data is shared either way). Never performs client
-     * registration.
+     * session-stored data is shared either way).
+     *
+     * Never performs client registration, so neither this nor any of the
+     * inherited operations reaching the session store through it -
+     * validateLogoutCallback(), getIdToken(), getIdTokenClaims(),
+     * getLoginData() - can be blocked by dynamic client registration state
+     * (stale, expired or missing registration, unavailable registration
+     * endpoint...).
      */
     protected function resolveRequestDataHandler(): RequestDataHandler
     {

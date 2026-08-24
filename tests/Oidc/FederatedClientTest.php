@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Cicnavi\Tests\Oidc;
 
+use Cicnavi\Oidc\AbstractOidcClient;
 use Cicnavi\Oidc\CodeBooks\AuthorizationRequestMethodEnum;
 use Cicnavi\Oidc\CodeBooks\ParModeEnum;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
@@ -15,6 +16,7 @@ use Cicnavi\Oidc\Protocol\RequestDataHandler;
 use Cicnavi\Oidc\Federation\EntityConfig;
 use Cicnavi\Oidc\Federation\RelyingPartyConfig;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -58,6 +60,7 @@ use SimpleSAML\OpenID\ValueAbstracts\TrustAnchorConfigBag;
 use SimpleSAML\OpenID\ValueAbstracts\UniqueStringBag;
 
 #[CoversClass(FederatedClient::class)]
+#[UsesClass(AbstractOidcClient::class)]
 #[CoversClass(HttpHelper::class)]
 final class FederatedClientTest extends TestCase
 {

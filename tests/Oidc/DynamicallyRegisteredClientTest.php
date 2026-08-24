@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Cicnavi\Tests\Oidc;
 
+use Cicnavi\Oidc\AbstractOidcClient;
 use Cicnavi\Oidc\DataStore\Interfaces\SessionStoreInterface;
 use Cicnavi\Oidc\DynamicallyRegisteredClient;
 use Cicnavi\Oidc\Exceptions\OidcClientException;
@@ -19,6 +20,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(DynamicallyRegisteredClient::class)]
+#[UsesClass(AbstractOidcClient::class)]
 #[UsesClass(ClientRegistrationData::class)]
 #[UsesClass(PreRegisteredClient::class)]
 #[UsesClass(\Cicnavi\Oidc\DataStore\DataHandlers\AbstractDataHandler::class)]

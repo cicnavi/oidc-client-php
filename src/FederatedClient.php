@@ -60,7 +60,7 @@ use SimpleSAML\OpenID\ValueAbstracts\TrustAnchorConfigBag;
 /**
  * @see \Cicnavi\Tests\Oidc\FederatedClientTest
  */
-class FederatedClient
+class FederatedClient extends AbstractOidcClient
 {
     protected readonly CacheInterface $cache;
 
@@ -1022,19 +1022,6 @@ class FederatedClient
     }
 
     /**
-     * Validate the request made to the post logout redirect URI after an
-     * RP-Initiated Logout (the OP must return the logout state parameter
-     * unchanged).
-     *
-     * @throws OidcClientException If the state parameter is missing or does
-     * not match the one sent in the logout request.
-     */
-    public function validateLogoutCallback(?ServerRequestInterface $request = null): void
-    {
-        $this->requestDataHandler->validateLogoutCallbackResponse($request);
-    }
-
-    /**
      * Handle an OIDC Back-Channel Logout request from an OP: validate the
      * logout token from the request, record the login revocation it
      * requests, and deliver the appropriate HTTP response (200 when the
@@ -1165,37 +1152,23 @@ class FederatedClient
     }
 
     /**
-     * Raw ID token received at the last successful login, or null when not
-     * available (no login was performed, no ID token was issued, or the
-     * session expired).
+     * @inheritDoc
      */
-    public function getIdToken(): ?string
+    protected function resolveRequestDataHandler(): RequestDataHandler
     {
-        return $this->requestDataHandler->getLoginIdToken();
+        return $this->requestDataHandler;
     }
 
     /**
-     * Claims of the ID token received at the last successful login, or null
-     * when not available. These are the claims as validated at login, without
-     * the UserInfo claims that getUserData() combines them with.
+     * @inheritDoc
      *
-     * @return mixed[]|null
+     * Always true: unlike the pre-registered and dynamically registered
+     * clients, this one has no option to turn the 'state' parameter off - it
+     * is sent on every authorization and logout request it makes.
      */
-    public function getIdTokenClaims(): ?array
+    protected function usesState(): bool
     {
-        return $this->requestDataHandler->getLoginIdTokenClaims();
-    }
-
-    /**
-     * Login data persisted at the last successful login (raw ID token, its
-     * 'iss' / 'sub' / 'sid' claims, OP end session endpoint), or null when
-     * not available.
-     *
-     * @return mixed[]|null
-     */
-    public function getLoginData(): ?array
-    {
-        return $this->requestDataHandler->getLoginData();
+        return true;
     }
 
     /**
